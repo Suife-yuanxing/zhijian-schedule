@@ -1,3 +1,4 @@
+import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -13,6 +14,12 @@ android {
     namespace = "com.zhijian.schedule"
     compileSdk = 36
 
+    // 正式签名：keystore.properties 存在时使用 release 密钥（仓库外保存），否则回落 debug 签名
+    val keystoreProps = Properties().apply {
+        val f = rootProject.file("keystore.properties")
+        if (f.exists()) f.inputStream().use { load(it) }
+    }
+
     defaultConfig {
         applicationId = "com.zhijian.schedule"
         minSdk = 26
@@ -23,6 +30,17 @@ android {
         resourceConfigurations += listOf("zh", "en")
     }
 
+    signingConfigs {
+        if (keystoreProps.isNotEmpty()) {
+            create("release") {
+                storeFile = rootProject.file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -31,8 +49,11 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // W10 生成正式密钥库后替换；当前先用 debug 签名保证可安装
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (keystoreProps.isNotEmpty()) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 
@@ -56,6 +77,12 @@ android {
                 "META-INF/*.kotlin_module"
             )
         }
+    }
+
+    lint {
+        // lintVital 需从 dl.google.com 拉 lint-gradle，国内常连接超时导致 release 构建失败；
+        // 构建期关闭，lint 可另行手动运行
+        checkReleaseBuilds = false
     }
 }
 
