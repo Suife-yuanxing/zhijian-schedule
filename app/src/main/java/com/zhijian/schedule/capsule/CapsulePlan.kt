@@ -38,6 +38,14 @@ sealed interface CapsulePlan {
         override val chip: String = "下节课",
     ) : CapsulePlan
 
+    /** 法定节假日（休）：当日课表课程按停课处理，胶囊按假期展示 */
+    data class Holiday(
+        val name: String,
+        /** 假后最近一节课，如「明天 08:20 · 包装装潢设计」 */
+        val nextText: String?,
+        override val chip: String = "假期",
+    ) : CapsulePlan
+
     /** 今天的课已上完（或今天没课） */
     data class DayDone(
         val hadClassesToday: Boolean,
@@ -68,12 +76,23 @@ fun buildCapsulePlan(
     now: LocalDateTime,
     /** 课前提醒提前量（分钟）；<=0（课前提醒关闭）时不产生「即将上课」状态 */
     reminderMinutes: Int,
+    /** 今天是法定假日（休）时的节日名；调休补班日与平时传 null */
+    holidayName: String? = null,
 ): CapsulePlan {
     val table = timetable ?: return CapsulePlan.NoTable
     val startDate = TimeUtils.parseDate(table.startDate) ?: return CapsulePlan.NoTable
 
     val today = now.toLocalDate()
     val nowTime = now.toLocalTime()
+
+    // 法定假日：课表课程不执行，直接进入假期状态（不做上课/倒数判断）
+    if (holidayName != null) {
+        return CapsulePlan.Holiday(
+            name = holidayName,
+            nextText = nextOccurrenceText(startDate, table.totalWeeks, courses, sections, today),
+        )
+    }
+
     val week = TimeUtils.weekOfSemester(startDate, table.totalWeeks, today)
     val dow = TimeUtils.dayOfWeek(today)
     val todayCourses = if (week == null) emptyList() else {

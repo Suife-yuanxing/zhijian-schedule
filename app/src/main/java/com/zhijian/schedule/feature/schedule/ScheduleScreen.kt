@@ -85,7 +85,12 @@ fun ScheduleScreen(
         }
     }
 
-    val visibleDays = if (ui.settings.showWeekend) (1..7).toList() else (1..5).toList()
+    // 调休补班周：即使关着「显示周末」也强制显示周末列（补班日在该周）
+    val visibleDays = if (ui.settings.showWeekend || ui.weekHasMakeupWorkday(ui.selectedWeek)) {
+        (1..7).toList()
+    } else {
+        (1..5).toList()
+    }
     val scope = rememberCoroutineScope()
     val pagerState = rememberPagerState(
         initialPage = 0,

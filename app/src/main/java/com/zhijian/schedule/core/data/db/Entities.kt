@@ -171,3 +171,38 @@ data class CourseNoteEntity(
     val content: String,
     val updateTime: Long = System.currentTimeMillis(),
 )
+
+/** 教务成绩（强智 jsxsd 成绩查询，全量缓存） */
+@Entity(tableName = "grade")
+@Serializable
+data class GradeEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    /** 开课学期，如 2025-2026-1 */
+    val term: String,
+    val code: String,
+    val name: String,
+    /** 原文成绩："85" / "A" / "优秀" */
+    val score: String,
+    /** 成绩标识（补考/重修标记，如 "*"） */
+    val scoreFlag: String = "",
+    val credit: Double,
+    val hours: Int? = null,
+    /** 教务给的学分绩点 */
+    val gpa: Double? = null,
+    /** 补重学期；非空表示该行是补考/重修记录 */
+    val retakeTerm: String = "",
+    val examMode: String = "",
+    val examNature: String = "",
+    val attr: String = "",
+    val category: String = "",
+)
+
+/** 节假日/调休（holiday-cn / timor.tech 数据源，按年缓存） */
+@Entity(tableName = "holiday")
+data class HolidayEntity(
+    /** yyyy-MM-dd */
+    @PrimaryKey val date: String,
+    val name: String,
+    /** true=法定放假；false=调休补班 */
+    val isOffDay: Boolean,
+)

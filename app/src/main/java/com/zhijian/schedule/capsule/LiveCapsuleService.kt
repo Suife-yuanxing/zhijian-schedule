@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import com.zhijian.schedule.core.data.db.HolidayDao
 import com.zhijian.schedule.core.data.prefs.SettingsStore
 import com.zhijian.schedule.core.repository.ScheduleRepository
 import dagger.hilt.android.AndroidEntryPoint
@@ -36,6 +37,9 @@ class LiveCapsuleService : Service() {
 
     @Inject
     lateinit var settingsStore: SettingsStore
+
+    @Inject
+    lateinit var holidayDao: HolidayDao
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var loop: Job? = null
@@ -69,12 +73,17 @@ class LiveCapsuleService : Service() {
                         break
                     }
                     runCatching {
+                        val now = LocalDateTime.now()
+                        val holidayName = holidayDao.observeAll().first()
+                            .firstOrNull { it.date == now.toLocalDate().toString() && it.isOffDay }
+                            ?.name
                         val plan = buildCapsulePlan(
                             timetable = repository.activeTimetable.first(),
                             courses = repository.activeCourses.first(),
                             sections = repository.activeSections.first(),
-                            now = LocalDateTime.now(),
+                            now = now,
                             reminderMinutes = if (settings.reminderEnabled) settings.reminderMinutes else 0,
+                            holidayName = holidayName,
                         )
                         lastKey = CapsuleNotifier.post(this@LiveCapsuleService, plan, lastKey)
                     }

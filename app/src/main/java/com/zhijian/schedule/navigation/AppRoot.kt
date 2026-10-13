@@ -45,6 +45,7 @@ import androidx.navigation.navArgument
 import com.zhijian.schedule.core.theme.CourseTheme
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.feature.course_editor.CourseEditorScreen
+import com.zhijian.schedule.feature.grades.GradesScreen
 import com.zhijian.schedule.feature.importer.ImporterScreen
 import com.zhijian.schedule.feature.jw.JwImportScreen
 import com.zhijian.schedule.feature.profile.ProfileScreen
@@ -76,6 +77,7 @@ object Routes {
     const val PROFILE_IMPORTER = "profile_importer"
     const val PROFILE_JW_IMPORT = "profile_jw_import"
     const val PROFILE_SETTINGS = "profile_settings"
+    const val PROFILE_GRADES = "profile_grades"
 
     fun scheduleEditor(courseId: Long? = null, day: Int? = null, section: Int? = null): String =
         "schedule_editor?courseId=${courseId ?: -1L}&day=${day ?: -1}&section=${section ?: -1}"
@@ -295,6 +297,7 @@ private fun AppScaffold(openTodayCount: Int) {
                         ProfileScreen(
                             onOpenImport = { navController.navigate(Routes.PROFILE_IMPORTER) },
                             onOpenSettings = { navController.navigate(Routes.PROFILE_SETTINGS) },
+                            onOpenGrades = { navController.navigate(Routes.PROFILE_GRADES) },
                         )
                     }
                     composable(
@@ -326,6 +329,18 @@ private fun AppScaffold(openTodayCount: Int) {
                         popExitTransition = { popExit },
                     ) {
                         SettingsScreen(onBack = { navController.popBackStack() })
+                    }
+                    composable(
+                        route = Routes.PROFILE_GRADES,
+                        enterTransition = { pushEnter },
+                        exitTransition = { pushExit },
+                        popEnterTransition = { popEnter },
+                        popExitTransition = { popExit },
+                    ) {
+                        GradesScreen(
+                            onBack = { navController.popBackStack() },
+                            onOpenJwImport = { navController.navigate(Routes.PROFILE_JW_IMPORT) },
+                        )
                     }
                 }
             }

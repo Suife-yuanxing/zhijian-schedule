@@ -12,8 +12,10 @@ import androidx.room.RoomDatabase
         ImportSnapshotEntity::class,
         ExamEntity::class,
         CourseNoteEntity::class,
+        GradeEntity::class,
+        HolidayEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -23,4 +25,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun importSnapshotDao(): ImportSnapshotDao
     abstract fun examDao(): ExamDao
     abstract fun courseNoteDao(): CourseNoteDao
+    abstract fun gradeDao(): GradeDao
+    abstract fun holidayDao(): HolidayDao
 }

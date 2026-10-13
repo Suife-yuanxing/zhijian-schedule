@@ -213,6 +213,31 @@ class CapsulePlanTest {
     }
 
     @Test
+    fun holidayOffDayShowsHolidayState() {
+        val plan = buildCapsulePlan(
+            timetable(),
+            listOf(course(day = 2, 3, 4), course(day = 3, 1, 2, name = "周三早课")),
+            sections(), tuesday(10, 30), reminderMinutes = 30,
+            holidayName = "国庆节",
+        )
+        val holiday = plan as CapsulePlan.Holiday
+        assertEquals("国庆节", holiday.name)
+        assertEquals("假期", holiday.chip)
+        assertEquals("明天 08:20 · 周三早课", holiday.nextText)
+    }
+
+    @Test
+    fun makeupWorkdayKeepsNormalPlan() {
+        val plan = buildCapsulePlan(
+            timetable(), listOf(course(day = 2, 3, 4, name = "毛泽东思想")), sections(),
+            tuesday(10, 30), reminderMinutes = 30,
+            holidayName = null, // 调休补班日按正常上课日处理
+        )
+        val ongoing = plan as CapsulePlan.Ongoing
+        assertEquals("毛泽东思想", ongoing.course.name)
+    }
+
+    @Test
     fun noTimetableIsNoTable() {
         val plan = buildCapsulePlan(null, emptyList(), sections(), tuesday(10, 30), reminderMinutes = 30)
         assertEquals(CapsulePlan.NoTable, plan)

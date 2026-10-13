@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.sp
 import com.zhijian.schedule.core.data.db.CourseEntity
 import com.zhijian.schedule.core.data.db.SectionTimeEntity
 import com.zhijian.schedule.core.theme.LocalCourseColors
+import com.zhijian.schedule.core.ui.HolidayColors
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.pressScale
 import com.zhijian.schedule.core.util.TimeUtils
@@ -134,6 +135,19 @@ fun DayDetailSheet(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(6.dp))
                                     .background(colors.accent)
+                                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                            )
+                        }
+                        ui.holidays[d.toString()]?.let { h ->
+                            Spacer(Modifier.width(8.dp))
+                            val tint = if (h.isOffDay) HolidayColors.REST else HolidayColors.WORK
+                            Text(
+                                text = "${h.name} · ${if (h.isOffDay) "休" else "班"}",
+                                color = tint,
+                                fontSize = 11.sp,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(tint.copy(alpha = 0.14f))
                                     .padding(horizontal = 6.dp, vertical = 2.dp),
                             )
                         }

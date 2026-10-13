@@ -48,6 +48,7 @@ import com.zhijian.schedule.core.data.db.SectionTimeEntity
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.theme.LocalCoursePreset
 import com.zhijian.schedule.core.theme.LocalIsDark
+import com.zhijian.schedule.core.ui.HolidayColors
 import com.zhijian.schedule.core.ui.pressScale
 import com.zhijian.schedule.core.util.TimeUtils
 import com.zhijian.schedule.feature.schedule.ScheduleUiState
@@ -56,7 +57,7 @@ import java.time.LocalTime
 
 object GridDims {
     val TIME_AXIS_WIDTH: Dp = 46.dp
-    val HEADER_HEIGHT: Dp = 46.dp
+    val HEADER_HEIGHT: Dp = 56.dp
     val SECTION_HEIGHT: Dp = 46.dp
 }
 
@@ -87,6 +88,7 @@ fun WeekHeader(
         visibleDays.forEach { day ->
             val date = ui.dateOf(week, day)
             val isToday = date == today
+            val holiday = ui.holidays[date.toString()]
             val pressSource = remember { MutableInteractionSource() }
             Column(
                 Modifier
@@ -117,6 +119,14 @@ fun WeekHeader(
                         color = if (isToday) colors.onAccent else colors.text,
                         fontSize = 12.sp,
                         fontWeight = if (isToday) FontWeight.Bold else FontWeight.Medium,
+                    )
+                }
+                if (holiday != null) {
+                    Text(
+                        text = if (holiday.isOffDay) "休" else "班",
+                        color = if (holiday.isOffDay) HolidayColors.REST else HolidayColors.WORK,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
                     )
                 }
             }

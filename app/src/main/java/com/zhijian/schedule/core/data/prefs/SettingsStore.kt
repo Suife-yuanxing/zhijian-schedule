@@ -26,6 +26,8 @@ data class AppSettings(
     val lastSyncTime: Long = 0L,
     val calendarSyncEnabled: Boolean = false,
     val capsuleEnabled: Boolean = false,
+    val gradesFetchedAt: Long = 0L,
+    val holidayFetchedAt: Long = 0L,
 )
 
 @Singleton
@@ -45,6 +47,8 @@ class SettingsStore @Inject constructor(
         val LAST_SYNC = longPreferencesKey("last_sync_time")
         val CALENDAR_SYNC = booleanPreferencesKey("calendar_sync_enabled")
         val CAPSULE = booleanPreferencesKey("capsule_enabled")
+        val GRADES_FETCHED = longPreferencesKey("grades_fetched_at")
+        val HOLIDAY_FETCHED = longPreferencesKey("holiday_fetched_at")
     }
 
     val settings: Flow<AppSettings> = dataStore.data.map { p ->
@@ -61,6 +65,8 @@ class SettingsStore @Inject constructor(
             lastSyncTime = p[Keys.LAST_SYNC] ?: 0L,
             calendarSyncEnabled = p[Keys.CALENDAR_SYNC] ?: false,
             capsuleEnabled = p[Keys.CAPSULE] ?: false,
+            gradesFetchedAt = p[Keys.GRADES_FETCHED] ?: 0L,
+            holidayFetchedAt = p[Keys.HOLIDAY_FETCHED] ?: 0L,
         )
     }
 
@@ -80,4 +86,6 @@ class SettingsStore @Inject constructor(
     suspend fun setLastSyncTime(time: Long) = dataStore.edit { it[Keys.LAST_SYNC] = time }
     suspend fun setCalendarSync(enabled: Boolean) = dataStore.edit { it[Keys.CALENDAR_SYNC] = enabled }
     suspend fun setCapsule(enabled: Boolean) = dataStore.edit { it[Keys.CAPSULE] = enabled }
+    suspend fun setGradesFetchedAt(time: Long) = dataStore.edit { it[Keys.GRADES_FETCHED] = time }
+    suspend fun setHolidayFetchedAt(time: Long) = dataStore.edit { it[Keys.HOLIDAY_FETCHED] = time }
 }

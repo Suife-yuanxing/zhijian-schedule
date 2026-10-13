@@ -3,6 +3,7 @@ package com.zhijian.schedule.core.data
 import com.zhijian.schedule.core.data.db.AppDatabase
 import com.zhijian.schedule.core.data.db.CourseEntity
 import com.zhijian.schedule.core.data.db.ExamEntity
+import com.zhijian.schedule.core.data.db.GradeEntity
 import com.zhijian.schedule.core.data.db.SectionTimeEntity
 import com.zhijian.schedule.core.data.db.TimeModeEntity
 import com.zhijian.schedule.core.data.db.TimetableEntity
@@ -33,6 +34,7 @@ class BackupManager @Inject constructor(
         val sectionTimes: List<SectionTimeEntity> = emptyList(),
         val courses: List<CourseEntity> = emptyList(),
         val exams: List<ExamEntity> = emptyList(),
+        val grades: List<GradeEntity> = emptyList(),
     )
 
     suspend fun exportJson(): String {
@@ -58,6 +60,7 @@ class BackupManager @Inject constructor(
             sectionTimes = sections,
             courses = courses,
             exams = exams,
+            grades = db.gradeDao().getAll(),
         )
         return json.encodeToString(payload)
     }
@@ -77,6 +80,7 @@ class BackupManager @Inject constructor(
             }
             payload.courses.forEach { db.courseDao().insert(it) }
             payload.exams.forEach { db.examDao().insert(it) }
+            if (payload.grades.isNotEmpty()) db.gradeDao().insertAll(payload.grades)
             "已恢复 ${payload.timetables.size} 张课表、${payload.courses.size} 门课程"
         }
     }

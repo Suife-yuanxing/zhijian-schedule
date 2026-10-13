@@ -5,6 +5,7 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
 import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
@@ -145,4 +146,42 @@ interface CourseNoteDao {
 
     @Delete
     suspend fun delete(item: CourseNoteEntity)
+}
+
+@Dao
+interface GradeDao {
+    @Query("SELECT * FROM grade ORDER BY term DESC, id ASC")
+    fun observeAll(): Flow<List<GradeEntity>>
+
+    @Query("SELECT * FROM grade ORDER BY term DESC, id ASC")
+    suspend fun getAll(): List<GradeEntity>
+
+    @Insert
+    suspend fun insertAll(items: List<GradeEntity>)
+
+    @Query("DELETE FROM grade")
+    suspend fun deleteAll()
+
+    /** 整批替换（抓取成功后全量刷新） */
+    @Transaction
+    suspend fun replaceAll(items: List<GradeEntity>) {
+        deleteAll()
+        insertAll(items)
+    }
+}
+
+@Dao
+interface HolidayDao {
+    @Query("SELECT * FROM holiday ORDER BY date ASC")
+    fun observeAll(): Flow<List<HolidayEntity>>
+
+    @Query("SELECT * FROM holiday ORDER BY date ASC")
+    suspend fun getAll(): List<HolidayEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(items: List<HolidayEntity>)
+
+    /** 某年份已有多少条数据（前缀如 "2026-"） */
+    @Query("SELECT COUNT(*) FROM holiday WHERE date LIKE :yearPrefix")
+    suspend fun countLike(yearPrefix: String): Int
 }

@@ -51,6 +51,7 @@ import com.zhijian.schedule.core.ui.selectedPop
 fun ProfileScreen(
     onOpenImport: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
+    onOpenGrades: () -> Unit = {},
     viewModel: ProfileViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
@@ -184,6 +185,8 @@ fun ProfileScreen(
                     .background(colors.surface, RoundedCornerShape(14.dp)),
             ) {
                 EntryRow("导入课表") { onOpenImport() }
+                HorizontalDivider(color = colors.border)
+                EntryRow("成绩查询", subtitle = "教务成绩 · 加权绩点 / 平均分") { onOpenGrades() }
                 HorizontalDivider(color = colors.border)
                 EntryRow("高级设置", subtitle = "课表信息 / 作息时间 / 日历同步 / 备份") { onOpenSettings() }
                 HorizontalDivider(color = colors.border)

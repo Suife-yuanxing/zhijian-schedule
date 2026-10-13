@@ -14,6 +14,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import com.zhijian.schedule.capsule.LiveCapsuleService
 import com.zhijian.schedule.core.data.prefs.SettingsStore
+import com.zhijian.schedule.core.holiday.HolidayRepository
 import com.zhijian.schedule.navigation.AppRoot
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -26,6 +27,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var settingsStore: SettingsStore
 
+    @Inject
+    lateinit var holidayRepository: HolidayRepository
+
     /** 点实时胶囊进「今日」页的请求计数，AppRoot 观察它切一次 tab */
     private var openTodayCount by mutableIntStateOf(0)
 
@@ -34,11 +38,17 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         requestNotificationPermissionIfNeeded()
         reviveCapsuleIfEnabled()
+        refreshHolidays()
         // 冷启动带进来的请求直接消费；重建（如旋转）不重复消费
         if (savedInstanceState == null) consumeOpenToday(intent)
         setContent {
             AppRoot(openTodayCount = openTodayCount)
         }
+    }
+
+    /** 节假日/调休数据：每天首次打开时静默刷新（失败不影响任何功能） */
+    private fun refreshHolidays() {
+        lifecycleScope.launch { holidayRepository.ensureFresh() }
     }
 
     override fun onNewIntent(intent: Intent) {

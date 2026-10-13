@@ -3,6 +3,8 @@ package com.zhijian.schedule.feature.schedule
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.zhijian.schedule.core.data.db.CourseEntity
+import com.zhijian.schedule.core.data.db.HolidayDao
+import com.zhijian.schedule.core.data.db.HolidayEntity
 import com.zhijian.schedule.core.data.db.SectionTimeEntity
 import com.zhijian.schedule.core.data.db.TimeModeEntity
 import com.zhijian.schedule.core.data.db.TimetableEntity
@@ -28,6 +30,8 @@ data class ScheduleUiState(
     val selectedWeek: Int = 1,
     val currentWeek: Int? = null,
     val today: LocalDate = LocalDate.now(),
+    /** 节假日/调休标注：yyyy-MM-dd → 实体 */
+    val holidays: Map<String, HolidayEntity> = emptyMap(),
 ) {
     val totalWeeks: Int get() = timetable?.totalWeeks ?: 20
     val startDate: LocalDate get() = TimeUtils.parseDate(timetable?.startDate) ?: today
@@ -40,11 +44,17 @@ data class ScheduleUiState(
     }.sortedBy { it.startSection }
 
     fun dateOf(week: Int, day: Int): LocalDate = TimeUtils.dateOfWeekDay(startDate, week, day)
+
+    /** 展示的第 week 周是否含调休补班日（补班日强制显示对应周末列） */
+    fun weekHasMakeupWorkday(week: Int): Boolean = (6..7).any { dow ->
+        holidays[dateOf(week, dow).toString()]?.isOffDay == false
+    }
 }
 
 @HiltViewModel
 class ScheduleViewModel @Inject constructor(
     private val repository: ScheduleRepository,
+    private val holidayDao: HolidayDao,
 ) : ViewModel() {
 
     private val selectedWeek = MutableStateFlow(0)
@@ -63,7 +73,7 @@ class ScheduleViewModel @Inject constructor(
         repository.settings,
     ) { t, c, s, st -> Base(t, c, s, st) }
 
-    val uiState: StateFlow<ScheduleUiState> = combine(base, selectedWeek) { b, sel ->
+    val uiState: StateFlow<ScheduleUiState> = combine(base, selectedWeek, holidayDao.observeAll()) { b, sel, holidays ->
         val today = LocalDate.now()
         val start = TimeUtils.parseDate(b.timetable?.startDate)
         val currentWeek = if (start != null && b.timetable != null) {
@@ -82,6 +92,7 @@ class ScheduleViewModel @Inject constructor(
             selectedWeek = week,
             currentWeek = currentWeek,
             today = today,
+            holidays = holidays.associateBy { it.date },
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ScheduleUiState())
 

@@ -44,7 +44,9 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.zhijian.schedule.core.data.db.CourseEntity
+import com.zhijian.schedule.core.data.db.HolidayEntity
 import com.zhijian.schedule.core.theme.LocalCourseColors
+import com.zhijian.schedule.core.ui.HolidayColors
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.StaggerIn
 import com.zhijian.schedule.core.ui.pressScale
@@ -88,12 +90,28 @@ fun TodayScreen(
             .padding(horizontal = 20.dp),
     ) {
         Spacer(Modifier.height(18.dp))
-        Text(
-            text = "今天 · ${TimeUtils.dayName(TimeUtils.dayOfWeek(ui.today))}",
-            style = MaterialTheme.typography.headlineMedium,
-            color = colors.text,
-            fontWeight = FontWeight.SemiBold,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "今天 · ${TimeUtils.dayName(TimeUtils.dayOfWeek(ui.today))}",
+                style = MaterialTheme.typography.headlineMedium,
+                color = colors.text,
+                fontWeight = FontWeight.SemiBold,
+            )
+            ui.todayHoliday?.let { h ->
+                Spacer(Modifier.width(10.dp))
+                val tint = if (h.isOffDay) HolidayColors.REST else HolidayColors.WORK
+                Text(
+                    text = "${h.name} · ${if (h.isOffDay) "休" else "班"}",
+                    color = tint,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(tint.copy(alpha = 0.14f))
+                        .padding(horizontal = 8.dp, vertical = 3.dp),
+                )
+            }
+        }
         Text(
             text = buildString {
                 append("${ui.today.monthValue}月${ui.today.dayOfMonth}日")
@@ -105,6 +123,13 @@ fun TodayScreen(
         )
 
         Spacer(Modifier.height(18.dp))
+
+        ui.todayHoliday?.takeIf { it.isOffDay && ui.courses.isNotEmpty() }?.let { h ->
+            StaggerIn(index = 0) {
+                HolidayNoticeCard(h)
+                Spacer(Modifier.height(14.dp))
+            }
+        }
 
         when {
             ui.courses.isEmpty() -> StaggerIn(index = 0) { EmptyToday(ui) }
@@ -162,8 +187,33 @@ fun TodayScreen(
 }
 
 @Composable
+private fun HolidayNoticeCard(holiday: HolidayEntity) {
+    val colors = LocalCourseColors.current
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(HolidayColors.REST.copy(alpha = 0.10f), RoundedCornerShape(14.dp))
+            .padding(14.dp),
+    ) {
+        Text(
+            text = "「${holiday.name}」法定假期",
+            color = HolidayColors.REST,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = "今日课表课程按停课处理，补课安排以学校通知为准",
+            color = colors.textMuted,
+            fontSize = 12.sp,
+        )
+    }
+}
+
+@Composable
 private fun EmptyToday(ui: TodayUiState) {
     val colors = LocalCourseColors.current
+    val holiday = ui.todayHoliday
     Spacer(Modifier.height(40.dp))
     Column(
         Modifier
@@ -173,14 +223,24 @@ private fun EmptyToday(ui: TodayUiState) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = if (ui.week == null) "假期中" else "今天没有课",
+            text = when {
+                ui.week == null -> "假期中"
+                holiday?.isOffDay == true -> "「${holiday.name}」放假中"
+                holiday != null -> "调休上班日"
+                else -> "今天没有课"
+            },
             style = MaterialTheme.typography.titleMedium,
             color = colors.text,
             fontWeight = FontWeight.SemiBold,
         )
         Spacer(Modifier.height(6.dp))
         Text(
-            text = if (ui.week == null) "不在学期周次范围内" else "好好休息一下",
+            text = when {
+                ui.week == null -> "不在学期周次范围内"
+                holiday?.isOffDay == true -> "今日课表课程按停课处理"
+                holiday != null -> "补课安排以学校通知为准"
+                else -> "好好休息一下"
+            },
             style = MaterialTheme.typography.bodyMedium,
             color = colors.textMuted,
         )

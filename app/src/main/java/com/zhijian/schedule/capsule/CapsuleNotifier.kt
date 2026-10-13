@@ -95,6 +95,11 @@ object CapsuleNotifier {
                 "$where${TimeUtils.formatTime(c.start)} · $until"
         }
 
+        is CapsulePlan.Holiday -> {
+            val text = plan.nextText?.let { "今天放假 · 下一节 $it" } ?: "今天放假，好好休息一下"
+            "假期 · ${plan.name}" to text
+        }
+
         is CapsulePlan.DayDone -> {
             val title = if (plan.hadClassesToday) "今日课程已结束" else "今天没有课"
             val text = plan.nextText?.let { "下一节 · $it" } ?: "本周暂无课程安排"

@@ -3,6 +3,8 @@ package com.zhijian.schedule.feature.today
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.zhijian.schedule.core.data.db.CourseEntity
+import com.zhijian.schedule.core.data.db.HolidayDao
+import com.zhijian.schedule.core.data.db.HolidayEntity
 import com.zhijian.schedule.core.repository.ScheduleRepository
 import com.zhijian.schedule.core.util.TimeUtils
 import com.zhijian.schedule.core.util.WeekMask
@@ -27,18 +29,22 @@ data class TodayUiState(
     val week: Int? = null,
     val today: LocalDate = LocalDate.now(),
     val courses: List<TodayCourseItem> = emptyList(),
+    /** 今天是法定假日（休）或调休补班日（班）；平时为 null */
+    val todayHoliday: HolidayEntity? = null,
 )
 
 @HiltViewModel
 class TodayViewModel @Inject constructor(
     private val repository: ScheduleRepository,
+    private val holidayDao: HolidayDao,
 ) : ViewModel() {
 
     val uiState: StateFlow<TodayUiState> = combine(
         repository.activeTimetable,
         repository.activeCourses,
         repository.activeSections,
-    ) { timetable, courses, sections ->
+        holidayDao.observeAll(),
+    ) { timetable, courses, sections, holidays ->
         val today = LocalDate.now()
         val start = timetable?.let { TimeUtils.parseDate(it.startDate) }
         val week = if (timetable != null && start != null) {
@@ -64,6 +70,7 @@ class TodayViewModel @Inject constructor(
             week = week,
             today = today,
             courses = items,
+            todayHoliday = holidays.firstOrNull { it.date == today.toString() },
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), TodayUiState())
 
