@@ -70,7 +70,7 @@ class UpdateChecker @Inject constructor(
     }
 
     companion object {
-        /** 发布仓库（GitHub Releases 分发，方案 1.4）；建仓后替换为实际路径 */
-        const val GITHUB_REPO = "zhijian-timetable/paper-timetable"
+        /** 发布仓库（GitHub Releases 分发，方案 1.4） */
+        const val GITHUB_REPO = "Suife-yuanxing/zhijian-schedule"
     }
 }
