@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">纸间课表</string>
+    <string name="app_slogan">指尖之间，一纸课表</string>
+
+    <!-- 底部导航 -->
+    <string name="tab_today">今日</string>
+    <string name="tab_schedule">课表</string>
+    <string name="tab_profile">我的</string>
+
+    <!-- 通知渠道 -->
+    <string name="channel_reminder_name">上课提醒</string>
+    <string name="channel_reminder_desc">课前提醒通知</string>
+    <string name="channel_sync_name">课表同步</string>
+    <string name="channel_sync_desc">教务课表变更与同步结果通知</string>
+    <string name="channel_exam_name">考试提醒</string>
+    <string name="channel_exam_desc">考试倒计时提醒</string>
+    <string name="channel_capsule_name">课程实时胶囊</string>
+    <string name="channel_capsule_desc">在状态栏顶部实时显示正在上的课与下节课</string>
+    <string name="capsule_service_label">课程实时胶囊</string>
+
+    <!-- 小组件 -->
+    <string name="widget_today_title">今日课程</string>
+    <string name="widget_next_title">下一节</string>
+    <string name="widget_today_desc">显示今天的课程安排</string>
+    <string name="widget_next_desc">显示下一节课程与倒计时</string>
+</resources>

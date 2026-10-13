@@ -1,0 +1,105 @@
+package com.zhijian.schedule.feature.schedule.components
+
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.zhijian.schedule.core.data.db.CourseEntity
+import com.zhijian.schedule.core.theme.CourseColors
+import com.zhijian.schedule.core.theme.ThemePreset
+import com.zhijian.schedule.core.ui.pressScale
+import com.zhijian.schedule.core.util.TimeUtils
+
+/**
+ * 统一课块渲染：透明填充 + 左色条 + 主题文字色（方案 5.2 ④）。
+ */
+@Composable
+fun CourseBlock(
+    course: CourseEntity,
+    preset: ThemePreset,
+    colors: CourseColors,
+    isDark: Boolean,
+    startTime: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val color = Color(course.color)
+    val fillAlpha = if (isDark) preset.blockStyle.fillAlphaDark else preset.blockStyle.fillAlphaLight
+    val shape = RoundedCornerShape(preset.radius.blockDp.dp)
+    val compact = (course.endSection - course.startSection) < 1
+    val pressSource = remember { MutableInteractionSource() }
+
+    Row(
+        modifier = modifier
+            .pressScale(pressSource, pressedScale = 0.95f)
+            .clip(shape)
+            .background(color.copy(alpha = fillAlpha))
+            .clickable(
+                interactionSource = pressSource,
+                indication = LocalIndication.current,
+                onClick = onClick,
+            ),
+    ) {
+        Box(
+            Modifier
+                .width(preset.blockStyle.barWidthDp.dp)
+                .fillMaxHeight()
+                .background(color)
+        )
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(horizontal = 5.dp, vertical = 3.dp)
+        ) {
+            Text(
+                text = course.name,
+                color = colors.text,
+                fontSize = 12.sp,
+                lineHeight = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = if (compact) 2 else 4,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (!compact) {
+                if (startTime.isNotBlank()) {
+                    Text(
+                        text = startTime,
+                        color = colors.textMuted,
+                        fontSize = 10.sp,
+                        lineHeight = 12.sp,
+                        maxLines = 1,
+                    )
+                }
+                if (course.room.isNotBlank()) {
+                    Text(
+                        text = course.room,
+                        color = colors.textMuted,
+                        fontSize = 10.sp,
+                        lineHeight = 12.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
