@@ -7,6 +7,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -105,6 +107,9 @@ fun Modifier.selectedPop(selected: Boolean, popScale: Float = 1.06f): Modifier {
  * [index] 越大登场越晚（步进 [stepMs]，封顶 [maxIndex]）。
  * 注意：内部是 Box，[content] 应只放单一子项；需要间距请在 StaggerIn 外层放 Spacer，
  * 写在 content 里只会与内容叠放、被静默吞掉。
+ * [contentPadding]：在 alpha 图层内为内容垫一圈空间。alpha<1 的离屏层以自身 bounds 为界，
+ * 子项的越界绘制（选中弹跳、投影溢出）会被裁掉；需要溢出时用它撑大图层，
+ * 外层布局间距自行补偿。
  */
 @Composable
 fun StaggerIn(
@@ -112,6 +117,7 @@ fun StaggerIn(
     modifier: Modifier = Modifier,
     stepMs: Long = 36,
     maxIndex: Int = 8,
+    contentPadding: PaddingValues = PaddingValues(),
     content: @Composable () -> Unit,
 ) {
     var arrived by remember { mutableFloatStateOf(0f) }
@@ -125,10 +131,12 @@ fun StaggerIn(
         label = "staggerIn",
     )
     Box(
-        modifier.graphicsLayer {
-            alpha = progress
-            translationY = (1f - progress) * 20.dp.toPx()
-        },
+        modifier
+            .graphicsLayer {
+                alpha = progress
+                translationY = (1f - progress) * 20.dp.toPx()
+            }
+            .padding(contentPadding),
     ) {
         content()
     }

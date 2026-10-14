@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -93,14 +94,19 @@ fun WeekPickerSheet(
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        // 水平内边距不放在这里，而是随行入场层（StaggerIn contentPadding）下发：
+        // 选中格弹跳会越出行 bounds，alpha 离屏层以自身 bounds 裁剪，垫在图层内才不被切；
+        // 行距/间距同步收窄补偿，各元素绝对位置与原来逐像素一致
         Column(
             Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 24.dp),
+                .padding(bottom = 27.dp),
         ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 StaggerIn(index = 0) {
                     Text(
                         text = "选择周次",
@@ -118,10 +124,14 @@ fun WeekPickerSheet(
                     }
                 }
             }
-            Spacer(Modifier.height(6.dp))
+            // 3dp + 行图层内 3dp 上垫 = 原来的 6dp
+            Spacer(Modifier.height(3.dp))
 
             (1..ui.totalWeeks).toList().chunked(4).forEachIndexed { rowIdx, rowWeeks ->
-                StaggerIn(index = rowIdx + 1) {
+                StaggerIn(
+                    index = rowIdx + 1,
+                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 3.dp),
+                ) {
                     Row(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(13.dp),
@@ -143,8 +153,9 @@ fun WeekPickerSheet(
                         }
                     }
                 }
-                // 行间距必须放在 StaggerIn 外层：其内部是 Box，写在里面会与内容叠放而失效
-                Spacer(Modifier.height(13.dp))
+                // 行间距必须放在 StaggerIn 外层（其内部是 Box，写在里面会叠放失效）；
+                // 7dp + 上下各 3dp 垫 = 原来的 13dp，方块间隙不变
+                Spacer(Modifier.height(7.dp))
             }
         }
     }
