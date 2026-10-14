@@ -57,6 +57,7 @@ import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.StaggerIn
 import com.zhijian.schedule.core.util.TimeUtils
 import com.zhijian.schedule.feature.schedule.CourseDetailSheet
+import com.zhijian.schedule.navigation.IslandContentPadding
 import java.time.Duration
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -181,7 +182,7 @@ fun TodayScreen(
                 }
             }
         }
-        Spacer(Modifier.height(40.dp))
+        Spacer(Modifier.height(IslandContentPadding))
     }
 
     selectedCourse?.let { course ->

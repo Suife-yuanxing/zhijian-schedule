@@ -52,6 +52,7 @@ import com.zhijian.schedule.core.ui.HolidayColors
 import com.zhijian.schedule.core.ui.pressScale
 import com.zhijian.schedule.core.util.TimeUtils
 import com.zhijian.schedule.feature.schedule.ScheduleUiState
+import com.zhijian.schedule.navigation.IslandContentPadding
 import java.time.LocalDateTime
 import java.time.LocalTime
 
@@ -181,7 +182,7 @@ fun WeekGrid(
             }
             CurrentTimeLine(ui, week, now)
         }
-        Spacer(Modifier.height(72.dp))
+        Spacer(Modifier.height(IslandContentPadding))
     }
 }
 

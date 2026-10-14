@@ -63,6 +63,7 @@ import com.zhijian.schedule.core.ui.pressScale
 import com.zhijian.schedule.core.util.TimeUtils
 import com.zhijian.schedule.feature.schedule.components.WeekGrid
 import com.zhijian.schedule.feature.schedule.components.WeekHeader
+import com.zhijian.schedule.navigation.IslandContentPadding
 import java.time.LocalDate
 import java.time.LocalDateTime
 import kotlinx.coroutines.delay
@@ -185,7 +186,7 @@ fun ScheduleScreen(
             interactionSource = fabSource,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(20.dp)
+                .padding(end = 20.dp, bottom = IslandContentPadding)
                 .pressScale(fabSource, pressedScale = 0.9f)
                 .graphicsLayer {
                     scaleX = fabScale

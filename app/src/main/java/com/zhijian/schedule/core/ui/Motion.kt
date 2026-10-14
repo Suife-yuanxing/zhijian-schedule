@@ -16,6 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
@@ -58,6 +59,9 @@ object Motion {
 
     /** 级联入场：课块随页面切换涌入的落位弹簧（轻微过冲、收尾干净） */
     val CascadeEnter = spring<Float>(dampingRatio = 0.62f, stiffness = 460f)
+
+    /** 底部浮岛选中胶囊滑动：流体转移、轻微过冲后落位即稳 */
+    val FluidSlide = spring<Dp>(dampingRatio = 0.72f, stiffness = 480f)
 }
 
 /**

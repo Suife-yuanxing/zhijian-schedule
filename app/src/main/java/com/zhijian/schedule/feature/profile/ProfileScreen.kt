@@ -53,6 +53,7 @@ import com.zhijian.schedule.core.theme.ThemePresets
 import com.zhijian.schedule.core.ui.StaggerIn
 import com.zhijian.schedule.core.ui.pressScale
 import com.zhijian.schedule.core.ui.selectedPop
+import com.zhijian.schedule.navigation.IslandContentPadding
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -241,7 +242,7 @@ fun ProfileScreen(
             }
         }
 
-        Spacer(Modifier.height(40.dp))
+        Spacer(Modifier.height(IslandContentPadding))
     }
 
     if (showPrivacy) {

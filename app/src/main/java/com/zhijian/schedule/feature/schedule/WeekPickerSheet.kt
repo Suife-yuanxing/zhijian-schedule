@@ -29,8 +29,10 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -78,8 +80,13 @@ fun WeekPickerSheet(
             .collect(onTargetVisibilityChange)
     }
 
+    // 点选后周页仍在滚动，selectedWeek 会短暂经过中间周；把高亮锁定在已选项，
+    // 避免面板滑出期间出现「高亮追逐滚动页」的扫动与半途配色
+    var pinnedWeek by remember { mutableStateOf<Int?>(null) }
+
     // 点周即选：先给触觉反馈，页面切换与面板滑出并行，不互相等
     val pick: (Int) -> Unit = { week ->
+        pinnedWeek = week
         haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         onSelect(week)
         scope.launch { sheetState.hide() }.invokeOnCompletion { onDismiss() }
@@ -124,7 +131,7 @@ fun WeekPickerSheet(
                                 week = week,
                                 startDate = ui.dateOf(week, 1),
                                 endDate = ui.dateOf(week, 7),
-                                selected = week == ui.selectedWeek,
+                                selected = week == (pinnedWeek ?: ui.selectedWeek),
                                 isCurrentWeek = week == ui.currentWeek,
                                 past = ui.currentWeek != null && week < ui.currentWeek,
                                 modifier = Modifier.weight(1f),
@@ -181,6 +188,28 @@ private fun WeekCell(
         animationSpec = tween(durationMillis = Motion.DurFast),
         label = "weekCellRing",
     )
+    // 文字/日期与背景同一 tween 同步过渡：避免「文字瞬间换色、背景还在渐变」造成的
+    // 半途配色（如深字压在实心主色上）短暂错渲染
+    val titleColor by animateColorAsState(
+        targetValue = when {
+            selected -> colors.onAccent
+            isCurrentWeek -> colors.accent
+            past -> colors.textMuted
+            else -> colors.text
+        },
+        animationSpec = tween(durationMillis = Motion.DurMedium, easing = Motion.EaseOut),
+        label = "weekCellTitle",
+    )
+    val dateColor by animateColorAsState(
+        targetValue = when {
+            selected -> colors.onAccent.copy(alpha = 0.92f)
+            isCurrentWeek -> colors.accent.copy(alpha = 0.8f)
+            past -> colors.textMuted.copy(alpha = 0.7f)
+            else -> colors.textMuted
+        },
+        animationSpec = tween(durationMillis = Motion.DurMedium, easing = Motion.EaseOut),
+        label = "weekCellDate",
+    )
     val shape = RoundedCornerShape(13.dp)
 
     Column(
@@ -205,12 +234,7 @@ private fun WeekCell(
             text = "第 $week 周",
             fontSize = 13.5.sp,
             fontWeight = FontWeight.SemiBold,
-            color = when {
-                selected -> colors.onAccent
-                isCurrentWeek -> colors.accent
-                past -> colors.textMuted
-                else -> colors.text
-            },
+            color = titleColor,
         )
         Spacer(Modifier.height(3.dp))
         Text(
@@ -218,12 +242,7 @@ private fun WeekCell(
             fontSize = 10.sp,
             fontWeight = FontWeight.Medium,
             letterSpacing = 0.3.sp,
-            color = when {
-                selected -> colors.onAccent.copy(alpha = 0.92f)
-                isCurrentWeek -> colors.accent.copy(alpha = 0.8f)
-                past -> colors.textMuted.copy(alpha = 0.7f)
-                else -> colors.textMuted
-            },
+            color = dateColor,
         )
     }
 }
