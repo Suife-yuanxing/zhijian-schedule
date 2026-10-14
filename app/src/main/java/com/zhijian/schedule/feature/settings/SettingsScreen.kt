@@ -53,6 +53,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import com.zhijian.schedule.core.data.db.SectionTimeEntity
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.SecondaryTopBar
@@ -69,6 +71,11 @@ fun SettingsScreen(
     val ui = viewModel.uiState
     val colors = LocalCourseColors.current
     val context = LocalContext.current
+
+    // 从系统设置返回时刷新流体云放行状态
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        viewModel.refreshCapsulePromote()
+    }
 
     var editTimetable by remember { mutableStateOf(false) }
     var editSection by remember { mutableStateOf<SectionTimeEntity?>(null) }
@@ -214,7 +221,7 @@ fun SettingsScreen(
                         Column(Modifier.weight(1f)) {
                             Text("课程实时胶囊", color = colors.text, fontWeight = FontWeight.SemiBold)
                             Text(
-                                text = "「即将上课 / 上课中」会显示为状态栏流体云（课前按提醒设置倒数）；Android 16+，若未出现请在系统通知设置中放行本应用的「实时活动」",
+                                text = "「即将上课 / 上课中」会显示为状态栏流体云（课前按提醒设置倒数），需 Android 16+",
                                 color = colors.textMuted,
                                 fontSize = 12.sp,
                             )
@@ -223,6 +230,28 @@ fun SettingsScreen(
                             checked = ui.settings.capsuleEnabled,
                             onCheckedChange = { viewModel.setCapsule(it) },
                         )
+                    }
+                    if (ui.settings.capsuleEnabled) {
+                        Spacer(Modifier.height(10.dp))
+                        when (ui.capsulePromoteAllowed) {
+                            false -> Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "系统未放行实时活动：请在「流体云显示实时活动」中开启本应用",
+                                    color = colors.accent,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                TextButton(onClick = { openCapsuleSystemSettings(context) }) { Text("去开启") }
+                            }
+
+                            true -> Text(
+                                text = "已放行实时活动，胶囊会显示为流体云",
+                                color = colors.textMuted,
+                                fontSize = 12.sp,
+                            )
+
+                            null -> Unit
+                        }
                     }
                 }
             }
@@ -478,4 +507,11 @@ private fun SectionEditDialog(
         confirmButton = { TextButton(onClick = { onSave(start, end) }) { Text("保存") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
     )
+}
+
+/** 系统通知设置里含「流体云显示实时活动」（原生为「实时通知」）开关 */
+private fun openCapsuleSystemSettings(context: android.content.Context) {
+    val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+        .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+    runCatching { context.startActivity(intent) }
 }

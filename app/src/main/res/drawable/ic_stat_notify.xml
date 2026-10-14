@@ -1,19 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 状态栏/流体云小图标：与启动图标同一「错落课块」母题，纯 alpha 白色剪影。
+     几何：24 视口，内容 17×17（3.5..20.5），块圆角 1.8。 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
+
+    <!-- 左列 · 长课块 -->
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M4,4 h7 a1,1 0 0 1 1,1 v5 a1,1 0 0 1 -1,1 h-7 a1,1 0 0 1 -1,-1 v-5 a1,1 0 0 1 1,-1 z" />
+        android:pathData="M5.3,3.5 h3.4 a1.8,1.8 0 0 1 1.8,1.8 v5.4 a1.8,1.8 0 0 1 -1.8,1.8 h-3.4 a1.8,1.8 0 0 1 -1.8,-1.8 v-5.4 a1.8,1.8 0 0 1 1.8,-1.8 z" />
+
+    <!-- 左列 · 短课块 -->
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M13,4 h7 a1,1 0 0 1 1,1 v5 a1,1 0 0 1 -1,1 h-7 a1,1 0 0 1 -1,-1 v-5 a1,1 0 0 1 1,-1 z" />
+        android:pathData="M5.3,14 h3.4 a1.8,1.8 0 0 1 1.8,1.8 v2.9 a1.8,1.8 0 0 1 -1.8,1.8 h-3.4 a1.8,1.8 0 0 1 -1.8,-1.8 v-2.9 a1.8,1.8 0 0 1 1.8,-1.8 z" />
+
+    <!-- 右列 · 短课块 -->
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M4,13 h7 a1,1 0 0 1 1,1 v5 a1,1 0 0 1 -1,1 h-7 a1,1 0 0 1 -1,-1 v-5 a1,1 0 0 1 1,-1 z" />
+        android:pathData="M15.3,3.5 h3.4 a1.8,1.8 0 0 1 1.8,1.8 v2.4 a1.8,1.8 0 0 1 -1.8,1.8 h-3.4 a1.8,1.8 0 0 1 -1.8,-1.8 v-2.4 a1.8,1.8 0 0 1 1.8,-1.8 z" />
+
+    <!-- 右列 · 长课块 -->
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M13,13 h7 a1,1 0 0 1 1,1 v5 a1,1 0 0 1 -1,1 h-7 a1,1 0 0 1 -1,-1 v-5 a1,1 0 0 1 1,-1 z" />
+        android:pathData="M15.3,11.5 h3.4 a1.8,1.8 0 0 1 1.8,1.8 v5.4 a1.8,1.8 0 0 1 -1.8,1.8 h-3.4 a1.8,1.8 0 0 1 -1.8,-1.8 v-5.4 a1.8,1.8 0 0 1 1.8,-1.8 z" />
 </vector>

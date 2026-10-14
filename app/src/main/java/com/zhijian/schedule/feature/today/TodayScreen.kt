@@ -3,6 +3,7 @@ package com.zhijian.schedule.feature.today
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -11,6 +12,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +40,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -49,7 +55,6 @@ import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.ui.HolidayColors
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.StaggerIn
-import com.zhijian.schedule.core.ui.pressScale
 import com.zhijian.schedule.core.util.TimeUtils
 import com.zhijian.schedule.feature.schedule.CourseDetailSheet
 import java.time.Duration
@@ -64,8 +69,11 @@ fun TodayScreen(
 ) {
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val colors = LocalCourseColors.current
+    val haptics = LocalHapticFeedback.current
     var clock by remember { mutableStateOf(LocalDateTime.now()) }
     var selectedCourse by remember { mutableStateOf<CourseEntity?>(null) }
+    // 面板目标可见性：关闭动作一开始即置回 false，让行高亮与面板滑出并行恢复
+    var detailSheetVisible by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -127,8 +135,8 @@ fun TodayScreen(
         ui.todayHoliday?.takeIf { it.isOffDay && ui.courses.isNotEmpty() }?.let { h ->
             StaggerIn(index = 0) {
                 HolidayNoticeCard(h)
-                Spacer(Modifier.height(14.dp))
             }
+            Spacer(Modifier.height(14.dp))
         }
 
         when {
@@ -137,14 +145,14 @@ fun TodayScreen(
                 current?.let { item ->
                     StaggerIn(index = 0) {
                         CurrentClassCard(item, now)
-                        Spacer(Modifier.height(14.dp))
                     }
+                    Spacer(Modifier.height(14.dp))
                 }
                 next?.let { item ->
                     StaggerIn(index = 1) {
                         NextClassCard(item, now)
-                        Spacer(Modifier.height(18.dp))
                     }
+                    Spacer(Modifier.height(18.dp))
                 }
                 StaggerIn(index = 2) {
                     Text(
@@ -153,15 +161,21 @@ fun TodayScreen(
                         color = colors.textMuted,
                         fontWeight = FontWeight.Medium,
                     )
-                    Spacer(Modifier.height(8.dp))
                 }
+                // 间距一律放在 StaggerIn 外层：其内部是 Box，写在里面会与内容叠放而失效
+                Spacer(Modifier.height(8.dp))
                 ui.courses.forEachIndexed { i, item ->
                     StaggerIn(index = 3 + i) {
                         CourseRow(
                             item = item,
                             now = now,
                             isCurrent = item == current,
-                            onClick = { selectedCourse = item.course },
+                            selected = detailSheetVisible && item.course.id == selectedCourse?.id,
+                            onClick = {
+                                haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                selectedCourse = item.course
+                                detailSheetVisible = true
+                            },
                         )
                     }
                 }
@@ -173,6 +187,7 @@ fun TodayScreen(
     selectedCourse?.let { course ->
         CourseDetailSheet(
             course = course,
+            onTargetVisibilityChange = { detailSheetVisible = it },
             onDismiss = { selectedCourse = null },
             onEdit = {
                 selectedCourse = null
@@ -394,23 +409,49 @@ private fun CourseRow(
     item: TodayCourseItem,
     now: LocalTime,
     isCurrent: Boolean,
+    selected: Boolean,
     onClick: () -> Unit,
 ) {
     val colors = LocalCourseColors.current
     val finished = item.endTime != null && now.isAfter(item.endTime)
     val alpha = if (finished) 0.45f else 1f
     val pressSource = remember { MutableInteractionSource() }
+    val pressed by pressSource.collectIsPressedAsState()
+    val shape = RoundedCornerShape(12.dp)
+
+    // 详情打开期间「弹起 + 描边 + 填充加深」；关闭动作一开始即快速回落（与面板滑出并行）
+    val lift by animateFloatAsState(
+        targetValue = if (selected) 1f else 0f,
+        animationSpec = if (selected) Motion.SelectionEnter else Motion.SelectionExit,
+        label = "rowLift",
+    )
+    val press by animateFloatAsState(
+        targetValue = if (pressed) 0.97f else 1f,
+        animationSpec = Motion.PressSpring,
+        label = "rowPress",
+    )
+    val ring = lift.coerceIn(0f, 1f)
 
     Row(
         Modifier
             .fillMaxWidth()
             .padding(vertical = 5.dp)
-            .pressScale(pressSource, pressedScale = 0.97f)
-            .clip(RoundedCornerShape(12.dp))
+            .graphicsLayer {
+                val scale = press * (1f + 0.02f * lift)
+                scaleX = scale
+                scaleY = scale
+                this.shape = shape
+                clip = true
+            }
             .background(
-                if (isCurrent) colors.surfaceVariant else colors.surface,
-                RoundedCornerShape(12.dp),
+                lerp(
+                    if (isCurrent) colors.surfaceVariant else colors.surface,
+                    colors.surfaceVariant,
+                    ring,
+                ),
+                shape,
             )
+            .border(2.dp, Color(item.course.color).copy(alpha = 0.9f * ring), shape)
             .clickable(
                 interactionSource = pressSource,
                 indication = LocalIndication.current,

@@ -9,6 +9,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.zhijian.schedule.alarm.AlarmScheduler
 import com.zhijian.schedule.calendar.CalendarSyncManager
+import com.zhijian.schedule.capsule.CapsuleNotifier
 import com.zhijian.schedule.capsule.LiveCapsuleService
 import com.zhijian.schedule.core.data.BackupManager
 import com.zhijian.schedule.core.data.db.SectionTimeEntity
@@ -33,6 +34,8 @@ data class SettingsUiState(
     val sections: List<SectionTimeEntity> = emptyList(),
     val exactAlarmOk: Boolean = true,
     val calendarAvailable: Boolean = false,
+    /** 系统是否放行实时活动（流体云）；null = 系统不支持查询 */
+    val capsulePromoteAllowed: Boolean? = null,
     val busy: Boolean = false,
     val message: String? = null,
     val updateInfo: UpdateChecker.UpdateInfo? = null,
@@ -67,6 +70,7 @@ class SettingsViewModel @Inject constructor(
                         sections = sections,
                         exactAlarmOk = alarmScheduler.canScheduleExact(),
                         calendarAvailable = calendarAvailable(),
+                        capsulePromoteAllowed = CapsuleNotifier.canPromote(context),
                     )
                 }
         }
@@ -74,6 +78,11 @@ class SettingsViewModel @Inject constructor(
 
     private suspend fun calendarAvailable(): Boolean = withContext(Dispatchers.IO) {
         calendarSyncManager.resolveAuthority() != null
+    }
+
+    /** 从系统设置返回后刷新「流体云显示实时活动」放行状态 */
+    fun refreshCapsulePromote() {
+        uiState = uiState.copy(capsulePromoteAllowed = CapsuleNotifier.canPromote(context))
     }
 
     fun refreshAlarmPermission() {
@@ -177,6 +186,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             settingsStore.setCapsule(enabled)
             if (enabled) LiveCapsuleService.start(context) else LiveCapsuleService.stop(context)
+            uiState = uiState.copy(capsulePromoteAllowed = CapsuleNotifier.canPromote(context))
         }
     }
 

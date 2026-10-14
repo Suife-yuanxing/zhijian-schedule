@@ -8,7 +8,9 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -28,8 +31,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -46,7 +47,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -74,7 +78,13 @@ fun ScheduleScreen(
 ) {
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val colors = LocalCourseColors.current
+    val haptics = LocalHapticFeedback.current
     var selectedCourse by remember { mutableStateOf<CourseEntity?>(null) }
+    // 面板目标可见性：关闭动作一开始即置回 false，让课块高亮与面板滑出并行恢复
+    var detailSheetVisible by remember { mutableStateOf(false) }
+    // 周选择面板：shown 控制面板存在，open 跟随目标可见性（驱动标题箭头翻转）
+    var weekPickerShown by remember { mutableStateOf(false) }
+    var weekPickerOpen by remember { mutableStateOf(false) }
     var dayDetail by remember { mutableStateOf<LocalDate?>(null) }
     var clock by remember { mutableStateOf(LocalDateTime.now()) }
 
@@ -111,7 +121,11 @@ fun ScheduleScreen(
     Column(Modifier.fillMaxSize()) {
         ScheduleTopBar(
             ui = ui,
-            onSelectWeek = { week -> scope.launch { pagerState.animateScrollToPage(week - 1) } },
+            pickerOpen = weekPickerOpen,
+            onOpenWeekPicker = {
+                weekPickerShown = true
+                weekPickerOpen = true
+            },
             onOpenSettings = onOpenSettings,
         )
         val emptyState = ui.timetable != null && ui.courses.isEmpty()
@@ -143,9 +157,14 @@ fun ScheduleScreen(
                         week = page + 1,
                         visibleDays = visibleDays,
                         now = clock,
-                        onCourseClick = { selectedCourse = it },
+                        onCourseClick = { course ->
+                            haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                            selectedCourse = course
+                            detailSheetVisible = true
+                        },
                         onEmptyTap = { day, section -> onAddCourse(day, section) },
                         modifier = Modifier.fillMaxSize(),
+                        selectedCourseId = selectedCourse?.id?.takeIf { detailSheetVisible },
                     )
                 }
             }
@@ -183,6 +202,7 @@ fun ScheduleScreen(
     selectedCourse?.let { course ->
         CourseDetailSheet(
             course = course,
+            onTargetVisibilityChange = { detailSheetVisible = it },
             onDismiss = { selectedCourse = null },
             onEdit = {
                 selectedCourse = null
@@ -204,86 +224,95 @@ fun ScheduleScreen(
             onDismiss = { dayDetail = null },
         )
     }
+
+    if (weekPickerShown) {
+        WeekPickerSheet(
+            ui = ui,
+            onSelect = { week -> scope.launch { pagerState.animateScrollToPage(week - 1) } },
+            onTargetVisibilityChange = { weekPickerOpen = it },
+            onDismiss = { weekPickerShown = false },
+        )
+    }
 }
 
 @Composable
 private fun ScheduleTopBar(
     ui: ScheduleUiState,
-    onSelectWeek: (Int) -> Unit,
+    pickerOpen: Boolean,
+    onOpenWeekPicker: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
     val colors = LocalCourseColors.current
-    var menuExpanded by remember { mutableStateOf(false) }
+    val titleSource = remember { MutableInteractionSource() }
+    // 面板开合时箭头翻转（弹出带一点过冲，呼应全局动效语言）
+    val arrowAngle by animateFloatAsState(
+        targetValue = if (pickerOpen) 180f else 0f,
+        animationSpec = Motion.PopSpring,
+        label = "weekArrow",
+    )
 
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, end = 4.dp, top = 10.dp, bottom = 6.dp),
+            .padding(start = 8.dp, end = 4.dp, top = 10.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AnimatedContent(
-            targetState = ui.selectedWeek,
-            transitionSpec = {
-                val dir = if (targetState > initialState) 1 else -1
-                (slideInVertically(
-                    animationSpec = tween(Motion.DurMedium, easing = Motion.EaseOut),
-                ) { dir * it / 2 } + fadeIn(tween(Motion.DurMedium, easing = Motion.EaseOut))) togetherWith
-                    (slideOutVertically(
-                        animationSpec = tween(Motion.DurFast),
-                    ) { -dir * it / 2 } + fadeOut(tween(Motion.DurFast)))
-            },
-            modifier = Modifier.weight(1f),
-            label = "weekTitle",
-        ) { week ->
-            val start = ui.dateOf(week, 1)
-            val end = ui.dateOf(week, 7)
-            val subtitle = when {
-                ui.currentWeek == null && ui.today.isBefore(ui.startDate) -> "第 $week 周 · 未开学"
-                ui.currentWeek == null -> "第 $week 周 · 学期已结束"
-                week == ui.currentWeek -> "本周 · 第 $week 周"
-                else -> "第 $week 周 · 非本周"
-            }
-            Column {
-                Text(
-                    text = "${start.monthValue}月${start.dayOfMonth}日 - ${end.monthValue}月${end.dayOfMonth}日",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = colors.text,
-                    fontWeight = FontWeight.SemiBold,
+        // 标题即开关：点按「日期区间」展开周选择
+        Column(
+            Modifier
+                .weight(1f)
+                .clip(RoundedCornerShape(12.dp))
+                .pressScale(titleSource, pressedScale = 0.98f)
+                .clickable(
+                    interactionSource = titleSource,
+                    indication = LocalIndication.current,
+                    onClick = onOpenWeekPicker,
                 )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colors.textMuted,
-                )
-            }
-        }
-        Box {
-            TextButton(onClick = { menuExpanded = true }) {
-                Text("${ui.selectedWeek} 周", color = colors.text)
-                Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = colors.textMuted)
-            }
-            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                if (ui.currentWeek != null && ui.selectedWeek != ui.currentWeek) {
-                    DropdownMenuItem(
-                        text = { Text("回到本周", color = colors.accent) },
-                        onClick = {
-                            menuExpanded = false
-                            onSelectWeek(ui.currentWeek)
-                        },
-                    )
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+        ) {
+            AnimatedContent(
+                targetState = ui.selectedWeek,
+                transitionSpec = {
+                    val dir = if (targetState > initialState) 1 else -1
+                    (slideInVertically(
+                        animationSpec = tween(Motion.DurMedium, easing = Motion.EaseOut),
+                    ) { dir * it / 2 } + fadeIn(tween(Motion.DurMedium, easing = Motion.EaseOut))) togetherWith
+                        (slideOutVertically(
+                            animationSpec = tween(Motion.DurFast),
+                        ) { -dir * it / 2 } + fadeOut(tween(Motion.DurFast)))
+                },
+                label = "weekTitle",
+            ) { week ->
+                val start = ui.dateOf(week, 1)
+                val end = ui.dateOf(week, 7)
+                val subtitle = when {
+                    ui.currentWeek == null && ui.today.isBefore(ui.startDate) -> "第 $week 周 · 未开学"
+                    ui.currentWeek == null -> "第 $week 周 · 学期已结束"
+                    week == ui.currentWeek -> "本周 · 第 $week 周"
+                    else -> "第 $week 周 · 非本周"
                 }
-                (1..ui.totalWeeks).forEach { w ->
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                if (w == ui.currentWeek) "第 $w 周（本周）" else "第 $w 周",
-                                color = if (w == ui.selectedWeek) colors.accent else colors.text,
-                            )
-                        },
-                        onClick = {
-                            menuExpanded = false
-                            onSelectWeek(w)
-                        },
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "${start.monthValue}月${start.dayOfMonth}日 - ${end.monthValue}月${end.dayOfMonth}日",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = colors.text,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Icon(
+                            Icons.Filled.ArrowDropDown,
+                            contentDescription = null,
+                            tint = colors.textMuted,
+                            modifier = Modifier
+                                .padding(start = 2.dp)
+                                .size(20.dp)
+                                .graphicsLayer { rotationZ = arrowAngle },
+                        )
+                    }
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textMuted,
                     )
                 }
             }

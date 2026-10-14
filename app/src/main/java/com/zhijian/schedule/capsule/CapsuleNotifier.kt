@@ -39,6 +39,17 @@ object CapsuleNotifier {
         )
     }
 
+    /**
+     * 系统是否放行本应用的实时活动（ColorOS「流体云显示实时活动」/ 原生「实时通知」开关）。
+     * 关闭时通知仍会发布，但系统不会提升为流体云；返回 null 表示系统不支持查询。
+     */
+    fun canPromote(context: Context): Boolean? =
+        if (Build.VERSION.SDK_INT >= 36) {
+            runCatching {
+                context.getSystemService(NotificationManager::class.java)?.canPostPromotedNotifications()
+            }.getOrNull()
+        } else null
+
     fun placeholder(context: Context): Notification =
         baseBuilder(context, "纸间课表", "实时胶囊启动中…", chip = "", promote = false, color = 0)
             .build()

@@ -42,6 +42,12 @@ object Motion {
     /** 选中弹跳：chip / 图标选中时的俏皮放大 */
     val PopSpring = spring<Float>(dampingRatio = 0.5f, stiffness = 480f)
 
+    /** 选中弹起：快速吸附、轻微过冲——课程块「被拿起」，与详情面板入场连成一体 */
+    val SelectionEnter = spring<Float>(dampingRatio = 0.52f, stiffness = 520f)
+
+    /** 选中恢复：干脆回落不拖尾——与详情面板滑出并行播完，消除「等面板走完才复位」的滞后感 */
+    val SelectionExit = tween<Float>(durationMillis = 130, easing = EaseOut)
+
     /** 整屏横滑转场：无过冲，保证大位移干净利落 */
     val SlideSpring = spring<IntOffset>(
         dampingRatio = 1f,
@@ -89,6 +95,8 @@ fun Modifier.selectedPop(selected: Boolean, popScale: Float = 1.06f): Modifier {
 /**
  * 交错登场：内容始终占位，只做透明度 + 上浮过渡，避免布局跳动。
  * [index] 越大登场越晚（步进 [stepMs]，封顶 [maxIndex]）。
+ * 注意：内部是 Box，[content] 应只放单一子项；需要间距请在 StaggerIn 外层放 Spacer，
+ * 写在 content 里只会与内容叠放、被静默吞掉。
  */
 @Composable
 fun StaggerIn(

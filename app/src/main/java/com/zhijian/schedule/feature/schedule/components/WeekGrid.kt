@@ -146,6 +146,8 @@ fun WeekGrid(
     onCourseClick: (CourseEntity) -> Unit,
     onEmptyTap: (day: Int, section: Int) -> Unit,
     modifier: Modifier = Modifier,
+    /** 弹起高亮中的课程（详情打开期间；面板一开始滑出即恢复，见 CourseDetailSheet） */
+    selectedCourseId: Long? = null,
 ) {
     val colors = LocalCourseColors.current
     val sections = ui.sections
@@ -167,6 +169,7 @@ fun WeekGrid(
                         sections = sections,
                         onCourseClick = onCourseClick,
                         onEmptyTap = onEmptyTap,
+                        selectedCourseId = selectedCourseId,
                     )
                 }
             }
@@ -228,6 +231,7 @@ private fun RowScope.DayColumn(
     sections: List<SectionTimeEntity>,
     onCourseClick: (CourseEntity) -> Unit,
     onEmptyTap: (day: Int, section: Int) -> Unit,
+    selectedCourseId: Long?,
 ) {
     val colors = LocalCourseColors.current
     val density = LocalDensity.current
@@ -270,6 +274,7 @@ private fun RowScope.DayColumn(
                 colors = colors,
                 isDark = LocalIsDark.current,
                 startTime = startTime,
+                selected = course.id == selectedCourseId,
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .offset(y = GridDims.SECTION_HEIGHT * (startIdx - 1))
