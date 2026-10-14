@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -54,6 +55,9 @@ object Motion {
         stiffness = 420f,
         visibilityThreshold = IntOffset(1, 1),
     )
+
+    /** 级联入场：课块随页面切换涌入的落位弹簧（轻微过冲、收尾干净） */
+    val CascadeEnter = spring<Float>(dampingRatio = 0.62f, stiffness = 460f)
 }
 
 /**
@@ -124,4 +128,52 @@ fun StaggerIn(
     ) {
         content()
     }
+}
+
+/**
+ * 级联入场：延迟 [delayMs] 后淡入 + 弹簧放大 + 自下而上落位（课块随 tab 切页涌入）。
+ * [delayMs] < 0 表示不启用、直接落位；同一实例只播一次，页面重建时随新实例重播。
+ */
+@Composable
+fun Modifier.cascadeIn(
+    delayMs: Long,
+    startScale: Float = 0.78f,
+    riseDp: Float = 10f,
+): Modifier {
+    var arrived by remember { mutableStateOf(delayMs < 0) }
+    LaunchedEffect(delayMs) {
+        if (delayMs >= 0) {
+            delay(delayMs)
+            arrived = true
+        }
+    }
+    val progress by animateFloatAsState(
+        targetValue = if (arrived) 1f else 0f,
+        animationSpec = Motion.CascadeEnter,
+        label = "cascadeIn",
+    )
+    return graphicsLayer {
+        alpha = progress.coerceIn(0f, 1f)
+        val scale = startScale + (1f - startScale) * progress
+        scaleX = scale
+        scaleY = scale
+        translationY = (1f - progress) * riseDp.dp.toPx()
+    }
+}
+
+/**
+ * 分段关键帧求值：把单一动画进度 [progress]（0..1）映射到多通道（缩放/位移/旋转），
+ * 让一套弹跳的所有通道共享同一节拍；points 按时间升序，超出两端取端点值。
+ */
+internal fun keyframed(progress: Float, vararg points: Pair<Float, Float>): Float {
+    val p = progress.coerceIn(0f, 1f)
+    if (p <= points.first().first) return points.first().second
+    for (i in 1 until points.size) {
+        val (t, v) = points[i]
+        if (p <= t) {
+            val (pt, pv) = points[i - 1]
+            return pv + (v - pv) * ((p - pt) / (t - pt))
+        }
+    }
+    return points.last().second
 }

@@ -1,7 +1,10 @@
 package com.zhijian.schedule.navigation
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -10,6 +13,9 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,6 +24,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.DateRange
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -26,9 +35,16 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavBackStackEntry
@@ -44,6 +60,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.zhijian.schedule.core.theme.CourseTheme
 import com.zhijian.schedule.core.ui.Motion
+import com.zhijian.schedule.core.ui.keyframed
 import com.zhijian.schedule.feature.course_editor.CourseEditorScreen
 import com.zhijian.schedule.feature.grades.GradesScreen
 import com.zhijian.schedule.feature.importer.ImporterScreen
@@ -88,8 +105,11 @@ object Routes {
 
 private data class TabItem(
     val route: String,
+    /** tab 图根页路由：区分「已在根页」（复点只弹跳）与「在二级页」（先回根页） */
+    val rootRoute: String,
     val label: String,
-    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val iconFilled: ImageVector,
+    val iconOutlined: ImageVector,
 )
 
 private val editorArgs = listOf(
@@ -161,9 +181,9 @@ fun AppRoot(openTodayCount: Int = 0) {
 private fun AppScaffold(openTodayCount: Int) {
     val navController = rememberNavController()
     val tabs = listOf(
-        TabItem(Routes.TODAY_TAB, "今日", Icons.Filled.Star),
-        TabItem(Routes.SCHEDULE_TAB, "课表", Icons.Filled.DateRange),
-        TabItem(Routes.PROFILE_TAB, "我的", Icons.Filled.Person),
+        TabItem(Routes.TODAY_TAB, Routes.TODAY, "今日", Icons.Filled.Star, Icons.Outlined.Star),
+        TabItem(Routes.SCHEDULE_TAB, Routes.SCHEDULE, "课表", Icons.Filled.DateRange, Icons.Outlined.DateRange),
+        TabItem(Routes.PROFILE_TAB, Routes.PROFILE, "我的", Icons.Filled.Person, Icons.Outlined.Person),
     )
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
@@ -175,22 +195,25 @@ private fun AppScaffold(openTodayCount: Int) {
                 NavigationBar {
                     tabs.forEach { tab ->
                         val selected = currentDestination?.hierarchy?.any { it.route == tab.route } == true
+                        val atRoot = currentDestination?.route == tab.rootRoute
+                        val pressSource = remember { MutableInteractionSource() }
+                        var bounceTrigger by remember { mutableIntStateOf(0) }
                         NavigationBarItem(
                             selected = selected,
-                            onClick = { navController.navigateToTab(tab.route) },
+                            onClick = {
+                                // 已在根页：复点也弹跳一次；在二级页 / 其他 tab：回根页（切页本身也触发弹跳）
+                                bounceTrigger++
+                                if (!atRoot) navController.navigateToTab(tab.route)
+                            },
+                            interactionSource = pressSource,
                             icon = {
-                                val iconScale by animateFloatAsState(
-                                    targetValue = if (selected) 1.12f else 1f,
-                                    animationSpec = Motion.PopSpring,
-                                    label = "tabIconScale",
-                                )
-                                Icon(
-                                    tab.icon,
+                                BouncyTabIcon(
+                                    filled = tab.iconFilled,
+                                    outlined = tab.iconOutlined,
+                                    selected = selected,
+                                    bounceTrigger = bounceTrigger,
+                                    interactionSource = pressSource,
                                     contentDescription = tab.label,
-                                    modifier = Modifier.graphicsLayer {
-                                        scaleX = iconScale
-                                        scaleY = iconScale
-                                    },
                                 )
                             },
                             label = { Text(tab.label) },
@@ -353,5 +376,83 @@ private fun AppScaffold(openTodayCount: Int) {
                 }
             }
         }
+    }
+}
+
+// ---------- 底部导航图标：描边↔实心 + 果冻弹跳 ----------
+
+/** 选中态静息缩放（与 indicator 胶囊叠加强化选中感知） */
+private const val TAB_REST_SCALE = 1.08f
+
+/** 一次弹跳的节拍总长 */
+private const val TAB_BOUNCE_MS = 520
+
+/** 弹跳通道关键帧（相对静息值）：压扁蓄力 → 上跳过冲 → 落位微颤 */
+private val TAB_BUMP_X = arrayOf(0f to 1f, 0.13f to 1.07f, 0.38f to 0.95f, 0.63f to 1.02f, 1f to 1f)
+private val TAB_BUMP_Y = arrayOf(0f to 1f, 0.13f to 0.88f, 0.38f to 1.13f, 0.63f to 0.98f, 1f to 1f)
+private val TAB_HOP_Y = arrayOf(0f to 0f, 0.27f to -5.5f, 0.58f to -0.8f, 0.73f to -1.6f, 1f to 0f)
+private val TAB_TILT_Z = arrayOf(0f to 0f, 0.17f to -7f, 0.44f to 4.5f, 0.69f to -2f, 1f to 0f)
+
+/**
+ * 底部导航图标：未选中描边、选中实心（形态切换），点击时一套「果冻」弹跳——
+ * 先压扁蓄力，再带旋转上跳、拉伸过冲后落位微颤；按下即缩小蓄势。
+ * 首次组合直接落位不播动画；复点当前 tab 由 [bounceTrigger] 重播同一套弹跳。
+ */
+@Composable
+private fun BouncyTabIcon(
+    filled: ImageVector,
+    outlined: ImageVector,
+    selected: Boolean,
+    bounceTrigger: Int,
+    interactionSource: MutableInteractionSource,
+    contentDescription: String,
+) {
+    val pressed by interactionSource.collectIsPressedAsState()
+    val press by animateFloatAsState(
+        targetValue = if (pressed) 0.85f else 1f,
+        animationSpec = Motion.PressSpring,
+        label = "tabPress",
+    )
+    val restScale by animateFloatAsState(
+        targetValue = if (selected) TAB_REST_SCALE else 1f,
+        animationSpec = Motion.PopSpring,
+        label = "tabRestScale",
+    )
+    // 弹跳由单一进度驱动 0→1，各通道经关键帧映射求值，保证多通道严格同拍
+    val bounce = remember { Animatable(0f) }
+    var settled by remember { mutableStateOf(false) }
+    LaunchedEffect(selected, bounceTrigger) {
+        if (!settled) {
+            settled = true
+            return@LaunchedEffect
+        }
+        if (selected) {
+            bounce.snapTo(0f)
+            bounce.animateTo(1f, tween(TAB_BOUNCE_MS, easing = LinearEasing))
+        } else {
+            bounce.snapTo(1f)
+        }
+    }
+
+    AnimatedContent(
+        targetState = selected,
+        transitionSpec = {
+            (fadeIn(tween(Motion.DurFast)) + scaleIn(tween(Motion.DurFast), initialScale = 0.7f))
+                .togetherWith(fadeOut(tween(Motion.DurFast)) + scaleOut(tween(Motion.DurFast), targetScale = 0.7f))
+        },
+        contentAlignment = Alignment.Center,
+        label = "tabIconMorph",
+        modifier = Modifier.graphicsLayer {
+            val p = bounce.value
+            scaleX = restScale * press * keyframed(p, *TAB_BUMP_X)
+            scaleY = restScale * press * keyframed(p, *TAB_BUMP_Y)
+            translationY = keyframed(p, *TAB_HOP_Y).dp.toPx()
+            rotationZ = keyframed(p, *TAB_TILT_Z)
+        },
+    ) { sel ->
+        Icon(
+            imageVector = if (sel) filled else outlined,
+            contentDescription = contentDescription,
+        )
     }
 }

@@ -61,6 +61,11 @@ object GridDims {
     val SECTION_HEIGHT: Dp = 46.dp
 }
 
+/** 课块级联入场节拍：每列 +26ms、每行 +30ms，总延迟封顶 340ms —— 与 tab 切页淡入(260ms)叠成一拍 */
+private const val ENTER_COL_STEP_MS = 26L
+private const val ENTER_ROW_STEP_MS = 30L
+private const val ENTER_DELAY_CAP_MS = 340L
+
 /** 表头：周几 + 日期。无课程（空状态）时不留时间轴空槽，避免左侧空白突兀 */
 @Composable
 fun WeekHeader(
@@ -160,7 +165,7 @@ fun WeekGrid(
         Box(Modifier.fillMaxWidth()) {
             Row(Modifier.fillMaxWidth()) {
                 TimeAxis(ui.sections)
-                visibleDays.forEach { day ->
+                visibleDays.forEachIndexed { colIdx, day ->
                     DayColumn(
                         day = day,
                         ui = ui,
@@ -170,6 +175,7 @@ fun WeekGrid(
                         onCourseClick = onCourseClick,
                         onEmptyTap = onEmptyTap,
                         selectedCourseId = selectedCourseId,
+                        entranceBaseMs = colIdx * ENTER_COL_STEP_MS,
                     )
                 }
             }
@@ -232,6 +238,7 @@ private fun RowScope.DayColumn(
     onCourseClick: (CourseEntity) -> Unit,
     onEmptyTap: (day: Int, section: Int) -> Unit,
     selectedCourseId: Long?,
+    entranceBaseMs: Long,
 ) {
     val colors = LocalCourseColors.current
     val density = LocalDensity.current
@@ -275,6 +282,8 @@ private fun RowScope.DayColumn(
                 isDark = LocalIsDark.current,
                 startTime = startTime,
                 selected = course.id == selectedCourseId,
+                entranceDelayMs = (entranceBaseMs + (startIdx - 1) * ENTER_ROW_STEP_MS)
+                    .coerceAtMost(ENTER_DELAY_CAP_MS),
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .offset(y = GridDims.SECTION_HEIGHT * (startIdx - 1))

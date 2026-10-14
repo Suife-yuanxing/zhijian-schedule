@@ -31,12 +31,14 @@ import com.zhijian.schedule.core.data.db.CourseEntity
 import com.zhijian.schedule.core.theme.CourseColors
 import com.zhijian.schedule.core.theme.ThemePreset
 import com.zhijian.schedule.core.ui.Motion
+import com.zhijian.schedule.core.ui.cascadeIn
 import com.zhijian.schedule.core.util.TimeUtils
 
 /**
  * 统一课块渲染：透明填充 + 左色条 + 主题文字色（方案 5.2 ④）。
  * 交互（扁平无阴影）：按压 0.94 回弹；详情打开期间「弹起 + 实色描边 + 填充加深」，
  * 关闭动作一开始即快速回落（见 [Motion.SelectionExit]），与面板滑出并行完成。
+ * 入场：随 tab 切页错峰淡入放大（[entranceDelayMs]，见 [cascadeIn]）。
  */
 @Composable
 fun CourseBlock(
@@ -47,6 +49,8 @@ fun CourseBlock(
     startTime: String,
     modifier: Modifier = Modifier,
     selected: Boolean = false,
+    /** 级联入场延迟（毫秒）；< 0 关闭，用于非课表网格场景 */
+    entranceDelayMs: Long = -1L,
     onClick: () -> Unit,
 ) {
     val color = Color(course.color)
@@ -72,6 +76,7 @@ fun CourseBlock(
     Row(
         modifier = modifier
             .zIndex(if (selected) 1f else 0f)
+            .cascadeIn(entranceDelayMs)
             .graphicsLayer {
                 val scale = press * (1f + 0.045f * lift)
                 scaleX = scale
