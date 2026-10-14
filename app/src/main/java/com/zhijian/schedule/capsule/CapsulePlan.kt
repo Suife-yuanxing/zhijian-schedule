@@ -9,6 +9,7 @@ import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
+import java.time.ZoneId
 
 /** 实时胶囊的状态快照（纯数据，便于单测） */
 sealed interface CapsulePlan {
@@ -20,6 +21,8 @@ sealed interface CapsulePlan {
         val course: CapsuleCourse,
         val progress: Int,
         val remainingMinutes: Long,
+        /** 下课时刻（epoch 毫秒）：交系统 chronometer 每秒自绘，进程被冻结也照常走秒 */
+        val endAtMillis: Long,
         override val chip: String = "上课中",
     ) : CapsulePlan
 
@@ -28,6 +31,8 @@ sealed interface CapsulePlan {
         val course: CapsuleCourse,
         val minutesUntil: Long,
         val progress: Int,
+        /** 上课时刻（epoch 毫秒）：交系统 chronometer 每秒自绘 */
+        val startAtMillis: Long,
         override val chip: String = "即将上课",
     ) : CapsulePlan
 
@@ -112,6 +117,7 @@ fun buildCapsulePlan(
                 course = c,
                 progress = ((elapsed * 100) / total).toInt(),
                 remainingMinutes = Duration.between(nowTime, c.end).toMinutes().coerceAtLeast(0),
+                endAtMillis = epochMillisOf(now, c.end),
             )
         }
 
@@ -132,6 +138,7 @@ fun buildCapsulePlan(
                     course = c,
                     minutesUntil = minutesUntil,
                     progress = ((done * 100) / span).toInt(),
+                    startAtMillis = epochMillisOf(now, c.start),
                 )
             }
             return CapsulePlan.Upcoming(course = c, minutesUntil = minutesUntil)
@@ -152,6 +159,10 @@ private fun courseOf(entity: CourseEntity, sections: List<SectionTimeEntity>): C
 
 private fun secondsBetween(from: LocalTime, to: LocalTime): Long =
     Duration.between(from, to).seconds.coerceAtLeast(1)
+
+/** now 所在日期下 time 对应的 epoch 毫秒（课程时段不跨天） */
+private fun epochMillisOf(now: LocalDateTime, time: LocalTime): Long =
+    now.toLocalDate().atTime(time).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
 
 /** 未来 7 天里最近的一节课，如「明天 08:20 · 包装材料与检测」 */
 private fun nextOccurrenceText(

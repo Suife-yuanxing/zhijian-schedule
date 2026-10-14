@@ -1,5 +1,6 @@
 package com.zhijian.schedule.capsule
 
+import android.app.Notification
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -14,6 +15,7 @@ import com.zhijian.schedule.core.repository.ScheduleRepository
 import dagger.hilt.android.AndroidEntryPoint
 import java.time.LocalDateTime
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -45,6 +47,10 @@ class LiveCapsuleService : Service() {
     private var loop: Job? = null
     private var lastKey: String? = null
 
+    /** 最近一次真正渲染的通知：再次 startForeground 时复用，避免把实时内容打回「启动中…」占位 */
+    @Volatile
+    private var lastRendered: Notification? = null
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -61,18 +67,18 @@ class LiveCapsuleService : Service() {
         ServiceCompat.startForeground(
             this,
             CapsuleNotifier.NOTIFICATION_ID,
-            CapsuleNotifier.placeholder(this),
+            lastRendered ?: CapsuleNotifier.placeholder(this),
             type,
         )
         if (loop == null) {
             loop = scope.launch {
                 while (isActive) {
-                    val settings = settingsStore.settings.first()
-                    if (!settings.capsuleEnabled) {
-                        stopSelf()
-                        break
-                    }
-                    runCatching {
+                    try {
+                        val settings = settingsStore.settings.first()
+                        if (!settings.capsuleEnabled) {
+                            stopSelf()
+                            break
+                        }
                         val now = LocalDateTime.now()
                         val holidayName = holidayDao.observeAll().first()
                             .firstOrNull { it.date == now.toLocalDate().toString() && it.isOffDay }
@@ -85,7 +91,13 @@ class LiveCapsuleService : Service() {
                             reminderMinutes = if (settings.reminderEnabled) settings.reminderMinutes else 0,
                             holidayName = holidayName,
                         )
-                        lastKey = CapsuleNotifier.post(this@LiveCapsuleService, plan, lastKey)
+                        val posted = CapsuleNotifier.post(this@LiveCapsuleService, plan, lastKey)
+                        lastKey = posted.key
+                        posted.notification?.let { lastRendered = it }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (t: Throwable) {
+                        // 单次读取/构建失败不终止循环，下一轮重试
                     }
                     delay(REFRESH_INTERVAL_MS)
                 }

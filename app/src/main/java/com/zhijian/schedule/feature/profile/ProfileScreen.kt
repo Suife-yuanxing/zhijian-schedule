@@ -20,9 +20,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -35,11 +39,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.zhijian.schedule.R
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.theme.ThemePresets
 import com.zhijian.schedule.core.ui.StaggerIn
@@ -106,8 +114,65 @@ fun ProfileScreen(
             }
         }
 
+        // ---------- 功能入口：每项一张独立卡片 ----------
         Spacer(Modifier.height(20.dp))
         StaggerIn(index = 2) {
+            Column {
+                SectionTitle("常用")
+                EntryCard(
+                    painter = painterResource(R.drawable.ic_entry_import),
+                    title = "导入课表",
+                    subtitle = "教务导入 · 截图识别 · 日历文件",
+                    emphasized = true,
+                    onClick = onOpenImport,
+                )
+                Spacer(Modifier.height(10.dp))
+                EntryCard(
+                    painter = painterResource(R.drawable.ic_entry_grades),
+                    title = "成绩查询",
+                    subtitle = "教务成绩 · 加权绩点 / 平均分",
+                    emphasized = true,
+                    onClick = onOpenGrades,
+                )
+            }
+        }
+
+        Spacer(Modifier.height(20.dp))
+        StaggerIn(index = 3) {
+            Column {
+                SectionTitle("设置")
+                EntryCard(
+                    painter = rememberVectorPainter(Icons.Filled.Settings),
+                    title = "高级设置",
+                    subtitle = "课表信息 / 作息时间 / 日历同步 / 备份",
+                    onClick = onOpenSettings,
+                )
+            }
+        }
+
+        Spacer(Modifier.height(20.dp))
+        StaggerIn(index = 4) {
+            Column {
+                SectionTitle("其他")
+                EntryCard(
+                    painter = rememberVectorPainter(Icons.Filled.Lock),
+                    title = "隐私政策",
+                    subtitle = "数据仅存本地 · 无广告与统计 SDK",
+                    onClick = { showPrivacy = true },
+                )
+                Spacer(Modifier.height(10.dp))
+                EntryCard(
+                    painter = rememberVectorPainter(Icons.Filled.Info),
+                    title = "关于",
+                    subtitle = "Paper Timetable · MIT 参考实现自研",
+                    onClick = {},
+                )
+            }
+        }
+
+        // ---------- 偏好设置 ----------
+        Spacer(Modifier.height(24.dp))
+        StaggerIn(index = 5) {
             Column {
                 SectionTitle("主题风格")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -123,7 +188,7 @@ fun ProfileScreen(
             }
         }
         Spacer(Modifier.height(8.dp))
-        StaggerIn(index = 3) {
+        StaggerIn(index = 6) {
             Column {
                 SectionTitle("深色模式")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -140,7 +205,7 @@ fun ProfileScreen(
         }
 
         Spacer(Modifier.height(20.dp))
-        StaggerIn(index = 4) {
+        StaggerIn(index = 7) {
             Column {
                 SectionTitle("课表显示")
                 SettingSwitchRow(
@@ -153,7 +218,7 @@ fun ProfileScreen(
         }
 
         Spacer(Modifier.height(20.dp))
-        StaggerIn(index = 5) {
+        StaggerIn(index = 8) {
             Column {
                 SectionTitle("上课提醒")
                 SettingSwitchRow(
@@ -173,26 +238,6 @@ fun ProfileScreen(
                         )
                     }
                 }
-            }
-        }
-
-        Spacer(Modifier.height(22.dp))
-        StaggerIn(index = 6) {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(colors.surface, RoundedCornerShape(14.dp)),
-            ) {
-                EntryRow("导入课表") { onOpenImport() }
-                HorizontalDivider(color = colors.border)
-                EntryRow("成绩查询", subtitle = "教务成绩 · 加权绩点 / 平均分") { onOpenGrades() }
-                HorizontalDivider(color = colors.border)
-                EntryRow("高级设置", subtitle = "课表信息 / 作息时间 / 日历同步 / 备份") { onOpenSettings() }
-                HorizontalDivider(color = colors.border)
-                EntryRow("隐私政策") { showPrivacy = true }
-                HorizontalDivider(color = colors.border)
-                EntryRow("关于", subtitle = "Paper Timetable · MIT 参考实现自研") {}
             }
         }
 
@@ -249,32 +294,63 @@ private fun SettingSwitchRow(
     }
 }
 
+/** 独立入口卡：40dp 图标底座（常用=主色、其余=中性）+ 标题 + 说明 + 箭头 */
 @Composable
-private fun EntryRow(
+private fun EntryCard(
+    painter: Painter,
     title: String,
-    subtitle: String? = null,
+    subtitle: String,
+    emphasized: Boolean = false,
     onClick: () -> Unit,
 ) {
     val colors = LocalCourseColors.current
     val pressSource = remember { MutableInteractionSource() }
+    val tint = if (emphasized) colors.accent else colors.textMuted
     Row(
         Modifier
             .fillMaxWidth()
             .pressScale(pressSource, pressedScale = 0.98f)
+            .clip(RoundedCornerShape(14.dp))
+            .background(colors.surface, RoundedCornerShape(14.dp))
             .clickable(
                 interactionSource = pressSource,
                 indication = LocalIndication.current,
                 onClick = onClick,
             )
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .padding(horizontal = 14.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.weight(1f)) {
-            Column {
-                Text(title, color = colors.text, fontSize = 15.sp)
-                subtitle?.let { Text(it, color = colors.textMuted, fontSize = 12.sp) }
-            }
+        Box(
+            Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(
+                    if (emphasized) colors.accent.copy(alpha = 0.13f) else colors.surfaceVariant
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painter,
+                contentDescription = null,
+                tint = tint,
+                modifier = Modifier.size(21.dp),
+            )
         }
-        Text("›", color = colors.textMuted, fontSize = 18.sp, modifier = Modifier.padding(start = 8.dp))
+        Spacer(Modifier.width(13.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = colors.text,
+                fontWeight = FontWeight.Medium,
+            )
+            Text(text = subtitle, fontSize = 12.sp, color = colors.textMuted)
+        }
+        Text(
+            text = "›",
+            color = colors.textMuted,
+            fontSize = 18.sp,
+            modifier = Modifier.padding(start = 8.dp),
+        )
     }
 }

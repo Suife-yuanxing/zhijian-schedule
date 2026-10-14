@@ -7,6 +7,7 @@ import com.zhijian.schedule.core.data.db.SectionTimeEntity
 import com.zhijian.schedule.core.data.db.TimetableEntity
 import com.zhijian.schedule.core.util.WeekMask
 import java.time.LocalDateTime
+import java.time.ZoneId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -63,6 +64,28 @@ class CapsulePlanTest {
         assertEquals(21, ongoing.progress) // 10:10→11:45 共 5700s，已过 1200s
         assertEquals(75, ongoing.remainingMinutes)
         assertEquals("上课中", ongoing.chip)
+    }
+
+    @Test
+    fun ongoingCarriesEndInstantForSystemCountdown() {
+        val plan = buildCapsulePlan(
+            timetable(), listOf(course(day = 2, 3, 4)), sections(), tuesday(10, 30),
+            reminderMinutes = 30,
+        ) as CapsulePlan.Ongoing
+        val expected = LocalDateTime.of(2026, 10, 13, 11, 45)
+            .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        assertEquals(expected, plan.endAtMillis)
+    }
+
+    @Test
+    fun aboutToStartCarriesStartInstantForSystemCountdown() {
+        val plan = buildCapsulePlan(
+            timetable(), listOf(course(day = 2, 3, 4)), sections(), tuesday(9, 55),
+            reminderMinutes = 30,
+        ) as CapsulePlan.AboutToStart
+        val expected = LocalDateTime.of(2026, 10, 13, 10, 10)
+            .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        assertEquals(expected, plan.startAtMillis)
     }
 
     @Test

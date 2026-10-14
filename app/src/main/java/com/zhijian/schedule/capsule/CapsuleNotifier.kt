@@ -51,21 +51,25 @@ object CapsuleNotifier {
         } else null
 
     fun placeholder(context: Context): Notification =
-        baseBuilder(context, "纸间课表", "实时胶囊启动中…", chip = "", promote = false, color = 0)
+        baseBuilder(context, "纸间课表", "实时胶囊启动中…", chip = "", promote = false, color = 0, countdownTo = null)
             .build()
 
-    /** 渲染并推送通知；返回本次内容 key，与上次相同时跳过刷新 */
-    fun post(context: Context, plan: CapsulePlan, previousKey: String?): String {
+    /** 一次渲染的结果：key 用于内容去重；去重跳过时 notification 为 null */
+    class Posted(val key: String, val notification: Notification?)
+
+    /** 渲染并推送通知；与上次内容相同时跳过刷新 */
+    fun post(context: Context, plan: CapsulePlan, previousKey: String?): Posted {
         val (title, text) = texts(plan)
         val progress = progressOf(plan)
         val key = "$title|$text|${progress ?: -1}"
-        if (key == previousKey) return key
+        if (key == previousKey) return Posted(key, null)
 
         val promote = isPromotable(plan)
         val builder = baseBuilder(
             context, title, text, plan.chip,
             promote = promote,
             color = if (promote) courseColorOf(plan) else 0,
+            countdownTo = countdownTargetOf(plan),
         )
         if (progress != null) {
             if (Build.VERSION.SDK_INT >= 36) {
@@ -74,11 +78,22 @@ object CapsuleNotifier {
                 builder.setProgress(100, progress, false)
             }
         }
+        val notification = builder.build()
         runCatching {
             context.getSystemService(NotificationManager::class.java)
-                ?.notify(NOTIFICATION_ID, builder.build())
+                ?.notify(NOTIFICATION_ID, notification)
         }
-        return key
+        return Posted(key, notification)
+    }
+
+    /**
+     * 倒计时目标：上课中→下课，即将上课→上课。
+     * 由系统 chronometer 每秒自绘，不依赖本进程刷新——ColorOS 冻结后台进程时仍持续走秒。
+     */
+    private fun countdownTargetOf(plan: CapsulePlan): Long? = when (plan) {
+        is CapsulePlan.Ongoing -> plan.endAtMillis
+        is CapsulePlan.AboutToStart -> plan.startAtMillis
+        else -> null
     }
 
     fun texts(plan: CapsulePlan): Pair<String, String> = when (plan) {
@@ -143,6 +158,7 @@ object CapsuleNotifier {
         chip: String,
         promote: Boolean,
         color: Int,
+        countdownTo: Long?,
     ): Notification.Builder {
         val builder = Notification.Builder(context, CH_CAPSULE)
             .setSmallIcon(R.drawable.ic_stat_notify)
@@ -151,9 +167,15 @@ object CapsuleNotifier {
             .setContentIntent(contentIntent(context))
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .setShowWhen(false)
             .setCategory(Notification.CATEGORY_PROGRESS)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
+        if (countdownTo != null) {
+            builder.setUsesChronometer(true)
+                .setChronometerCountDown(true)
+                .setWhen(countdownTo)
+        } else {
+            builder.setShowWhen(false)
+        }
         if (Build.VERSION.SDK_INT >= 36 && chip.isNotEmpty()) {
             builder.setShortCriticalText(chip)
             if (promote) {
