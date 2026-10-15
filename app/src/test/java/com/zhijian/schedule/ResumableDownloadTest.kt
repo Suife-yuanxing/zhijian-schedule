@@ -4,6 +4,8 @@ import com.zhijian.schedule.update.ContentRange
 import com.zhijian.schedule.update.PartMeta
 import com.zhijian.schedule.update.RangeDecision
 import com.zhijian.schedule.update.ResumableDownload
+import com.zhijian.schedule.update.VerifyResult
+import java.io.File
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -140,5 +142,105 @@ class ResumableDownloadTest {
         assertEquals("1.0.3", decoded.version)
         assertNull(decoded.etag)
         assertEquals(0L, decoded.totalBytes)
+    }
+
+    // ---------- 摘要与校验 ----------
+
+    @Test
+    fun digestNormalizesSha256PrefixAndCase() {
+        assertEquals(SHA256_ABC, ResumableDownload.normalizeDigest("sha256:$SHA256_ABC"))
+        assertEquals(SHA256_ABC, ResumableDownload.normalizeDigest("SHA256:${SHA256_ABC.uppercase()}"))
+    }
+
+    @Test
+    fun digestReturnsNullWhenAbsentOrUnusable() {
+        assertNull(ResumableDownload.normalizeDigest(null))
+        assertNull(ResumableDownload.normalizeDigest(""))
+        assertNull(ResumableDownload.normalizeDigest("md5:$SHA256_ABC"))
+        assertNull(ResumableDownload.normalizeDigest("sha256:abc"))          // 长度不对
+        assertNull(ResumableDownload.normalizeDigest("sha256:" + "z".repeat(64))) // 非十六进制
+    }
+
+    @Test
+    fun sha256MatchesKnownVector() {
+        assertEquals(SHA256_ABC, ResumableDownload.sha256Hex("abc".toByteArray().inputStream()))
+    }
+
+    @Test
+    fun sha256HandlesEmptyInput() {
+        assertEquals(
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            ResumableDownload.sha256Hex(ByteArray(0).inputStream()),
+        )
+    }
+
+    @Test
+    fun verifyAcceptsMatchingFile() {
+        val file = tempFile("abc")
+        assertEquals(VerifyResult.Ok, ResumableDownload.verifyFile(file, 3L, "sha256:$SHA256_ABC"))
+    }
+
+    @Test
+    fun verifyRejectsWrongLength() {
+        assertEquals(
+            VerifyResult.LengthMismatch,
+            ResumableDownload.verifyFile(tempFile("abc"), 4L, null),
+        )
+    }
+
+    @Test
+    fun verifyRejectsWrongDigest() {
+        assertEquals(
+            VerifyResult.DigestMismatch,
+            ResumableDownload.verifyFile(tempFile("abc"), 3L, "sha256:" + "0".repeat(64)),
+        )
+    }
+
+    @Test
+    fun verifySkipsHashWhenDigestMissingOrUnusable() {
+        val file = tempFile("abc")
+        assertEquals(VerifyResult.Ok, ResumableDownload.verifyFile(file, 3L, null))
+        assertEquals(VerifyResult.Ok, ResumableDownload.verifyFile(file, null, "not-a-digest"))
+    }
+
+    @Test
+    fun verifySkipsLengthWhenExpectedBytesUnknown() {
+        assertEquals(
+            VerifyResult.Ok,
+            ResumableDownload.verifyFile(tempFile("abc"), null, "sha256:$SHA256_ABC"),
+        )
+    }
+
+    // ---------- 展示 ----------
+
+    @Test
+    fun formatBytesUsesBinarySteps() {
+        assertEquals("0 B", ResumableDownload.formatBytes(0L))
+        assertEquals("1023 B", ResumableDownload.formatBytes(1023L))
+        assertEquals("1.0 KB", ResumableDownload.formatBytes(1024L))
+        assertEquals("44.7 MB", ResumableDownload.formatBytes(46920382L))
+        assertEquals("1.0 GB", ResumableDownload.formatBytes(1024L * 1024L * 1024L))
+        assertEquals("0 B", ResumableDownload.formatBytes(-5L))
+    }
+
+    @Test
+    fun etaTextFormatsAndGuards() {
+        assertNull(ResumableDownload.etaText(null))
+        assertEquals("约剩 0 秒", ResumableDownload.etaText(0L))
+        assertEquals("约剩 30 秒", ResumableDownload.etaText(30L))
+        assertEquals("约剩 1 分", ResumableDownload.etaText(60L))
+        assertEquals("约剩 2 分", ResumableDownload.etaText(90L))
+        assertEquals("约剩 1 小时", ResumableDownload.etaText(3600L))
+    }
+
+    private fun tempFile(content: String): File {
+        val file = File.createTempFile("part", ".bin")
+        file.writeBytes(content.toByteArray(Charsets.UTF_8))
+        file.deleteOnExit()
+        return file
+    }
+
+    private companion object {
+        const val SHA256_ABC = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
     }
 }
