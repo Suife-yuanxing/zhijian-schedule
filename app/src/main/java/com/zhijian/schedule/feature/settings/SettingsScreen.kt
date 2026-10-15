@@ -437,7 +437,8 @@ private fun UpdateSection(
             }
         }
 
-        if (ui.updateCacheBytes > 0L) {
+        // 下载中隐藏：分片正被写入，而且此时 updateCacheBytes 还是上一次终态的旧值
+        if (ui.updateCacheBytes > 0L && download !is DownloadState.Running) {
             Spacer(Modifier.height(4.dp))
             TextButton(onClick = { confirmClear = true }) {
                 Text(

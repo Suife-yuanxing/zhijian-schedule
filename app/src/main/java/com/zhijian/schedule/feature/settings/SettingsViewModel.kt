@@ -295,6 +295,11 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun clearUpdateCache() {
+        // 兜住竞态：确认框弹出之后才开始下载时，这里必须拦住，否则会删掉正在写入的分片
+        if (uiState.download is DownloadState.Running) {
+            uiState = uiState.copy(message = "下载进行中，请先取消下载再清理")
+            return
+        }
         viewModelScope.launch {
             val deleted = withContext(Dispatchers.IO) { downloader.clearCache() }
             refreshUpdateCache()
