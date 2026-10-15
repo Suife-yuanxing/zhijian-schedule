@@ -18,6 +18,10 @@
     <string name="channel_capsule_name">课程实时胶囊</string>
     <string name="channel_capsule_desc">在状态栏顶部实时显示正在上的课与下节课</string>
     <string name="capsule_service_label">课程实时胶囊</string>
+    <string name="channel_update_name">应用更新</string>
+    <string name="channel_update_desc">下载新版本安装包的进度</string>
+    <string name="update_action_cancel">取消下载</string>
+    <string name="update_service_label">更新下载</string>
     <string name="capsule_action_open_today">打开今日课表</string>
 
     <!-- 小组件 -->
