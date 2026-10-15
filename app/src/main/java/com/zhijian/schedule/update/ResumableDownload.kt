@@ -163,6 +163,38 @@ object ResumableDownload {
             else -> "约剩 ${(value + 3599) / 3600} 小时"
         }
     }
+
+    // ---------- 文件清理 ----------
+
+    /** `<version>.apk[.part|.meta]` 里的 `<version>`；后缀不认识或版本段不是纯数字时返回 null */
+    fun versionOf(fileName: String): String? {
+        val suffix = FILE_SUFFIXES.firstOrNull { fileName.endsWith(it) } ?: return null
+        val version = fileName.removeSuffix(suffix)
+        if (version.isEmpty()) return null
+        if (version.split(".").any { it.isEmpty() || it.toIntOrNull() == null }) return null
+        return version
+    }
+
+    /** 纯数字逐段比较（缺失段视为 0）：a<b 返回 -1，相等返回 0，a>b 返回 1 */
+    fun compareNumericVersion(a: String, b: String): Int {
+        val left = a.split(".").map { it.toIntOrNull() ?: 0 }
+        val right = b.split(".").map { it.toIntOrNull() ?: 0 }
+        for (index in 0 until maxOf(left.size, right.size)) {
+            val x = left.getOrElse(index) { 0 }
+            val y = right.getOrElse(index) { 0 }
+            if (x != y) return if (x < y) -1 else 1
+        }
+        return 0
+    }
+
+    /**
+     * 启动清理判据：文件名是本应用写下的更新文件，且版本 <= 当前已安装版本（已经装过，留着没用）。
+     * 认不出来的文件名一律返回 false —— 宁可留着也不误删用户的东西。
+     */
+    fun shouldClean(fileName: String, currentVersion: String): Boolean {
+        val version = versionOf(fileName) ?: return false
+        return compareNumericVersion(version, currentVersion) <= 0
+    }
 }
 
 /** 下载结果校验结论 */
@@ -174,4 +206,61 @@ sealed interface VerifyResult {
 
     /** 字节数对但摘要不符：内容被换过或损坏，必须重下 */
     data object DigestMismatch : VerifyResult
+}
+
+/**
+ * 滑动窗口速率估算：只保留窗口内的采样点。
+ * 样本不足（不足 2 个点，或两点时间相同）时返回 null —— UI 显示不确定进度，不显示假速度。
+ */
+class SpeedMeter(private val windowMillis: Long = 5_000L) {
+
+    private val samples = ArrayDeque<Pair<Long, Long>>()
+
+    fun reset() = samples.clear()
+
+    fun record(timestampMillis: Long, totalBytes: Long) {
+        samples.addLast(timestampMillis to totalBytes)
+        val floor = timestampMillis - windowMillis
+        while (samples.size > 2 && samples.first().first < floor) samples.removeFirst()
+    }
+
+    fun bytesPerSecond(): Long? {
+        if (samples.size < 2) return null
+        val (firstAt, firstBytes) = samples.first()
+        val (lastAt, lastBytes) = samples.last()
+        val elapsed = lastAt - firstAt
+        if (elapsed <= 0L) return null
+        return ((lastBytes - firstBytes) * 1000L) / elapsed
+    }
+
+    /** 剩余秒数（向上取整）；total 为 null 或速度不可用时返回 null */
+    fun etaSeconds(downloadedBytes: Long, totalBytes: Long?): Long? {
+        val total = totalBytes ?: return null
+        val speed = bytesPerSecond()?.takeIf { it > 0 } ?: return null
+        val remaining = (total - downloadedBytes).coerceAtLeast(0L)
+        return (remaining + speed - 1) / speed
+    }
+}
+
+/**
+ * 通知栏进度节流：距上次刷新 >= [minIntervalMillis] **且**整数百分比变化时才返回 true。
+ * [percent] 为 null（响应没有长度信息）时只按时间节流；[force] 用于结束时无条件刷新最终态。
+ */
+class ProgressThrottle(private val minIntervalMillis: Long = 500L) {
+
+    private var lastAtMillis = Long.MIN_VALUE
+    private var lastPercent: Int? = null
+
+    fun shouldRefresh(timestampMillis: Long, percent: Int?, force: Boolean = false): Boolean {
+        if (force) {
+            lastAtMillis = timestampMillis
+            lastPercent = percent
+            return true
+        }
+        if (percent != null && percent == lastPercent) return false
+        if (lastAtMillis != Long.MIN_VALUE && timestampMillis - lastAtMillis < minIntervalMillis) return false
+        lastAtMillis = timestampMillis
+        lastPercent = percent
+        return true
+    }
 }

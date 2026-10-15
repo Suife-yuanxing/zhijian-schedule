@@ -233,6 +233,51 @@ class ResumableDownloadTest {
         assertEquals("约剩 1 小时", ResumableDownload.etaText(3600L))
     }
 
+    // ---------- 清理规则 ----------
+
+    @Test
+    fun versionOfStripsKnownSuffixes() {
+        assertEquals("1.0.2", ResumableDownload.versionOf("1.0.2.apk"))
+        assertEquals("1.0.2", ResumableDownload.versionOf("1.0.2.apk.part"))
+        assertEquals("1.0.2", ResumableDownload.versionOf("1.0.2.apk.meta"))
+        assertEquals("1.0", ResumableDownload.versionOf("1.0.apk"))
+    }
+
+    @Test
+    fun versionOfRejectsUnknownOrNonNumericNames() {
+        assertNull(ResumableDownload.versionOf("readme.txt"))
+        assertNull(ResumableDownload.versionOf(".apk"))
+        assertNull(ResumableDownload.versionOf("backup.apk.bak"))
+        assertNull(ResumableDownload.versionOf("1.0.2-beta.apk"))
+        assertNull(ResumableDownload.versionOf("v1.0.2.apk"))
+    }
+
+    @Test
+    fun compareNumericVersionComparesNumericallyNotLexically() {
+        assertEquals(0, ResumableDownload.compareNumericVersion("1.0.2", "1.0.2"))
+        assertEquals(0, ResumableDownload.compareNumericVersion("1.0", "1.0.0"))
+        assertEquals(-1, ResumableDownload.compareNumericVersion("1.0.9", "1.0.10"))
+        assertEquals(1, ResumableDownload.compareNumericVersion("2.0.0", "1.9.9"))
+        assertEquals(1, ResumableDownload.compareNumericVersion("1.1", "1.0.9"))
+    }
+
+    @Test
+    fun shouldCleanRemovesAlreadyInstalledVersions() {
+        assertTrue(ResumableDownload.shouldClean("1.0.2.apk", "1.0.2"))
+        assertTrue(ResumableDownload.shouldClean("1.0.1.apk.part", "1.0.2"))
+        assertTrue(ResumableDownload.shouldClean("1.0.1.apk.meta", "1.0.2"))
+        assertTrue(ResumableDownload.shouldClean("1.0.9.apk", "1.0.10"))
+    }
+
+    @Test
+    fun shouldCleanKeepsNewerAndUnknownFiles() {
+        assertEquals(false, ResumableDownload.shouldClean("1.0.3.apk", "1.0.2"))
+        assertEquals(false, ResumableDownload.shouldClean("1.0.3.apk.part", "1.0.2"))
+        assertEquals(false, ResumableDownload.shouldClean("2.0.0.apk", "1.9.9"))
+        assertEquals(false, ResumableDownload.shouldClean("random.txt", "1.0.2"))
+        assertEquals(false, ResumableDownload.shouldClean("1.0.2-beta.apk", "1.0.2"))
+    }
+
     private fun tempFile(content: String): File {
         val file = File.createTempFile("part", ".bin")
         file.writeBytes(content.toByteArray(Charsets.UTF_8))
