@@ -64,6 +64,9 @@ object Motion {
 
     /** 底部浮岛选中胶囊滑动：流体转移、轻微过冲后落位即稳 */
     val FluidSlide = spring<Dp>(dampingRatio = 0.72f, stiffness = 480f)
+
+    /** 底部浮岛胶囊转移形变：行进中横向拉伸 / 纵向压缩，弹性回位（液体被吸走的顿挫感） */
+    val FluidStretch = spring<Float>(dampingRatio = 0.62f, stiffness = 480f)
 }
 
 /**

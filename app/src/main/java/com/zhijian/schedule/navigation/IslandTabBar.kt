@@ -40,6 +40,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,16 +48,31 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhijian.schedule.core.theme.LocalCourseColors
+import com.zhijian.schedule.core.theme.LocalCoursePreset
+import com.zhijian.schedule.core.theme.LocalIsDark
 import com.zhijian.schedule.core.ui.Motion
+import com.zhijian.schedule.core.ui.glass.GlassBackdropState
+import com.zhijian.schedule.core.ui.glass.glassBackdropSurface
+import com.zhijian.schedule.core.ui.glass.glassDroplet
+import com.zhijian.schedule.core.ui.glass.glassSurface
 import com.zhijian.schedule.core.ui.keyframed
 
 internal data class TabItem(
@@ -87,9 +103,18 @@ internal fun FloatingIslandBar(
     selectedIndex: Int,
     itemCount: Int,
     modifier: Modifier = Modifier,
+    clock: State<Float>? = null,
+    tilt: State<Offset>? = null,
+    backdrop: GlassBackdropState? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
     val colors = LocalCourseColors.current
+    val glass = LocalCoursePreset.current.glass
+    val isDark = LocalIsDark.current
+    // 流动时钟由 AppRoot 按主题提供（与背景录制层共用同一拍）；其余主题为 null，零开销
+    val glassClock = if (glass != null) clock else null
+    // 胶囊本体的窗口位置：折射采样原点必须用它（外框含内边距，直接用会有数十像素错位）
+    var pillOriginInWindow by remember { mutableStateOf(Offset.Zero) }
     BoxWithConstraints(
         modifier
             .fillMaxWidth()
@@ -102,14 +127,56 @@ internal fun FloatingIslandBar(
             animationSpec = Motion.FluidSlide,
             label = "islandIndicator",
         )
+        // 流体转移：切换瞬间胶囊横向拉伸、纵向压缩，随滑动弹簧回位——像液体被吸去下一格
+        val stretch = remember { Animatable(1f) }
+        var transferSettled by remember { mutableStateOf(false) }
+        LaunchedEffect(selectedIndex) {
+            if (!transferSettled) {
+                transferSettled = true
+                return@LaunchedEffect
+            }
+            stretch.snapTo(0f)
+            stretch.animateTo(1f, Motion.FluidStretch)
+        }
+        val bodyAlpha = glass?.let { if (isDark) it.bodyAlphaDark else it.bodyAlphaLight } ?: 0f
+        val glassTint = glass?.let { if (isDark) it.tintDark else it.tintLight } ?: Color.Transparent
+        val chipAlpha = glass?.let { if (isDark) it.chipAlphaDark else it.chipAlphaLight } ?: 0f
         Box(
             Modifier
                 .fillMaxWidth()
                 .height(IslandHeight)
-                .shadow(6.dp, IslandShape)
-                .clip(IslandShape)
-                .background(colors.surface)
-                .border(1.dp, colors.border, IslandShape),
+                .onGloballyPositioned { pillOriginInWindow = it.boundsInWindow().topLeft }
+                // 投影调轻：黑影透进半透明玻璃会把水体压成灰雾；玻璃模式主体近清水，靠投影与边缘高光勾勒浮岛轮廓
+                .shadow(
+                    elevation = if (glass != null) 8.dp else 4.dp,
+                    shape = IslandShape,
+                    ambientColor = Color.Black.copy(alpha = if (glass != null) 0.14f else 0.08f),
+                    spotColor = Color.Black.copy(alpha = if (glass != null) 0.34f else 0.20f),
+                )
+                .then(
+                    when {
+                        glass == null -> Modifier
+                            .clip(IslandShape)
+                            .background(colors.surface)
+                            .border(1.dp, colors.border, IslandShape)
+                        backdrop != null -> Modifier.glassBackdropSurface(
+                            shape = IslandShape,
+                            tint = glassTint,
+                            bodyAlpha = bodyAlpha,
+                            clock = glassClock,
+                            tilt = tilt,
+                            backdrop = backdrop,
+                            originInLayer = { pillOriginInWindow - backdrop.contentOriginInWindow },
+                        )
+                        else -> Modifier.glassSurface(
+                            shape = IslandShape,
+                            tint = glassTint,
+                            bodyAlpha = bodyAlpha,
+                            clock = glassClock,
+                            tilt = tilt,
+                        )
+                    },
+                ),
         ) {
             Box(
                 Modifier
@@ -117,8 +184,27 @@ internal fun FloatingIslandBar(
                     .padding(horizontal = IndicatorInsetX, vertical = IndicatorInsetY)
                     .width(itemWidth - IndicatorInsetX * 2)
                     .fillMaxHeight()
-                    .clip(IslandShape)
-                    .background(colors.accent.copy(alpha = 0.13f)),
+                    .graphicsLayer {
+                        val k = 1f - stretch.value
+                        scaleX = 1f + 0.10f * k
+                        scaleY = 1f - 0.07f * k
+                    }
+                    .then(
+                        if (glass != null) {
+                            Modifier
+                                .glassDroplet(
+                                    shape = IslandShape,
+                                    tint = colors.accent,
+                                    alpha = chipAlpha,
+                                    clock = glassClock,
+                                )
+                                .liquidRipple(IslandShape, selectedIndex)
+                        } else {
+                            Modifier
+                                .clip(IslandShape)
+                                .background(colors.accent.copy(alpha = 0.13f))
+                        },
+                    ),
             )
             Row(
                 Modifier
@@ -140,10 +226,13 @@ internal fun RowScope.IslandTabItem(
     onClick: () -> Unit,
 ) {
     val colors = LocalCourseColors.current
+    // 玻璃主题下选中项落在饱和水色液滴上：图标文字取 onAccent（亮=白 / 暗=深蓝），与液滴底色形成高对比
+    val selectedColor = if (LocalCoursePreset.current.glass != null) colors.onAccent else colors.text
     val pressSource = remember { MutableInteractionSource() }
     val contentColor by animateColorAsState(
-        targetValue = if (selected) colors.text else colors.textMuted,
-        animationSpec = tween(Motion.DurFast, easing = Motion.EaseOut),
+        targetValue = if (selected) selectedColor else colors.textMuted,
+        // 与胶囊滑动同拍渐变，避免图标先行变色、胶囊还在路上的割裂感
+        animationSpec = tween(Motion.DurMedium, easing = Motion.EaseOut),
         label = "tabContentColor",
     )
     Column(
@@ -177,6 +266,55 @@ internal fun RowScope.IslandTabItem(
             fontSize = 11.sp,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
         )
+    }
+}
+
+/**
+ * 液滴转移时的水波：从胶囊中心扩散一圈柔白光环并淡出（随 [trigger] 触发，仅玻璃主题）。
+ * 静息零开销：动画跑完立即停笔，不产生逐帧重绘。
+ */
+@Composable
+private fun Modifier.liquidRipple(shape: RoundedCornerShape, trigger: Int): Modifier {
+    val ripple = remember { Animatable(1f) }
+    var settled by remember { mutableStateOf(false) }
+    LaunchedEffect(trigger) {
+        if (!settled) {
+            settled = true
+            return@LaunchedEffect
+        }
+        ripple.snapTo(0f)
+        ripple.animateTo(1f, tween(460, easing = Motion.EaseOut))
+    }
+    return drawWithCache {
+        val r = shape.topStart.toPx(size, this)
+        val cr = CornerRadius(r, r)
+        val pill = Path().apply {
+            addRoundRect(RoundRect(0f, 0f, size.width, size.height, cr, cr))
+        }
+        val center = Offset(size.width / 2f, size.height / 2f)
+        val startR = size.width * 0.16f
+        val endR = size.width * 0.88f
+        onDrawBehind {
+            val p = ripple.value
+            if (p >= 1f) return@onDrawBehind
+            val radius = startR + (endR - startR) * p
+            val fade = 1f - p
+            clipPath(pill) {
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colorStops = arrayOf(
+                            0f to Color.Transparent,
+                            0.62f to Color.White.copy(alpha = 0.24f * fade * fade),
+                            1f to Color.Transparent,
+                        ),
+                        center = center,
+                        radius = radius,
+                    ),
+                    radius = radius,
+                    center = center,
+                )
+            }
+        }
     }
 }
 

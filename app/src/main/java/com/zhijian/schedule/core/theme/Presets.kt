@@ -173,7 +173,53 @@ object ThemePresets {
         radius = RadiusPreset(blockDp = 16f, cardDp = 20f, sheetDp = 24f),
     )
 
-    val all: List<ThemePreset> = listOf(paper, dynamic, minimal, amoled, candy)
+    /** 6. 液态玻璃：纯净底色 + 底部清水玻璃浮岛（零模糊，流动实时渲染） */
+    val glass = ThemePreset(
+        id = ThemeIds.GLASS,
+        name = "液态玻璃",
+        light = CourseColors(
+            bg = Color(0xFFF6F7F9),
+            surface = Color(0xFFFFFFFF),
+            surfaceVariant = Color(0xFFEFF1F5),
+            text = Color(0xFF17191F),
+            textMuted = Color(0xFF6E7480),
+            border = Color(0xFFE4E7EC),
+            accent = Color(0xFF2F7BFF),
+            onAccent = Color(0xFFFFFFFF),
+        ),
+        dark = CourseColors(
+            bg = Color(0xFF0E0F13),
+            surface = Color(0xFF17191F),
+            surfaceVariant = Color(0xFF1F222A),
+            text = Color(0xFFE9EBF0),
+            textMuted = Color(0xFF9AA0AE),
+            border = Color(0xFF2A2D36),
+            accent = Color(0xFF5AC8FA),
+            onAccent = Color(0xFF04263A),
+        ),
+        coursePalette = listOf(
+            Color(0xFF57C7FF), Color(0xFF39D2C0), Color(0xFF8F7BF7), Color(0xFFF178B6),
+            Color(0xFF7CE3A9), Color(0xFF9D8CFF), Color(0xFF4FA8E8), Color(0xFFC084FC),
+        ),
+        blockStyle = BlockStyle(fillAlphaLight = 0.16f, fillAlphaDark = 0.26f, barWidthDp = 3f),
+        typography = TypePreset(serifTitle = false),
+        radius = RadiusPreset(blockDp = 16f, cardDp = 20f, sheetDp = 26f),
+        glass = GlassSpec(
+            tintLight = Color(0xFFC9D6E8),
+            tintDark = Color(0xFF9FB0C6),
+            bodyAlphaLight = 0.16f,
+            bodyAlphaDark = 0.20f,
+            chipAlphaLight = 0.90f,
+            chipAlphaDark = 0.88f,
+            specular = 0.78f,
+            flow = 0.55f,
+            lens = 0.12f,
+            mirror = 0.50f,
+            tiltSpec = 1.0f,
+        ),
+    )
+
+    val all: List<ThemePreset> = listOf(paper, dynamic, minimal, amoled, candy, glass)
 
     fun byId(id: String?): ThemePreset = all.firstOrNull { it.id == id } ?: paper
 }

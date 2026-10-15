@@ -33,6 +33,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavBackStackEntry
@@ -47,7 +49,13 @@ import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.zhijian.schedule.core.theme.CourseTheme
+import com.zhijian.schedule.core.theme.LocalCourseColors
+import com.zhijian.schedule.core.theme.LocalCoursePreset
 import com.zhijian.schedule.core.ui.Motion
+import com.zhijian.schedule.core.ui.glass.glassBackdropSource
+import com.zhijian.schedule.core.ui.glass.rememberGlassBackdrop
+import com.zhijian.schedule.core.ui.glass.rememberGlassClock
+import com.zhijian.schedule.core.ui.glass.rememberGlassTilt
 import com.zhijian.schedule.feature.course_editor.CourseEditorScreen
 import com.zhijian.schedule.feature.grades.GradesScreen
 import com.zhijian.schedule.feature.importer.ImporterScreen
@@ -158,6 +166,7 @@ fun AppRoot(openTodayCount: Int = 0) {
 @Composable
 private fun AppScaffold(openTodayCount: Int) {
     val navController = rememberNavController()
+    val colors = LocalCourseColors.current
     val tabs = listOf(
         TabItem(Routes.TODAY_TAB, Routes.TODAY, "今日", Icons.Filled.Star, Icons.Outlined.Star),
         TabItem(Routes.SCHEDULE_TAB, Routes.SCHEDULE, "课表", Icons.Filled.DateRange, Icons.Outlined.DateRange),
@@ -167,6 +176,13 @@ private fun AppScaffold(openTodayCount: Int) {
     val currentDestination = backStackEntry?.destination
     // 浮岛只在三个 tab 根页显示；二级页隐藏（内容也不再为其预留空间）
     val showBottomBar = tabs.any { tab -> tab.rootRoute == currentDestination?.route }
+    // 玻璃主题：把根内容录制成可折射背景图层（绘制指令级复用，零截屏；其余主题返回 null 零开销）。
+    // 时钟由这里统一持有：录制层与浮岛共用同一拍，折射背景才不会落后于页面
+    val glassActive = LocalCoursePreset.current.glass != null
+    val glassClock = if (glassActive) rememberGlassClock() else null
+    // 倾角信号：驱动玻璃表面的镜面高光随重力方向滑动（仅玻璃主题下注册传感器）
+    val glassTilt = if (glassActive) rememberGlassTilt() else null
+    val backdrop = rememberGlassBackdrop(enabled = glassActive)
 
     Scaffold { padding ->
         // 外层已按系统栏 inset 偏移内容，声明为已消费，
@@ -175,6 +191,14 @@ private fun AppScaffold(openTodayCount: Int) {
             NavHost(
                 navController = navController,
                 startDestination = Routes.SCHEDULE_TAB,
+                modifier = Modifier
+                    .glassBackdropSource(
+                        backdrop = backdrop,
+                        clock = glassClock,
+                        enabled = showBottomBar,
+                        baseColor = colors.bg,
+                    )
+                    .onGloballyPositioned { backdrop?.onContentPositioned(it.boundsInWindow().topLeft) },
             ) {
                 navigation(
                     startDestination = Routes.TODAY,
@@ -337,6 +361,9 @@ private fun AppScaffold(openTodayCount: Int) {
                         currentDestination?.hierarchy?.any { it.route == tab.route } == true
                     },
                     itemCount = tabs.size,
+                    clock = glassClock,
+                    tilt = glassTilt,
+                    backdrop = backdrop,
                 ) {
                     tabs.forEach { tab ->
                         val selected = currentDestination?.hierarchy?.any { it.route == tab.route } == true
