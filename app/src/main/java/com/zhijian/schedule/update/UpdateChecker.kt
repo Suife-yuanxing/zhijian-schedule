@@ -8,7 +8,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
@@ -24,6 +26,10 @@ class UpdateChecker @Inject constructor(
         val version: String,
         val pageUrl: String,
         val apkUrl: String?,
+        /** assets[].size：下载前展示大小，同时作为进度分母的兜底 */
+        val apkSize: Long?,
+        /** assets[].digest（"sha256:..."）：下载完成后的完整性校验；旧 Release 可能没有 */
+        val apkDigest: String?,
         val notes: String,
     )
 
@@ -44,14 +50,23 @@ class UpdateChecker @Inject constructor(
                 val version = tag.removePrefix("v")
                 val pageUrl = root["html_url"]?.jsonPrimitive?.content.orEmpty()
                 val notes = root["body"]?.jsonPrimitive?.content.orEmpty()
-                val apkUrl = (root["assets"] as? JsonArray)
+                val apkAsset = (root["assets"] as? JsonArray)
                     ?.mapNotNull { it as? JsonObject }
                     ?.firstOrNull { asset ->
                         asset["name"]?.jsonPrimitive?.content?.endsWith(".apk", ignoreCase = true) == true
                     }
-                    ?.get("browser_download_url")?.jsonPrimitive?.content
+                val apkUrl = apkAsset?.get("browser_download_url")?.jsonPrimitive?.content
+                val apkSize = apkAsset?.get("size")?.jsonPrimitive?.longOrNull
+                val apkDigest = apkAsset?.get("digest")?.jsonPrimitive?.contentOrNull
                 if (isNewer(version, BuildConfig.VERSION_NAME)) {
-                    UpdateInfo(version = version, pageUrl = pageUrl, apkUrl = apkUrl, notes = notes)
+                    UpdateInfo(
+                        version = version,
+                        pageUrl = pageUrl,
+                        apkUrl = apkUrl,
+                        apkSize = apkSize,
+                        apkDigest = apkDigest,
+                        notes = notes,
+                    )
                 } else null
             }
         }
