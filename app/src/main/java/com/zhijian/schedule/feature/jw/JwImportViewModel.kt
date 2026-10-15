@@ -68,6 +68,10 @@ class JwImportViewModel @Inject constructor(
     val onLoggedInPage: Boolean
         get() = pageUrl.contains("xsMain", true) || pageUrl.contains("xskb", true)
 
+    /** 停在统一身份认证登录页（sso.jsp 自动跳转而来） */
+    val onAuthserverPage: Boolean
+        get() = pageUrl.contains("authserver", true)
+
     init {
         viewModelScope.launch {
             val s = settingsStore.settings.first()

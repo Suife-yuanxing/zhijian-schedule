@@ -100,6 +100,54 @@ private const val FIT_VIEWPORT_JS = """
 })()
 """
 
+/** SSO 入口：无 CAS 会话时页面自身会跳去统一身份认证登录，有会话则免密直达教务 */
+private const val SSO_ENTRY_URL = "https://jw.dgpt.edu.cn/jsxsd/sso.jsp"
+
+/**
+ * 强智本地登录表单（Ldap 密码与统一认证不同，本地登录走不通）和裸 JSON 错误页
+ * （如会话过期后的 {"flag1":3,"msgContent":…}）都是死路，检测到就改跳 SSO 入口。
+ */
+private val SSO_RECOVER_JS = """
+(function () {
+  try {
+    var host = (location.hostname || '').toLowerCase();
+    if (host.slice(-11) !== 'dgpt.edu.cn') return;
+    if (location.href.indexOf('/sso.jsp') !== -1) return;
+    var form = document.querySelector('form[action*="LoginToXkLdap"]');
+    var ct = (document.contentType || '').toLowerCase();
+    var text = ((document.body && document.body.innerText) || '').trim();
+    var json = ct.indexOf('json') !== -1 || (text.charAt(0) === '{' && text.indexOf('msgContent') !== -1);
+    if (form || json) location.href = '$SSO_ENTRY_URL';
+  } catch (e) {}
+})()
+"""
+
+/**
+ * 学校 xsMain.jsp 外壳页自身的 bug：初始「个人中心」iframe（#Frame0）用 CSS height:86% 撑高，
+ * 但其父容器高度恒为 0（学校页面里给 Frame0 设高的 JS 被注释掉、easyui 的 JS 也没引入），
+ * 主内容区因此一直是空白。这里按学校自家菜单脚本（showMenuErji）的同款公式补高度。
+ */
+private val JW_SHELL_FIX_JS = """
+(function () {
+  try {
+    if ((location.hostname || '').slice(-11) !== 'dgpt.edu.cn') return;
+    var fix = function () {
+      var f = document.getElementById('Frame0');
+      if (!f) return;
+      var vh = window.innerHeight || 0;
+      if (vh < 600) return;
+      var tabs = document.querySelector('.tabs-wrap') || document.querySelector('.tabs');
+      var north = document.getElementById('mainNorthPanle');
+      var h = vh - (tabs ? tabs.offsetHeight : 26) - (north ? north.offsetHeight : 60) - 5;
+      if (h > 200 && Math.abs(f.offsetHeight - h) > 50) f.style.height = h + 'px';
+    };
+    fix();
+    setTimeout(fix, 1000);
+    setTimeout(fix, 2500);
+  } catch (e) {}
+})()
+"""
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun JwImportScreen(
@@ -151,6 +199,7 @@ fun JwImportScreen(
                 colors = colors,
                 onLoginPage = viewModel.onLoginPage,
                 onLoggedInPage = viewModel.onLoggedInPage,
+                onAuthserverPage = viewModel.onAuthserverPage,
             )
 
             Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
@@ -315,9 +364,11 @@ private fun GuideBar(
     colors: CourseColors,
     onLoginPage: Boolean,
     onLoggedInPage: Boolean,
+    onAuthserverPage: Boolean,
 ) {
     val status = when {
         onLoggedInPage -> "已进入教务系统，点右下「抓取课表」" to colors.accent
+        onAuthserverPage -> "请在「统一身份认证」页用学号 + 密码登录" to colors.accent
         onLoginPage -> "请用学号 / 密码登录；校外网络请先连校园 WiFi，或经 WebVPN 访问" to colors.accent
         else -> "登录后打开「学生课表」页面，再点「抓取课表」" to colors.textMuted
     }
@@ -504,6 +555,8 @@ private fun WebViewBox(
                     override fun onPageFinished(view: WebView?, url: String?) {
                         url?.takeIf { it.isNotBlank() }?.let(onPageUrl)
                         view?.evaluateJavascript(FIT_VIEWPORT_JS, null)
+                        view?.evaluateJavascript(SSO_RECOVER_JS, null)
+                        view?.evaluateJavascript(JW_SHELL_FIX_JS, null)
                     }
 
                     override fun onReceivedError(

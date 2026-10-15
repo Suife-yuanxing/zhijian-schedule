@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.zhijian.schedule.BuildConfig
 import com.zhijian.schedule.R
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.theme.ThemePresets
@@ -83,7 +84,7 @@ fun ProfileScreen(
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = "指尖之间，一纸课表 · v1.0.0",
+                    text = "指尖之间，一纸课表 · v${BuildConfig.VERSION_NAME}",
                     style = MaterialTheme.typography.bodySmall,
                     color = colors.textMuted,
                 )
