@@ -34,6 +34,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -55,12 +56,16 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import com.zhijian.schedule.BuildConfig
 import com.zhijian.schedule.core.data.db.SectionTimeEntity
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.SecondaryTopBar
 import com.zhijian.schedule.core.ui.StaggerIn
 import com.zhijian.schedule.core.ui.pressScale
 import com.zhijian.schedule.core.theme.LocalCourseColors
+import com.zhijian.schedule.update.DownloadState
+import com.zhijian.schedule.update.ResumableDownload
+import com.zhijian.schedule.update.UpdateChecker
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,6 +80,7 @@ fun SettingsScreen(
     // 从系统设置返回时刷新流体云放行状态
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         viewModel.refreshCapsulePromote()
+        viewModel.refreshInstallPermission()
     }
 
     var editTimetable by remember { mutableStateOf(false) }
@@ -320,32 +326,7 @@ fun SettingsScreen(
 
             // 检查更新（方案 1.4）
             StaggerIn(index = 6) {
-                Card {
-                    Text("检查更新", color = colors.text, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "通过 GitHub Releases 分发（当前 v1.0.0）",
-                        color = colors.textMuted,
-                        fontSize = 12.sp,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        val checkSource = remember { MutableInteractionSource() }
-                        Button(
-                            onClick = { viewModel.checkUpdate() },
-                            enabled = !ui.busy,
-                            interactionSource = checkSource,
-                            modifier = Modifier.pressScale(checkSource, pressedScale = 0.96f, enabled = !ui.busy),
-                        ) {
-                            Text("检查更新")
-                        }
-                        Spacer(Modifier.width(10.dp))
-                        ui.updateInfo?.let { info ->
-                            TextButton(onClick = {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.pageUrl)))
-                            }) { Text("打开发布页 v${info.version}") }
-                        }
-                    }
-                }
+                UpdateSection(ui = ui, viewModel = viewModel, context = context)
             }
 
             Spacer(Modifier.height(40.dp))
@@ -392,6 +373,153 @@ fun SettingsScreen(
                 viewModel.saveSectionTime(section, s, e)
             },
         )
+    }
+}
+
+/** 更新卡片：未检查/检查中/已最新/检查失败/有新版本/无安装包/下载中/已取消/下载失败/待安装/校验失败 */
+@Composable
+private fun UpdateSection(
+    ui: SettingsUiState,
+    viewModel: SettingsViewModel,
+    context: android.content.Context,
+) {
+    val colors = LocalCourseColors.current
+    var confirmClear by remember { mutableStateOf(false) }
+
+    Card {
+        Text("检查更新", color = colors.text, fontWeight = FontWeight.SemiBold)
+        UpdateStatusLine(ui)
+        Spacer(Modifier.height(8.dp))
+
+        val download = ui.download
+        if (download is DownloadState.Running) {
+            if (download.totalBytes != null) {
+                LinearProgressIndicator(
+                    progress = {
+                        (download.downloadedBytes.toFloat() / download.totalBytes).coerceIn(0f, 1f)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = colors.accent,
+                    trackColor = colors.border,
+                )
+            } else {
+                // 响应没有长度信息：不确定进度，不显示假百分比
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = colors.accent,
+                    trackColor = colors.border,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            when (download) {
+                is DownloadState.Running -> ActionButton("取消") { viewModel.cancelDownload() }
+                is DownloadState.Paused -> ActionButton("继续下载") { viewModel.downloadUpdate() }
+                is DownloadState.Ready -> ActionButton("安装") { viewModel.installUpdate() }
+                is DownloadState.Failed -> ActionButton(if (download.canResume) "重试" else "重新下载") {
+                    viewModel.downloadUpdate()
+                }
+                DownloadState.Idle -> if (ui.updateInfo?.apkUrl != null) {
+                    ActionButton("下载") { viewModel.downloadUpdate() }
+                } else {
+                    ActionButton(checkLabel(ui), enabled = !ui.busy) { viewModel.checkUpdate() }
+                }
+            }
+
+            val pageUrl = ui.updateInfo?.pageUrl
+            if (!pageUrl.isNullOrBlank()) {
+                Spacer(Modifier.width(10.dp))
+                TextButton(onClick = {
+                    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(pageUrl))) }
+                }) { Text("打开发布页") }
+            }
+        }
+
+        if (ui.updateCacheBytes > 0L) {
+            Spacer(Modifier.height(4.dp))
+            TextButton(onClick = { confirmClear = true }) {
+                Text(
+                    "清理下载缓存（${ResumableDownload.formatBytes(ui.updateCacheBytes)}）",
+                    color = colors.textMuted,
+                    fontSize = 12.sp,
+                )
+            }
+        }
+    }
+
+    if (confirmClear) {
+        AlertDialog(
+            onDismissRequest = { confirmClear = false },
+            title = { Text("清理下载缓存") },
+            text = {
+                Text(
+                    "将删除已下载的安装包与未完成的下载进度" +
+                        "（共 ${ResumableDownload.formatBytes(ui.updateCacheBytes)}）。清理后需要重新下载才能安装。"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmClear = false
+                    viewModel.clearUpdateCache()
+                }) { Text("清理") }
+            },
+            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("取消") } },
+        )
+    }
+}
+
+/** 卡片的状态行：下载状态下优先显示下载信息，否则显示检查结果 */
+@Composable
+private fun UpdateStatusLine(ui: SettingsUiState) {
+    val colors = LocalCourseColors.current
+    val download = ui.download
+    val (text, emphasized) = when {
+        download is DownloadState.Running -> runningLine(download) to true
+        download is DownloadState.Paused ->
+            "已取消 · 已保留 ${ResumableDownload.formatBytes(download.downloadedBytes)} 进度" to false
+        download is DownloadState.Ready -> "下载完成，待安装（${ResumableDownload.formatBytes(download.sizeBytes)}）" to true
+        download is DownloadState.Failed -> download.reason to false
+        ui.updateError != null -> "检查更新失败：${ui.updateError}" to false
+        ui.updateInfo != null -> versionLine(ui.updateInfo) to true
+        ui.updateChecked -> "已是最新版本 v${BuildConfig.VERSION_NAME}" to false
+        else -> "通过 GitHub Releases 分发（当前 v${BuildConfig.VERSION_NAME}）" to false
+    }
+    Text(text, color = if (emphasized) colors.text else colors.textMuted, fontSize = 12.sp)
+}
+
+private fun runningLine(state: DownloadState.Running): String {
+    val head = state.totalBytes
+        ?.let { "已下载 ${ResumableDownload.formatBytes(state.downloadedBytes)} / ${ResumableDownload.formatBytes(it)}" }
+        ?: "已下载 ${ResumableDownload.formatBytes(state.downloadedBytes)}"
+    return head + (ResumableDownload.etaText(state.etaSeconds)?.let { " · $it" }.orEmpty())
+}
+
+private fun versionLine(info: UpdateChecker.UpdateInfo): String = if (info.apkUrl == null) {
+    "发现新版本 v${info.version}（该版本未提供安装包）"
+} else {
+    "发现新版本 v${info.version}" +
+        (info.apkSize?.takeIf { it > 0 }?.let { " · 大小 ${ResumableDownload.formatBytes(it)}" } ?: "")
+}
+
+private fun checkLabel(ui: SettingsUiState): String = when {
+    ui.busy -> "检查中…"
+    ui.updateChecked -> "重新检查"
+    else -> "检查更新"
+}
+
+/** 卡片里的主操作按钮：统一的按压缩放反馈 */
+@Composable
+private fun ActionButton(label: String, enabled: Boolean = true, onClick: () -> Unit) {
+    val source = remember { MutableInteractionSource() }
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        interactionSource = source,
+        modifier = Modifier.pressScale(source, pressedScale = 0.96f, enabled = enabled),
+    ) {
+        Text(label)
     }
 }
 
