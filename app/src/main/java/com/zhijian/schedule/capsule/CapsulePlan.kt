@@ -40,6 +40,8 @@ sealed interface CapsulePlan {
     data class Upcoming(
         val course: CapsuleCourse,
         val minutesUntil: Long,
+        /** 进入课前提醒窗口的时刻（epoch 毫秒）；提醒关闭时为 null */
+        val aboutToStartAtMillis: Long? = null,
         override val chip: String = "下节课",
     ) : CapsulePlan
 
@@ -141,7 +143,11 @@ fun buildCapsulePlan(
                     startAtMillis = epochMillisOf(now, c.start),
                 )
             }
-            return CapsulePlan.Upcoming(course = c, minutesUntil = minutesUntil)
+            return CapsulePlan.Upcoming(
+                course = c,
+                minutesUntil = minutesUntil,
+                aboutToStartAtMillis = windowStart?.let { epochMillisOf(now, it) },
+            )
         }
 
     return CapsulePlan.DayDone(
@@ -163,6 +169,22 @@ private fun secondsBetween(from: LocalTime, to: LocalTime): Long =
 /** now 所在日期下 time 对应的 epoch 毫秒（课程时段不跨天） */
 private fun epochMillisOf(now: LocalDateTime, time: LocalTime): Long =
     now.toLocalDate().atTime(time).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+/**
+ * 下一次胶囊状态会变化的时刻（epoch 毫秒），null 表示无需重算。
+ * 供 CapsuleCoordinator 登记精确闹钟：ColorOS 冻结后台进程时服务刷新循环停摆，
+ * 只有系统闹钟能按时唤醒 App 切换到「即将上课 / 上课中」等新状态。
+ */
+fun nextTransitionAtMillis(plan: CapsulePlan, now: LocalDateTime): Long? = when (plan) {
+    is CapsulePlan.Ongoing -> plan.endAtMillis
+    is CapsulePlan.AboutToStart -> plan.startAtMillis
+    is CapsulePlan.Upcoming -> plan.aboutToStartAtMillis ?: epochMillisOf(now, plan.course.start)
+    is CapsulePlan.Holiday, is CapsulePlan.DayDone -> nextMidnightMillis(now)
+    CapsulePlan.NoTable -> null
+}
+
+private fun nextMidnightMillis(now: LocalDateTime): Long =
+    now.toLocalDate().plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
 
 /** 未来 7 天里最近的一节课，如「明天 08:20 · 包装材料与检测」 */
 private fun nextOccurrenceText(

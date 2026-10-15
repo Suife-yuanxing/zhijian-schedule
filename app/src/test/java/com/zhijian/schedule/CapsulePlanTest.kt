@@ -2,6 +2,7 @@ package com.zhijian.schedule
 
 import com.zhijian.schedule.capsule.CapsulePlan
 import com.zhijian.schedule.capsule.buildCapsulePlan
+import com.zhijian.schedule.capsule.nextTransitionAtMillis
 import com.zhijian.schedule.core.data.db.CourseEntity
 import com.zhijian.schedule.core.data.db.SectionTimeEntity
 import com.zhijian.schedule.core.data.db.TimetableEntity
@@ -265,5 +266,58 @@ class CapsulePlanTest {
         val plan = buildCapsulePlan(null, emptyList(), sections(), tuesday(10, 30), reminderMinutes = 30)
         assertEquals(CapsulePlan.NoTable, plan)
         assertEquals("纸间课表", plan.chip)
+    }
+
+    private fun epochOf(h: Int, m: Int) =
+        LocalDateTime.of(2026, 10, 13, h, m).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+    @Test
+    fun upcomingKnowsWhenCountdownWindowOpens() {
+        // 课前 30 分钟提醒：09:40 是进入倒数窗口的时刻，胶囊切换闹钟按它登记
+        val plan = buildCapsulePlan(
+            timetable(), listOf(course(day = 2, 3, 4)), sections(), tuesday(8, 0),
+            reminderMinutes = 30,
+        ) as CapsulePlan.Upcoming
+        assertEquals(epochOf(9, 40), plan.aboutToStartAtMillis)
+        assertEquals(epochOf(9, 40), nextTransitionAtMillis(plan, tuesday(8, 0)))
+    }
+
+    @Test
+    fun upcomingWithoutReminderTransitionsAtClassStart() {
+        val plan = buildCapsulePlan(
+            timetable(), listOf(course(day = 2, 3, 4)), sections(), tuesday(9, 55),
+            reminderMinutes = 0,
+        ) as CapsulePlan.Upcoming
+        assertNull(plan.aboutToStartAtMillis)
+        assertEquals(epochOf(10, 10), nextTransitionAtMillis(plan, tuesday(9, 55)))
+    }
+
+    @Test
+    fun nextTransitionFollowsClassPhases() {
+        val courses = listOf(course(day = 2, 3, 4))
+        val ongoing = buildCapsulePlan(
+            timetable(), courses, sections(), tuesday(10, 30), reminderMinutes = 30,
+        ) as CapsulePlan.Ongoing
+        assertEquals(epochOf(11, 45), nextTransitionAtMillis(ongoing, tuesday(10, 30)))
+
+        val about = buildCapsulePlan(
+            timetable(), courses, sections(), tuesday(9, 55), reminderMinutes = 30,
+        ) as CapsulePlan.AboutToStart
+        assertEquals(epochOf(10, 10), nextTransitionAtMillis(about, tuesday(9, 55)))
+
+        val done = buildCapsulePlan(
+            timetable(), courses, sections(), tuesday(12, 30), reminderMinutes = 30,
+        ) as CapsulePlan.DayDone
+        val midnight = LocalDateTime.of(2026, 10, 14, 0, 0)
+            .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        assertEquals(midnight, nextTransitionAtMillis(done, tuesday(12, 30)))
+
+        val holiday = buildCapsulePlan(
+            timetable(), courses, sections(), tuesday(10, 30), reminderMinutes = 30,
+            holidayName = "国庆节",
+        ) as CapsulePlan.Holiday
+        assertEquals(midnight, nextTransitionAtMillis(holiday, tuesday(10, 30)))
+
+        assertNull(nextTransitionAtMillis(CapsulePlan.NoTable, tuesday(10, 30)))
     }
 }

@@ -9,6 +9,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.zhijian.schedule.alarm.AlarmScheduler
 import com.zhijian.schedule.calendar.CalendarSyncManager
+import com.zhijian.schedule.capsule.CapsuleCoordinator
 import com.zhijian.schedule.capsule.CapsuleNotifier
 import com.zhijian.schedule.capsule.LiveCapsuleService
 import com.zhijian.schedule.core.data.BackupManager
@@ -50,6 +51,7 @@ class SettingsViewModel @Inject constructor(
     private val calendarSyncManager: CalendarSyncManager,
     private val updateChecker: UpdateChecker,
     private val alarmScheduler: AlarmScheduler,
+    private val capsuleCoordinator: CapsuleCoordinator,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
@@ -185,7 +187,12 @@ class SettingsViewModel @Inject constructor(
     fun setCapsule(enabled: Boolean) {
         viewModelScope.launch {
             settingsStore.setCapsule(enabled)
-            if (enabled) LiveCapsuleService.start(context) else LiveCapsuleService.stop(context)
+            if (enabled) {
+                LiveCapsuleService.start(context)
+            } else {
+                LiveCapsuleService.stop(context)
+                capsuleCoordinator.cancelTransition()
+            }
             uiState = uiState.copy(capsulePromoteAllowed = CapsuleNotifier.canPromote(context))
         }
     }

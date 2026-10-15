@@ -69,6 +69,10 @@
         <receiver
             android:name=".alarm.NotificationActionReceiver"
             android:exported="false" />
+        <!-- 胶囊状态切换闹钟（提醒窗口/上课/下课/跨天） -->
+        <receiver
+            android:name=".capsule.CapsuleTransitionReceiver"
+            android:exported="false" />
         <receiver
             android:name=".alarm.BootReceiver"
             android:exported="false">
