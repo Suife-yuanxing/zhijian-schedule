@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.Bundle
 import androidx.annotation.RequiresApi
@@ -27,6 +28,9 @@ object CapsuleNotifier {
 
     /** 请求系统提升为 Live Update / 流体云胶囊（Android 16 正式 API 的 extra 键） */
     private const val EXTRA_REQUEST_PROMOTED_ONGOING = "android.requestPromotedOngoing"
+
+    /** 「即将上课」状态用的品牌陶土色，与上课中的课程色区分开 */
+    private const val COLOR_ABOUT_TO_START = 0xFFD97757.toInt()
 
     fun ensureChannel(context: Context) {
         val nm = context.getSystemService(NotificationManager::class.java) ?: return
@@ -61,7 +65,8 @@ object CapsuleNotifier {
     fun post(context: Context, plan: CapsulePlan, previousKey: String?): Posted {
         val (title, text) = texts(plan)
         val progress = progressOf(plan)
-        val key = "$title|$text|${progress ?: -1}"
+        // chip 进 key：每分钟的「剩 X 分」变化也要触发刷新
+        val key = "$title|$text|${plan.chip}|${progress ?: -1}"
         if (key == previousKey) return Posted(key, null)
 
         val promote = isPromotable(plan)
@@ -70,6 +75,8 @@ object CapsuleNotifier {
             promote = promote,
             color = if (promote) courseColorOf(plan) else 0,
             countdownTo = countdownTargetOf(plan),
+            smallIcon = smallIconOf(plan),
+            subtext = courseSectionOf(plan),
         )
         if (progress != null) {
             if (Build.VERSION.SDK_INT >= 36) {
@@ -100,9 +107,10 @@ object CapsuleNotifier {
         is CapsulePlan.Ongoing -> {
             val c = plan.course
             val where = if (c.room.isBlank()) "" else "${c.room} · "
-            val remaining = if (plan.remainingMinutes <= 0) "即将下课" else "还剩 ${plan.remainingMinutes} 分钟"
-            "正在上课 · ${c.name}" to
-                "$where${TimeUtils.formatTime(c.start)}-${TimeUtils.formatTime(c.end)} · $remaining"
+            // 开始时间已过，给下课时刻更实用
+            val tail = if (plan.remainingMinutes <= 0) "即将下课"
+                else "${TimeUtils.formatTime(c.end)} 下课 · 还剩 ${plan.remainingMinutes} 分钟"
+            "正在上课 · ${c.name}" to "$where$tail"
         }
 
         is CapsulePlan.AboutToStart -> {
@@ -139,10 +147,34 @@ object CapsuleNotifier {
     private fun isPromotable(plan: CapsulePlan): Boolean =
         plan is CapsulePlan.Ongoing || plan is CapsulePlan.AboutToStart
 
+    /** 上课中按剩余进度逐块消耗小图标；即将上课尚未开课，保持满格 */
+    private fun smallIconOf(plan: CapsulePlan): Int =
+        if (plan is CapsulePlan.Ongoing) consumedIcon(plan.progress) else R.drawable.ic_stat_notify
+
+    /**
+     * 每消耗 1/4 课堂，按课表阅读顺序（左上→右上→左下→右下）暗掉一块课块，
+     * 让流体云/状态栏上的图标像进度条一样被「用完」。
+     */
+    private fun consumedIcon(progress: Int): Int = when {
+        progress >= 75 -> R.drawable.ic_stat_notify
+        progress >= 50 -> R.drawable.ic_stat_notify_used1
+        progress >= 25 -> R.drawable.ic_stat_notify_used2
+        else -> R.drawable.ic_stat_notify_used3
+    }
+
+    /** 状态色区分：上课中用课程色；即将上课用品牌陶土色，两个提升状态一眼可辨 */
     private fun courseColorOf(plan: CapsulePlan): Int = when (plan) {
         is CapsulePlan.Ongoing -> plan.course.color
-        is CapsulePlan.AboutToStart -> plan.course.color
+        is CapsulePlan.AboutToStart -> COLOR_ABOUT_TO_START
         else -> 0
+    }
+
+    /** 通知副标题（节次），无课程状态时为 null */
+    private fun courseSectionOf(plan: CapsulePlan): String? = when (plan) {
+        is CapsulePlan.Ongoing -> plan.course.sectionText
+        is CapsulePlan.AboutToStart -> plan.course.sectionText
+        is CapsulePlan.Upcoming -> plan.course.sectionText
+        else -> null
     }
 
     private fun progressOf(plan: CapsulePlan): Int? = when (plan) {
@@ -159,9 +191,11 @@ object CapsuleNotifier {
         promote: Boolean,
         color: Int,
         countdownTo: Long?,
+        smallIcon: Int = R.drawable.ic_stat_notify,
+        subtext: String? = null,
     ): Notification.Builder {
         val builder = Notification.Builder(context, CH_CAPSULE)
-            .setSmallIcon(R.drawable.ic_stat_notify)
+            .setSmallIcon(smallIcon)
             .setContentTitle(title)
             .setContentText(text)
             .setContentIntent(contentIntent(context))
@@ -169,6 +203,7 @@ object CapsuleNotifier {
             .setOnlyAlertOnce(true)
             .setCategory(Notification.CATEGORY_PROGRESS)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
+        if (subtext != null) builder.setSubText(subtext)
         if (countdownTo != null) {
             builder.setUsesChronometer(true)
                 .setChronometerCountDown(true)
@@ -180,6 +215,7 @@ object CapsuleNotifier {
             builder.setShortCriticalText(chip)
             if (promote) {
                 if (color != 0) builder.setColor(color)
+                builder.addAction(openTodayAction(context))
                 // 提升资格（ui_rich_ongoing 生效时）：显式请求 + 常驻 + 标题 + ProgressStyle，
                 // 且不得着色/分组摘要/自定义视图；另需用户在系统里为该应用放行实时通知
                 builder.addExtras(Bundle().apply { putBoolean(EXTRA_REQUEST_PROMOTED_ONGOING, true) })
@@ -188,16 +224,19 @@ object CapsuleNotifier {
         return builder
     }
 
+    /** 卡片/通知上的「打开今日课表」操作按钮 */
+    private fun openTodayAction(context: Context): Notification.Action =
+        Notification.Action.Builder(
+            Icon.createWithResource(context, R.drawable.ic_stat_notify),
+            context.getString(R.string.capsule_action_open_today),
+            contentIntent(context),
+        ).build()
+
     @RequiresApi(36)
     private fun applyProgressStyle(builder: Notification.Builder, plan: CapsulePlan, progress: Int) {
-        val color = when (plan) {
-            is CapsulePlan.Ongoing -> plan.course.color
-            is CapsulePlan.AboutToStart -> plan.course.color
-            else -> 0
-        }
         val style = Notification.ProgressStyle()
             .setProgress(progress.coerceIn(0, 100))
-            .addProgressSegment(Notification.ProgressStyle.Segment(100).setColor(color))
+            .addProgressSegment(Notification.ProgressStyle.Segment(100).setColor(courseColorOf(plan)))
         builder.setStyle(style)
     }
 

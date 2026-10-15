@@ -7,6 +7,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -27,7 +28,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,7 +39,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -270,13 +276,13 @@ private fun CurrentClassCard(item: TodayCourseItem, now: LocalTime) {
     val end = item.endTime ?: return
     val total = Duration.between(start, end).seconds.coerceAtLeast(1)
     val passed = Duration.between(start, now).seconds.coerceIn(0, total)
-    val progress = passed.toFloat() / total
+    val remaining = 1f - passed.toFloat() / total
     val remainMin = (total - passed) / 60
 
-    // 入场从 0 扫到当前进度；此后每 15s 时钟刷新时平滑推进
-    val progressAnim = remember { Animatable(0f) }
-    LaunchedEffect(progress) {
-        progressAnim.animateTo(progress, tween(durationMillis = 900, easing = Motion.EaseOut))
+    // 全亮起步、从右端往左被吃掉；此后每 15s 时钟刷新时平滑推进
+    val progressAnim = remember { Animatable(1f) }
+    LaunchedEffect(remaining) {
+        progressAnim.animateTo(remaining, tween(durationMillis = 900, easing = Motion.EaseOut))
     }
 
     // 「正在上课」色点呼吸脉冲：在动的才叫进行中
@@ -337,15 +343,60 @@ private fun CurrentClassCard(item: TodayCourseItem, now: LocalTime) {
             )
         }
         Spacer(Modifier.height(12.dp))
-        LinearProgressIndicator(
-            progress = { progressAnim.value },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(4.dp)
-                .clip(RoundedCornerShape(2.dp)),
+        SectionTrack(
+            sections = item.sections.ifEmpty { listOf(TodaySection(start, end)) },
+            remainingFraction = progressAnim.value,
             color = Color(item.course.color),
-            trackColor = colors.border.copy(alpha = 0.4f),
+            breakColor = colors.border.copy(alpha = 0.4f),
         )
+    }
+}
+
+/**
+ * 课节轨道：按小节拆成等宽色块（课间以细线相连），整条轨道全亮起步，
+ * 随课程推进从右端往左消耗——剩余部分保持课程色（锚定左端），
+ * 已消耗的部分退成淡色，方向与流体云的「剩余倒着消耗」一致。
+ */
+@Composable
+private fun SectionTrack(
+    sections: List<TodaySection>,
+    remainingFraction: Float,
+    color: Color,
+    breakColor: Color,
+) {
+    val drainedColor = color.copy(alpha = 0.20f)
+    Canvas(
+        Modifier
+            .fillMaxWidth()
+            .height(8.dp),
+    ) {
+        val n = sections.size
+        if (n == 0) return@Canvas
+        val gap = 6.dp.toPx()
+        val h = size.height
+        val radius = h / 2f
+        val blockW = (size.width - gap * (n - 1)) / n
+        val frontX = remainingFraction.coerceIn(0f, 1f) * size.width // 剩余前沿：从右往左推进
+        sections.forEachIndexed { i, _ ->
+            val x0 = i * (blockW + gap)
+            clipPath(Path().apply { addRoundRect(RoundRect(x0, 0f, x0 + blockW, h, radius, radius)) }) {
+                drawRect(drainedColor)
+                val litW = (frontX - x0).coerceIn(0f, blockW)
+                if (litW > 0.5f) {
+                    drawRect(color, topLeft = Offset(x0, 0f), size = Size(litW, h))
+                }
+            }
+        }
+        // 课间连接线
+        for (i in 0 until n - 1) {
+            val cx0 = i * (blockW + gap) + blockW
+            drawRoundRect(
+                color = breakColor,
+                topLeft = Offset(cx0 + 1.dp.toPx(), h / 2f - 1.dp.toPx()),
+                size = Size(gap - 2.dp.toPx(), 2.dp.toPx()),
+                cornerRadius = CornerRadius(1.dp.toPx()),
+            )
+        }
     }
 }
 

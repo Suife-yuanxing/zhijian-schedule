@@ -18,6 +18,7 @@
     <string name="channel_capsule_name">课程实时胶囊</string>
     <string name="channel_capsule_desc">在状态栏顶部实时显示正在上的课与下节课</string>
     <string name="capsule_service_label">课程实时胶囊</string>
+    <string name="capsule_action_open_today">打开今日课表</string>
 
     <!-- 小组件 -->
     <string name="widget_today_title">今日课程</string>

@@ -62,9 +62,36 @@ class CapsulePlanTest {
         )
         val ongoing = plan as CapsulePlan.Ongoing
         assertEquals("毛泽东思想", ongoing.course.name)
-        assertEquals(21, ongoing.progress) // 10:10→11:45 共 5700s，已过 1200s
+        assertEquals(78, ongoing.progress) // 10:10→11:45 共 5700s，剩余 4500s
         assertEquals(75, ongoing.remainingMinutes)
-        assertEquals("上课中", ongoing.chip)
+        assertEquals("剩 75 分", ongoing.chip)
+        assertEquals("第3-4节", ongoing.course.sectionText)
+    }
+
+    @Test
+    fun ongoingLastMinuteShowsFinalChip() {
+        val plan = buildCapsulePlan(
+            timetable(), listOf(course(day = 2, 3, 4)), sections(),
+            LocalDateTime.of(2026, 10, 13, 11, 44, 30), reminderMinutes = 30,
+        )
+        val ongoing = plan as CapsulePlan.Ongoing
+        assertEquals(0, ongoing.remainingMinutes) // 不足 1 分钟按 0 计
+        assertEquals("即将下课", ongoing.chip)
+    }
+
+    @Test
+    fun ongoingProgressDepletesOverTime() {
+        val early = buildCapsulePlan(
+            timetable(), listOf(course(day = 2, 3, 4)), sections(), tuesday(10, 20),
+            reminderMinutes = 30,
+        ) as CapsulePlan.Ongoing
+        val late = buildCapsulePlan(
+            timetable(), listOf(course(day = 2, 3, 4)), sections(), tuesday(11, 20),
+            reminderMinutes = 30,
+        ) as CapsulePlan.Ongoing
+        assertTrue(early.progress > late.progress) // 倒着消耗：越上课剩余占比越小
+        assertEquals(89, early.progress) // 剩余 5100s / 5700s
+        assertEquals(26, late.progress) // 剩余 1500s / 5700s
     }
 
     @Test
@@ -90,13 +117,13 @@ class CapsulePlanTest {
     }
 
     @Test
-    fun ongoingAtExactStartIsZero() {
+    fun ongoingAtExactStartIsFull() {
         val plan = buildCapsulePlan(
             timetable(), listOf(course(day = 2, 3, 4)), sections(), tuesday(10, 10),
             reminderMinutes = 30,
         )
         val ongoing = plan as CapsulePlan.Ongoing
-        assertEquals(0, ongoing.progress)
+        assertEquals(100, ongoing.progress) // 开课瞬间进度条满格，随课堂消耗
         assertEquals(95, ongoing.remainingMinutes)
     }
 
@@ -121,7 +148,7 @@ class CapsulePlanTest {
         val about = plan as CapsulePlan.AboutToStart
         assertEquals("接档课", about.course.name)
         assertEquals(10, about.minutesUntil)
-        assertEquals(33, about.progress) // 倒数从下课 09:55 起：15 分钟已过 5 分钟
+        assertEquals(66, about.progress) // 倒数从下课 09:55 起：15 分钟剩 10 分钟
         assertEquals("即将上课", about.chip)
     }
 
@@ -147,7 +174,7 @@ class CapsulePlanTest {
             timetable(), courses, sections(), tuesday(9, 40), reminderMinutes = 30,
         )
         val about = at as CapsulePlan.AboutToStart
-        assertEquals(0, about.progress) // 09:40 恰好是开课前 30 分钟
+        assertEquals(100, about.progress) // 09:40 恰好是开课前 30 分钟：倒数窗口满格
         assertEquals(30, about.minutesUntil)
     }
 
@@ -158,7 +185,7 @@ class CapsulePlanTest {
             reminderMinutes = 30,
         )
         val about = plan as CapsulePlan.AboutToStart
-        assertEquals(50, about.progress) // 09:40→10:10 共 1800s，已过 900s
+        assertEquals(50, about.progress) // 09:40→10:10 共 1800s，剩余 900s
         assertEquals(15, about.minutesUntil)
     }
 
@@ -182,7 +209,7 @@ class CapsulePlanTest {
         val about = plan as CapsulePlan.AboutToStart
         assertEquals("下一门", about.course.name)
         assertEquals(15, about.minutesUntil)
-        assertEquals(0, about.progress) // 下课瞬间开始倒数
+        assertEquals(100, about.progress) // 下课瞬间开始倒数：倒数窗口满格
     }
 
     @Test

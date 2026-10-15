@@ -19,17 +19,20 @@ sealed interface CapsulePlan {
     /** 正在上课 */
     data class Ongoing(
         val course: CapsuleCourse,
+        /** 剩余占比（100→0 倒着消耗）：进度条随倒计时一起减少 */
         val progress: Int,
         val remainingMinutes: Long,
         /** 下课时刻（epoch 毫秒）：交系统 chronometer 每秒自绘，进程被冻结也照常走秒 */
         val endAtMillis: Long,
-        override val chip: String = "上课中",
+        /** 状态栏 chip 直接给剩余分钟，扫一眼就知道还剩多久 */
+        override val chip: String = if (remainingMinutes <= 0) "即将下课" else "剩 $remainingMinutes 分",
     ) : CapsulePlan
 
     /** 即将上课：已进入课前提醒窗口，画倒数进度条（联动「课前提醒」设置） */
     data class AboutToStart(
         val course: CapsuleCourse,
         val minutesUntil: Long,
+        /** 剩余占比（100→0 倒着消耗）：进度条随倒计时一起减少 */
         val progress: Int,
         /** 上课时刻（epoch 毫秒）：交系统 chronometer 每秒自绘 */
         val startAtMillis: Long,
@@ -74,6 +77,8 @@ data class CapsuleCourse(
     val color: Int,
     val start: LocalTime,
     val end: LocalTime,
+    /** 节次描述（如「第7-8节」），通知副标题用 */
+    val sectionText: String? = null,
 )
 
 fun buildCapsulePlan(
@@ -114,10 +119,11 @@ fun buildCapsulePlan(
         .firstOrNull { !nowTime.isBefore(it.start) && nowTime.isBefore(it.end) }
         ?.let { c ->
             val total = secondsBetween(c.start, c.end)
-            val elapsed = secondsBetween(c.start, nowTime).coerceAtMost(total)
+            val elapsed = secondsBetween(c.start, nowTime).coerceIn(0, total)
             return CapsulePlan.Ongoing(
                 course = c,
-                progress = ((elapsed * 100) / total).toInt(),
+                // 剩余占比：开课满格、随课堂消耗到 0，与系统倒计时同向
+                progress = (((total - elapsed) * 100) / total).toInt(),
                 remainingMinutes = Duration.between(nowTime, c.end).toMinutes().coerceAtLeast(0),
                 endAtMillis = epochMillisOf(now, c.end),
             )
@@ -134,12 +140,13 @@ fun buildCapsulePlan(
                 if (prevEnd != null && prevEnd.isAfter(remindAt)) prevEnd else remindAt
             } else null
             if (windowStart != null && !nowTime.isBefore(windowStart)) {
-                val span = secondsBetween(windowStart, c.start)
+                val span = secondsBetween(windowStart, c.start).coerceAtLeast(1)
                 val done = secondsBetween(windowStart, nowTime).coerceAtMost(span)
                 return CapsulePlan.AboutToStart(
                     course = c,
                     minutesUntil = minutesUntil,
-                    progress = ((done * 100) / span).toInt(),
+                    // 剩余占比：进入倒数窗口满格，到上课时刻消耗到 0
+                    progress = (((span - done) * 100) / span).toInt(),
                     startAtMillis = epochMillisOf(now, c.start),
                 )
             }
@@ -160,11 +167,19 @@ private fun courseOf(entity: CourseEntity, sections: List<SectionTimeEntity>): C
     val start = sections.getOrNull(entity.startSection - 1)?.startTime?.let { TimeUtils.parseTime(it) }
     val end = sections.getOrNull(entity.endSection - 1)?.endTime?.let { TimeUtils.parseTime(it) }
     if (start == null || end == null || !start.isBefore(end)) return null
-    return CapsuleCourse(name = entity.name, room = entity.room, color = entity.color, start = start, end = end)
+    return CapsuleCourse(
+        name = entity.name, room = entity.room, color = entity.color, start = start, end = end,
+        sectionText = if (entity.startSection == entity.endSection) {
+            "第${entity.startSection}节"
+        } else {
+            "第${entity.startSection}-${entity.endSection}节"
+        },
+    )
 }
 
+/** from→to 的秒数；跨度可能为 0 的场景（进度边界）需自行 coerce */
 private fun secondsBetween(from: LocalTime, to: LocalTime): Long =
-    Duration.between(from, to).seconds.coerceAtLeast(1)
+    Duration.between(from, to).seconds
 
 /** now 所在日期下 time 对应的 epoch 毫秒（课程时段不跨天） */
 private fun epochMillisOf(now: LocalDateTime, time: LocalTime): Long =
