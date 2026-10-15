@@ -8,6 +8,7 @@ import com.zhijian.schedule.alarm.ReminderCoordinator
 import com.zhijian.schedule.core.data.prefs.SettingsStore
 import com.zhijian.schedule.core.repository.ScheduleRepository
 import com.zhijian.schedule.sync.SyncScheduler
+import com.zhijian.schedule.update.ApkDownloader
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
@@ -34,6 +35,9 @@ class ZhiJianApp : Application(), Configuration.Provider {
     @Inject
     lateinit var reminderCoordinator: ReminderCoordinator
 
+    @Inject
+    lateinit var apkDownloader: ApkDownloader
+
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onCreate() {
@@ -42,6 +46,8 @@ class ZhiJianApp : Application(), Configuration.Provider {
             android.webkit.WebView.setWebContentsDebuggingEnabled(true)
         }
         appScope.launch {
+            // 「版本 <= 当前已安装版本」的更新残留（含待安装 APK 与断点）已经没用了
+            runCatching { apkDownloader.cleanupOutdated(BuildConfig.VERSION_NAME) }
             repository.ensureInitialized()
             Notifications.ensureChannels(this@ZhiJianApp)
             val settings = settingsStore.settings.first()
