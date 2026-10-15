@@ -85,4 +85,20 @@ object AppModule {
         .readTimeout(20, TimeUnit.SECONDS)
         .followRedirects(true)
         .build()
+
+    /**
+     * 下载专用客户端。通用客户端的 readTimeout=20s 对 46 MB 的安装包不够用；
+     * 且下载不该共享 WebView 的 cookie jar。
+     * readTimeout 是「单次读取的间隔上限」，不是整个下载时长。
+     */
+    @Provides
+    @Singleton
+    @DownloadClient
+    fun provideDownloadClient(): OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .callTimeout(0, TimeUnit.MILLISECONDS)
+        .retryOnConnectionFailure(true)
+        .followRedirects(true)
+        .build()
 }
