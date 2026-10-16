@@ -19,11 +19,13 @@ object DownloadSourceSet {
     private const val GITHUB_PREFIX = "https://github.com/"
 
     /**
-     * 镜像常量表。实测 9 个主流加速站里只有 gh-proxy.com 活着（且只有 4.6 KB/s），
-     * 所以这里只留一个、默认关闭、只当「直连彻底跑不通」时的最后退路。用户可自行修改本表。
+     * 镜像常量表。2026-10-16 实测（PC 侧）：gh-proxy.com / ghproxy.net 可用，其余常见加速站
+     * 全部不可达或只回错误页；手机侧此前仅 gh-proxy.com 存活。两个镜像默认关闭，只当直连
+     * 停滞/过慢（源监视器判定）时的退路。用户可自行修改本表。
      */
     val MIRRORS: List<UpdateSource> = listOf(
         UpdateSource("gh-proxy", "镜像 gh-proxy.com", "https://gh-proxy.com/"),
+        UpdateSource("ghproxy-net", "镜像 ghproxy.net", "https://ghproxy.net/"),
     )
 
     /**

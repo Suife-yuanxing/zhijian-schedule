@@ -23,6 +23,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
@@ -54,6 +55,7 @@ import com.zhijian.schedule.core.theme.ThemePresets
 import com.zhijian.schedule.core.ui.StaggerIn
 import com.zhijian.schedule.core.ui.pressScale
 import com.zhijian.schedule.core.ui.selectedPop
+import com.zhijian.schedule.feature.update.UpdateDialog
 import com.zhijian.schedule.navigation.IslandContentPadding
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -67,6 +69,7 @@ fun ProfileScreen(
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val colors = LocalCourseColors.current
     var showPrivacy by remember { mutableStateOf(false) }
+    var showUpdate by remember { mutableStateOf(false) }
 
     Column(
         Modifier
@@ -164,6 +167,13 @@ fun ProfileScreen(
                 )
                 Spacer(Modifier.height(10.dp))
                 EntryCard(
+                    painter = rememberVectorPainter(Icons.Filled.Refresh),
+                    title = "检查更新",
+                    subtitle = "当前版本 v${BuildConfig.VERSION_NAME}",
+                    onClick = { showUpdate = true },
+                )
+                Spacer(Modifier.height(10.dp))
+                EntryCard(
                     painter = rememberVectorPainter(Icons.Filled.Info),
                     title = "关于",
                     subtitle = "Paper Timetable · MIT 参考实现自研",
@@ -244,6 +254,10 @@ fun ProfileScreen(
         }
 
         Spacer(Modifier.height(IslandContentPadding))
+    }
+
+    if (showUpdate) {
+        UpdateDialog(onDismiss = { showUpdate = false })
     }
 
     if (showPrivacy) {

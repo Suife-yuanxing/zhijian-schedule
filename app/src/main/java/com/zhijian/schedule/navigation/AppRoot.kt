@@ -64,6 +64,8 @@ import com.zhijian.schedule.feature.profile.ProfileScreen
 import com.zhijian.schedule.feature.schedule.ScheduleScreen
 import com.zhijian.schedule.feature.settings.SettingsScreen
 import com.zhijian.schedule.feature.today.TodayScreen
+import com.zhijian.schedule.feature.update.UpdateDialog
+import com.zhijian.schedule.feature.update.UpdatePromptViewModel
 
 /**
  * 每个底部 tab 一个独立嵌套图。
@@ -155,16 +157,23 @@ private fun NavHostController.navigateToTab(route: String) {
 }
 
 @Composable
-fun AppRoot(openTodayCount: Int = 0) {
+fun AppRoot(openTodayCount: Int = 0, openJwImportCount: Int = 0) {
     val appViewModel: AppViewModel = hiltViewModel()
+    val updatePrompt: UpdatePromptViewModel = hiltViewModel()
     val settings by appViewModel.settings.collectAsStateWithLifecycle()
     CourseTheme(presetId = settings.themeId, darkMode = settings.darkMode) {
-        AppScaffold(openTodayCount = openTodayCount)
+        AppScaffold(openTodayCount = openTodayCount, openJwImportCount = openJwImportCount)
+
+        // 进入应用自动检查更新：静默检查，发现新版本才弹更新窗口（失败/已最新不打扰）
+        LaunchedEffect(Unit) { updatePrompt.checkOnLaunch() }
+        if (updatePrompt.promptVersion != null) {
+            UpdateDialog(onDismiss = { updatePrompt.dismiss() })
+        }
     }
 }
 
 @Composable
-private fun AppScaffold(openTodayCount: Int) {
+private fun AppScaffold(openTodayCount: Int, openJwImportCount: Int) {
     val navController = rememberNavController()
     val colors = LocalCourseColors.current
     val tabs = listOf(
@@ -343,6 +352,15 @@ private fun AppScaffold(openTodayCount: Int) {
                 if (openTodayCount > 0) {
                     withFrameNanos { }
                     navController.navigateToTab(Routes.TODAY_TAB)
+                }
+            }
+
+            // 点同步失败通知直达「教务导入」：切到我的 tab 再推入导入页（WebView 自动走 SSO 恢复/登录）
+            LaunchedEffect(openJwImportCount) {
+                if (openJwImportCount > 0) {
+                    withFrameNanos { }
+                    navController.navigateToTab(Routes.PROFILE_TAB)
+                    navController.navigate(Routes.PROFILE_JW_IMPORT) { launchSingleTop = true }
                 }
             }
 

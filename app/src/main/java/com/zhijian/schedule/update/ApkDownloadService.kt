@@ -142,6 +142,7 @@ class ApkDownloadService : Service() {
         private const val EXTRA_URL = "update_url"
         private const val EXTRA_SIZE = "update_size"
         private const val EXTRA_DIGEST = "update_digest"
+        private const val EXTRA_MIRRORS = "update_mirrors"
 
         /** 启动下载。必须在可见界面上调用（Android 12+ 不允许后台启动前台服务） */
         fun start(context: Context, request: DownloadRequest) {
@@ -150,6 +151,8 @@ class ApkDownloadService : Service() {
                 .putExtra(EXTRA_URL, request.url)
                 .putExtra(EXTRA_SIZE, request.sizeBytes ?: -1L)
                 .putExtra(EXTRA_DIGEST, request.digest)
+                // 镜像开关必须随 Intent 过河：服务会用 extras 重建请求，默认值 false 会把开关吞掉
+                .putExtra(EXTRA_MIRRORS, request.mirrorsEnabled)
             ContextCompat.startForegroundService(context, intent)
         }
 
@@ -171,6 +174,7 @@ class ApkDownloadService : Service() {
                 url = url,
                 sizeBytes = source.getLongExtra(EXTRA_SIZE, -1L).takeIf { it > 0 },
                 digest = source.getStringExtra(EXTRA_DIGEST),
+                mirrorsEnabled = source.getBooleanExtra(EXTRA_MIRRORS, false),
             )
         }
     }

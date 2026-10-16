@@ -33,6 +33,21 @@ class UpdateChecker @Inject constructor(
         val notes: String,
     )
 
+    /** 最近一次成功检查的缓存（启动自动检查后，窗口打开时直接展示、不再重复请求） */
+    data class CachedCheck(val info: UpdateInfo?)
+
+    @Volatile
+    private var lastSuccessAt = 0L
+
+    @Volatile
+    private var lastSuccessInfo: UpdateInfo? = null
+
+    fun cachedCheck(): CachedCheck? {
+        val at = lastSuccessAt
+        if (at == 0L || System.currentTimeMillis() - at > CACHE_TTL_MS) return null
+        return CachedCheck(lastSuccessInfo)
+    }
+
     suspend fun check(): Result<UpdateInfo?> = withContext(Dispatchers.IO) {
         runCatching {
             val request = Request.Builder()
@@ -69,6 +84,9 @@ class UpdateChecker @Inject constructor(
                     )
                 } else null
             }
+        }.onSuccess { info ->
+            lastSuccessInfo = info
+            lastSuccessAt = System.currentTimeMillis()
         }
     }
 
@@ -87,5 +105,8 @@ class UpdateChecker @Inject constructor(
     companion object {
         /** 发布仓库（GitHub Releases 分发，方案 1.4） */
         const val GITHUB_REPO = "Suife-yuanxing/zhijian-schedule"
+
+        /** 成功检查结果的缓存有效期 */
+        private const val CACHE_TTL_MS = 15 * 60_000L
     }
 }

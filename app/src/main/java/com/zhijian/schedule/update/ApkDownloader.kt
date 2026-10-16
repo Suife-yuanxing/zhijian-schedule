@@ -1,6 +1,8 @@
 package com.zhijian.schedule.update
 
 import android.content.Context
+import android.os.SystemClock
+import android.util.Log
 import com.zhijian.schedule.BuildConfig
 import com.zhijian.schedule.di.DownloadClient
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -23,6 +25,8 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.Call
 import okhttp3.OkHttpClient
@@ -39,6 +43,38 @@ data class DownloadRequest(
     /** 设置页的「镜像加速」开关；关闭时候选只有直连 */
     val mirrorsEnabled: Boolean = false,
 )
+
+/** 源监视器的判决（纯逻辑，便于单测） */
+internal sealed interface WatchdogVerdict {
+    data object Ok : WatchdogVerdict
+
+    /** 长时间没有新字节：直连被黑洞、连接假死 */
+    data object Stalled : WatchdogVerdict
+
+    /** 还能换源，但有效速度长期低于下限——手机网络里「慢但能下」的体感等同不可用 */
+    data object TooSlow : WatchdogVerdict
+}
+
+/** 25 秒没有新字节视为停滞 */
+internal const val WATCHDOG_STALL_TIMEOUT_MS = 25_000L
+
+/** 前 1 分钟是连接/加速宽限期，之后才评价速度 */
+internal const val WATCHDOG_SPEED_GRACE_MS = 60_000L
+
+/** 有效速度下限：低于 30KB/s 且还有候选源时换源（46MB 按此速度要 25 分钟以上） */
+internal const val WATCHDOG_MIN_SPEED_BPS = 30_000L
+
+internal fun sourceWatchdogVerdict(
+    movedBytes: Long,
+    stillForMs: Long,
+    elapsedMs: Long,
+    hasNextSource: Boolean,
+): WatchdogVerdict = when {
+    stillForMs >= WATCHDOG_STALL_TIMEOUT_MS -> WatchdogVerdict.Stalled
+    hasNextSource && movedBytes > 0L && elapsedMs >= WATCHDOG_SPEED_GRACE_MS &&
+        movedBytes * 1000L / elapsedMs.coerceAtLeast(1) < WATCHDOG_MIN_SPEED_BPS -> WatchdogVerdict.TooSlow
+    else -> WatchdogVerdict.Ok
+}
 
 /** 更新下载的状态；唯一事实来源是 [ApkDownloader] */
 sealed interface DownloadState {
@@ -86,6 +122,9 @@ class ApkDownloader @Inject constructor(
 
     private val cancelRequested = AtomicBoolean(false)
 
+    /** 源监视器触发的中止：与「用户取消」区分开——取消落 Paused，中止是换下一个源 */
+    private val sourceAbort = AtomicBoolean(false)
+
     /** 所有在飞的连接；取消时逐个 cancel。并发调度下会有 8 条同时在飞，所以用并发安全的集合 */
     private val activeCalls: MutableSet<Call> = ConcurrentHashMap.newKeySet()
 
@@ -96,6 +135,7 @@ class ApkDownloader @Inject constructor(
      */
     suspend fun download(request: DownloadRequest) {
         cancelRequested.set(false)
+        sourceAbort.set(false)
         val sources = DownloadSourceSet.availableSources(
             directUrl = request.url,
             digest = request.digest,
@@ -193,22 +233,27 @@ class ApkDownloader @Inject constructor(
     )
 
     /**
-     * 依次尝试候选源。一次下载尝试内只用一个源；该源失败且还有下一个时自动换下一个重试一次
-     * （对用户表现为「点一次下载」）。慢 ≠ 失败：直连虽然慢但能下就不切镜像。
+     * 依次尝试候选源。一次下载尝试内只用一个源；该源失败、停滞或过慢且还有下一个时
+     * 自动换下一个重试一次（对用户表现为「点一次下载」）。
      */
     private suspend fun runSourceChain(request: DownloadRequest, sources: List<UpdateSource>): DownloadState {
         for (index in sources.indices) {
             coroutineContext.ensureActive()
             if (cancelRequested.get()) return paused(request.version)
             val source = sources[index]
-            when (val notice = downloadSource(request, source)) {
+            val hasNext = index != sources.lastIndex
+            sourceAbort.set(false)
+            Log.i(TAG, "尝试下载源 ${source.id}（${source.url}）")
+            val notice = withSourceWatchdog(request.version, hasNext) { downloadSource(request, source) }
+            when (notice) {
                 is Notice.Done -> return notice.state
                 Notice.Paused -> return paused(request.version)
                 // 这个源失败了
                 is Notice.Failed -> {
+                    Log.i(TAG, "源 ${source.id} 未跑通：${notice.reason}")
                     // 还有下一个候选就换源。换源必须清空分片（设计 §3.3）：两个源的同名文件可能
                     // 内容不同，混着拼必然坏，事后只能靠整包 SHA-256 发现，代价是白下 46 MB。
-                    if (index != sources.lastIndex) {
+                    if (hasNext) {
                         store.deleteAll(request.version)
                         continue
                     }
@@ -222,12 +267,68 @@ class ApkDownloader @Inject constructor(
                     return DownloadState.Failed(request.version, notice.reason, notice.canResume)
                 }
                 // 服务端不认 Range（设计 §2.4）：分片集合已作废，清掉元数据改用单连接重下一次
-                Notice.Fallback -> return downloadSequential(request, source, fromScratch = true)
-                    .settle(request.version)
+                Notice.Fallback -> return withSourceWatchdog(request.version, hasNext) {
+                    downloadSequential(request, source, fromScratch = true)
+                }.settle(request.version)
             }
         }
         // availableSources 至少返回直连一条，所以这里只是防御性收尾
         return DownloadState.Failed(request.version, "所有下载源都失败", canResume = false)
+    }
+
+    /**
+     * 用源监视器包住一次源尝试：25 秒没有新字节（直连被黑洞、连接假死）或过了宽限期后
+     * 有效速度仍低于 30KB/s 且还有候选源时，中止本源的连接交给源链。
+     * 「慢 ≠ 失败」仅指首个候选还能稳定产出；持续爬行在手机网络里体感等同不可用。
+     */
+    private suspend fun <T> withSourceWatchdog(
+        version: String,
+        hasNextSource: Boolean,
+        block: suspend () -> T,
+    ): T = coroutineScope {
+        val watchdog = launch(Dispatchers.IO) {
+            val attemptStartBytes = store.partBytes(version)
+            var lastBytes = attemptStartBytes
+            val startAt = SystemClock.elapsedRealtime()
+            var lastMoveAt = startAt
+            while (isActive) {
+                delay(WATCHDOG_TICK_MS)
+                val nowMs = SystemClock.elapsedRealtime()
+                val bytes = store.partBytes(version)
+                if (bytes != lastBytes) {
+                    lastBytes = bytes
+                    lastMoveAt = nowMs
+                }
+                when (sourceWatchdogVerdict(
+                    movedBytes = bytes - attemptStartBytes,
+                    stillForMs = nowMs - lastMoveAt,
+                    elapsedMs = nowMs - startAt,
+                    hasNextSource = hasNextSource,
+                )) {
+                    WatchdogVerdict.Ok -> Unit
+                    WatchdogVerdict.Stalled -> {
+                        Log.i(TAG, "源停滞 ${(nowMs - lastMoveAt) / 1000}s 无新字节，中止换源")
+                        sourceAbort.set(true)
+                        cancelActiveCalls()
+                        break
+                    }
+                    WatchdogVerdict.TooSlow -> {
+                        Log.i(
+                            TAG,
+                            "源过慢（${bytes - attemptStartBytes}B / ${(nowMs - startAt) / 1000}s），中止换源",
+                        )
+                        sourceAbort.set(true)
+                        cancelActiveCalls()
+                        break
+                    }
+                }
+            }
+        }
+        try {
+            block()
+        } finally {
+            watchdog.cancel()
+        }
     }
 
     /**
@@ -325,6 +426,9 @@ class ApkDownloader @Inject constructor(
         /** 用户取消 / 超时 */
         data object Cancelled : ChunkOutcome
 
+        /** 源监视器中止（停滞 / 过慢）：交给源链换下一个源 */
+        data object Aborted : ChunkOutcome
+
         data class Error(val reason: String) : ChunkOutcome
     }
 
@@ -367,6 +471,7 @@ class ApkDownloader @Inject constructor(
                             while (true) {
                                 coroutineContext.ensureActive()
                                 if (cancelRequested.get()) return@async ChunkOutcome.Cancelled
+                                if (sourceAbort.get()) return@async ChunkOutcome.Aborted
                                 val index = queue.tryReceive().getOrNull() ?: break
                                 val result = downloadChunk(request, source, plan, index, file, written, plan.chunkCount, done, lock, meter)
                                 // 某片发现服务端不认 Range 就没必要把剩下的片也拉下来，立刻收手
@@ -395,6 +500,8 @@ class ApkDownloader @Inject constructor(
             ChunkOutcome.Completed -> verifyAndClearChunks(request, part, plan.totalBytes)
             ChunkOutcome.Unsupported -> Notice.Fallback
             ChunkOutcome.Cancelled -> Notice.Paused
+            // 源监视器判了停滞/过慢：本次尝试作废，交给源链。分片仍在，单源收场时还能续传
+            ChunkOutcome.Aborted -> Notice.Failed("网络停滞或过慢，可继续下载", canResume = true)
             // 片内重试 3 次仍失败（设计 §2.2）：这是「这个源没跑通」，交给源链决定是换下一个源
             // 还是收场。已完成的片留在磁盘上，单源时 canResume = true 才有东西可续。
             is ChunkOutcome.Error -> Notice.Failed(outcome.reason, canResume = true)
@@ -419,6 +526,7 @@ class ApkDownloader @Inject constructor(
         while (attempt < MAX_CHUNK_ATTEMPTS) {
             coroutineContext.ensureActive()
             if (cancelRequested.get()) return ChunkOutcome.Cancelled
+            if (sourceAbort.get()) return ChunkOutcome.Aborted
             attempt++
 
             val etag = store.readMeta(request.version)?.etag
@@ -429,6 +537,7 @@ class ApkDownloader @Inject constructor(
             } catch (e: IOException) {
                 activeCalls.remove(call)
                 if (cancelRequested.get()) return ChunkOutcome.Cancelled
+                if (sourceAbort.get()) return ChunkOutcome.Aborted
                 if (attempt >= MAX_CHUNK_ATTEMPTS) {
                     return ChunkOutcome.Error("网络中断（${e.message ?: "IO 错误"}），可继续下载")
                 }
@@ -448,12 +557,16 @@ class ApkDownloader @Inject constructor(
                 Stop.None -> return ChunkOutcome.Completed
                 Stop.Unsupported -> return ChunkOutcome.Unsupported
                 Stop.Cancelled -> return ChunkOutcome.Cancelled
+                Stop.Abort -> return ChunkOutcome.Aborted
                 // 416 说明服务端认为整份都在了，直接交校验去判断
                 is Stop.AlreadyComplete -> return ChunkOutcome.Completed
                 is Stop.Corrupt -> return ChunkOutcome.Error(settled.reason)
                 is Stop.Fail -> return ChunkOutcome.Error(settled.reason)
-                is Stop.Retry -> if (attempt >= MAX_CHUNK_ATTEMPTS) {
-                    return ChunkOutcome.Error("下载失败（HTTP ${settled.code}），可继续下载")
+                is Stop.Retry -> {
+                    if (sourceAbort.get()) return ChunkOutcome.Aborted
+                    if (attempt >= MAX_CHUNK_ATTEMPTS) {
+                        return ChunkOutcome.Error("下载失败（HTTP ${settled.code}），可继续下载")
+                    }
                 }
             }
             delay(RETRY_BASE_MILLIS * attempt)
@@ -483,6 +596,9 @@ class ApkDownloader @Inject constructor(
 
         /** 用户取消 / 超时 */
         data object Cancelled : Stop
+
+        /** 源监视器中止本源的连接（停滞 / 过慢） */
+        data object Abort : Stop
 
         /** 416：服务端认为整份文件都在了，交校验判断 */
         data class AlreadyComplete(val total: Long) : Stop
@@ -562,6 +678,7 @@ class ApkDownloader @Inject constructor(
         try {
             while (offset <= chunk.endInclusive) {
                 if (cancelRequested.get()) return Stop.Cancelled
+                if (sourceAbort.get()) return Stop.Abort
                 val want = minOf(BUFFER_BYTES.toLong(), chunk.endInclusive - offset + 1L).toInt()
                 val read = input.read(buffer, 0, want)
                 if (read < 0) break
@@ -586,6 +703,8 @@ class ApkDownloader @Inject constructor(
                 }
             }
         } catch (e: IOException) {
+            // 源监视器中止时连接的取消同样会以 IO 异常形式抛出，优先按「换源」裁决
+            if (sourceAbort.get()) return Stop.Abort
             when (val verdict = ResumableDownload.resolveReadFailure(e, cancelRequested.get())) {
                 is ReadVerdict.StopCancelled -> return Stop.Cancelled
                 is ReadVerdict.Retry -> {
@@ -688,10 +807,12 @@ class ApkDownloader @Inject constructor(
             call.execute()
         } catch (e: IOException) {
             activeCalls.remove(call)
-            return if (cancelRequested.get()) {
-                Notice.Paused
-            } else {
-                Notice.Done(DownloadState.Failed(request.version, "网络中断（${e.message ?: "IO 错误"}）", canResume = true))
+            return when {
+                cancelRequested.get() -> Notice.Paused
+                sourceAbort.get() -> Notice.Failed("网络停滞或过慢，可继续下载", canResume = true)
+                else -> Notice.Done(
+                    DownloadState.Failed(request.version, "网络中断（${e.message ?: "IO 错误"}）", canResume = true)
+                )
             }
         }
         return try {
@@ -755,6 +876,7 @@ class ApkDownloader @Inject constructor(
             body.byteStream().use { input ->
                 while (true) {
                     if (cancelRequested.get()) return Notice.Paused
+                    if (sourceAbort.get()) return Notice.Failed("网络停滞或过慢，可继续下载", canResume = true)
                     val read = input.read(buffer)
                     if (read < 0) break
                     if (read == 0) continue
@@ -807,6 +929,10 @@ class ApkDownloader @Inject constructor(
         const val MAX_CHUNK_ATTEMPTS = 3
         const val RETRY_BASE_MILLIS = 500L
         const val PROGRESS_STEP_BYTES = 64L * 1024L
+        const val TAG = "UpdateDownload"
+
+        /** 源监视器巡检间隔 */
+        const val WATCHDOG_TICK_MS = 3_000L
         val USER_AGENT = "ZhiJianSchedule/" + BuildConfig.VERSION_NAME
     }
 }
