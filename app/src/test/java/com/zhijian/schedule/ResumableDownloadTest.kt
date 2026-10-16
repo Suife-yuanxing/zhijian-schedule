@@ -6,6 +6,7 @@ import com.zhijian.schedule.update.ContentRange
 import com.zhijian.schedule.update.PartMeta
 import com.zhijian.schedule.update.RangeDecision
 import com.zhijian.schedule.update.RangeSupport
+import com.zhijian.schedule.update.ReadVerdict
 import com.zhijian.schedule.update.ResumableDownload
 import com.zhijian.schedule.update.ResumePoint
 import com.zhijian.schedule.update.VerifyResult
@@ -485,6 +486,34 @@ class ResumableDownloadTest {
         assertTrue(ResumableDownload.decideRangeSupport(502, 3, 0) is RangeSupport.Fail)
         val fail = ResumableDownload.decideRangeSupport(404, 3, 0) as RangeSupport.Fail
         assertEquals(false, fail.canResume)
+    }
+
+    // ---------- 读取中途 IO 失败的判停（真机闪退回归：HTTP/2 stream was reset: CANCEL）----------
+
+    @Test
+    fun readFailureWhileCancellingMeansStop() {
+        // 用户点了取消，流被 OkHttp 重置（HTTP/2 RST_STREAM）从 read() 冒出来：
+        // 必须判停（Paused），不能当普通网络失败去重试 3 次
+        val e = java.io.IOException("stream was reset: CANCEL")
+        val verdict = ResumableDownload.resolveReadFailure(e, cancelRequested = true)
+        assertTrue(verdict is ReadVerdict.StopCancelled)
+    }
+
+    @Test
+    fun readFailureWithoutCancelMeansRetry() {
+        // 单个分片的连接被掐（飞行模式、弱网）：这一片整片重试，不是全局失败
+        val e = java.io.IOException("connection reset")
+        val verdict = ResumableDownload.resolveReadFailure(e, cancelRequested = false)
+        assertTrue(verdict is ReadVerdict.Retry)
+        assertEquals("网络中断（connection reset）", (verdict as ReadVerdict.Retry).reason)
+    }
+
+    @Test
+    fun cancellationExceptionStaysUntouched() {
+        // 协程取消必须原样上抛，吞掉它会破坏结构化并发
+        val e = java.util.concurrent.CancellationException("job was cancelled")
+        val verdict = ResumableDownload.resolveReadFailure(e, cancelRequested = false)
+        assertTrue(verdict is ReadVerdict.Rethrow)
     }
 
     private fun tempFile(content: String): File {

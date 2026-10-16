@@ -363,16 +363,26 @@ class ApkDownloader @Inject constructor(
                     // 显式钉住 async 的返回类型，且循环用 break 收尾：协程体的末表达式必须是
                     // ChunkOutcome，否则下面按 ChunkOutcome 分派的 when 会因类型是 Any 而不再穷尽
                     async<ChunkOutcome>(Dispatchers.IO) {
-                        while (true) {
-                            coroutineContext.ensureActive()
-                            if (cancelRequested.get()) return@async ChunkOutcome.Cancelled
-                            val index = queue.tryReceive().getOrNull() ?: break
-                            val result = downloadChunk(request, source, plan, index, file, written, plan.chunkCount, done, lock, meter)
-                            // 某片发现服务端不认 Range 就没必要把剩下的片也拉下来，立刻收手
-                            if (result !is ChunkOutcome.Completed) return@async result
+                        try {
+                            while (true) {
+                                coroutineContext.ensureActive()
+                                if (cancelRequested.get()) return@async ChunkOutcome.Cancelled
+                                val index = queue.tryReceive().getOrNull() ?: break
+                                val result = downloadChunk(request, source, plan, index, file, written, plan.chunkCount, done, lock, meter)
+                                // 某片发现服务端不认 Range 就没必要把剩下的片也拉下来，立刻收手
+                                if (result !is ChunkOutcome.Completed) return@async result
+                            }
+                            // 队列被抢空：这个 worker 正常收工
+                            ChunkOutcome.Completed
+                        } catch (e: Exception) {
+                            // 防御纵深：writeChunk 已按裁决兜住读取期 IOException，这里是最后一道闸 ——
+                            // 任何漏网异常（close 期 IO、分派竞态）都不允许穿出 async 炸掉 coroutineScope
+                            // 把前台服务拖闪退（真机回归 2026-10-16）。CancellationException 必须原样上抛，
+                            // 否则结构化并发的取消语义被破坏。
+                            if (e is kotlinx.coroutines.CancellationException) throw e
+                            if (cancelRequested.get()) ChunkOutcome.Cancelled
+                            else ChunkOutcome.Error("网络中断（${e.message ?: e::class.simpleName ?: "IO 错误"}），可继续下载")
                         }
-                        // 队列被抢空：这个 worker 正常收工
-                        ChunkOutcome.Completed
                     }
                 }
                 // awaitAll 让所有 worker 收尾；只要有一个非 Completed 就取它
@@ -545,29 +555,44 @@ class ApkDownloader @Inject constructor(
         val buffer = ByteArray(BUFFER_BYTES)
         var offset = chunk.start
         var sinceUpdate = 0L
-        while (offset <= chunk.endInclusive) {
-            if (cancelRequested.get()) return Stop.Cancelled
-            val want = minOf(BUFFER_BYTES.toLong(), chunk.endInclusive - offset + 1L).toInt()
-            val read = input.read(buffer, 0, want)
-            if (read < 0) break
-            if (read == 0) continue
-            // seek + write 必须原子：8 个 worker 共用同一个 RandomAccessFile，文件指针是共享状态。
-            // 不锁的话「A 先 seek、被抢占、B 又 seek、A 再 write」会把 A 的数据写到 B 的偏移上，
-            // 拼出来的 APK 静默损坏（长度对得上，只有整包 SHA-256 能发现）。锁与进度记账共用同一把。
-            synchronized(lock) {
-                file.seek(offset)
-                file.write(buffer, 0, read)
-            }
-            offset += read
-            sinceUpdate += read
-            if (sinceUpdate >= PROGRESS_STEP_BYTES) {
-                sinceUpdate = 0L
+        // 读取循环必须兜 IOException：用户取消时 OkHttp 会把 HTTP/2 流重置
+        // （StreamResetException，IOException 子类）从阻塞中的 read() 抛出；不接住的话
+        // 异常穿出 async worker → coroutineScope 连锁取消 → 前台服务崩 → 应用闪退
+        // （真机回归 2026-10-16，见 ResumableDownload.resolveReadFailure 的裁决说明）。
+        try {
+            while (offset <= chunk.endInclusive) {
+                if (cancelRequested.get()) return Stop.Cancelled
+                val want = minOf(BUFFER_BYTES.toLong(), chunk.endInclusive - offset + 1L).toInt()
+                val read = input.read(buffer, 0, want)
+                if (read < 0) break
+                if (read == 0) continue
+                // seek + write 必须原子：8 个 worker 共用同一个 RandomAccessFile，文件指针是共享状态。
+                // 不锁的话「A 先 seek、被抢占、B 又 seek、A 再 write」会把 A 的数据写到 B 的偏移上，
+                // 拼出来的 APK 静默损坏（长度对得上，只有整包 SHA-256 能发现）。锁与进度记账共用同一把。
                 synchronized(lock) {
-                    written[index] = offset - chunk.start
-                    val now = ChunkProgress(plan, done.sorted(), written).downloadedBytes
-                    meter.record(System.currentTimeMillis(), now)
-                    publish(request, source, now, total, meter)
+                    file.seek(offset)
+                    file.write(buffer, 0, read)
                 }
+                offset += read
+                sinceUpdate += read
+                if (sinceUpdate >= PROGRESS_STEP_BYTES) {
+                    sinceUpdate = 0L
+                    synchronized(lock) {
+                        written[index] = offset - chunk.start
+                        val now = ChunkProgress(plan, done.sorted(), written).downloadedBytes
+                        meter.record(System.currentTimeMillis(), now)
+                        publish(request, source, now, total, meter)
+                    }
+                }
+            }
+        } catch (e: IOException) {
+            when (val verdict = ResumableDownload.resolveReadFailure(e, cancelRequested.get())) {
+                is ReadVerdict.StopCancelled -> return Stop.Cancelled
+                is ReadVerdict.Retry -> {
+                    // 片没读完：交给上层按片重试，这一片下次会被整片覆盖
+                    return Stop.Retry(0)
+                }
+                is ReadVerdict.Rethrow -> throw e
             }
         }
         // 片没读完（连接被掐）：交给上层重试，这一片下次会被整片覆盖

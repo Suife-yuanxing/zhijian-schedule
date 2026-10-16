@@ -218,6 +218,16 @@ object ResumableDownload {
         return hex
     }
 
+    /**
+     * 读取中途 IO 失败的裁决入口（判据见文件尾部 [ReadVerdict] 的文档）。
+     * [e] 可能是 OkHttp 的 StreamResetException（HTTP/2 流被取消重置）或普通 IOException。
+     */
+    fun resolveReadFailure(e: Exception, cancelRequested: Boolean): ReadVerdict = when {
+        e is kotlinx.coroutines.CancellationException -> ReadVerdict.Rethrow
+        cancelRequested -> ReadVerdict.StopCancelled
+        else -> ReadVerdict.Retry("网络中断（${e.message ?: e::class.simpleName ?: "IO 错误"}）")
+    }
+
     /** 流式 SHA-256（64 KiB 缓冲），返回 64 位小写十六进制。46 MB 约 0.2 秒 */
     fun sha256Hex(input: InputStream): String {
         val digest = MessageDigest.getInstance("SHA-256")
@@ -356,6 +366,24 @@ sealed interface RangeSupport {
 
     /** 由 [RangeSupport.Fail.canResume] 决定卡片给「重试」还是「重新下载」 */
     data class Fail(val reason: String, val canResume: Boolean) : RangeSupport
+}
+
+/**
+ * 分片**读取中途** IO 失败（[ApkDownloader.writeChunk] 的 `input.read()` 阻塞点）的裁决。
+ *
+ * 真机回归（2026-10-16）：GitHub 走 HTTP/2，8 个分片复用同一条连接；用户取消时
+ * `call.cancel()` 重置流，阻塞在 `read()` 的线程收到的不是协程取消，而是
+ * `StreamResetException("stream was reset: CANCEL")`（IOException 子类）。它若从
+ * worker 协程体逃逸，`async` 未捕获异常会连锁炸掉 `coroutineScope` 与前台服务 → 闪退。
+ * 裁决规则：
+ * - 取消期（`cancelRequested`）→ [ResumableDownload.ReadVerdict.StopCancelled]，正常走「已暂停」；
+ * - 协程取消（CancellationException）→ [ResumableDownload.ReadVerdict.Rethrow] 原样上抛，不破坏结构化并发；
+ * - 其余（真网络断、流重置）→ [ResumableDownload.ReadVerdict.Retry]，这一片整片重试，与设计 §2.2 一致。
+ */
+sealed interface ReadVerdict {
+    data object StopCancelled : ReadVerdict
+    data object Rethrow : ReadVerdict
+    data class Retry(val reason: String) : ReadVerdict
 }
 
 /**
