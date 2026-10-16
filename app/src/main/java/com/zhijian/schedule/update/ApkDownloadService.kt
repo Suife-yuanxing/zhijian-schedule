@@ -130,6 +130,7 @@ class ApkDownloadService : Service() {
             totalBytes = state.totalBytes,
             percent = percent,
             etaSeconds = state.etaSeconds,
+            sourceLabel = state.sourceLabel,
         )
 
     private fun percentOf(state: DownloadState.Running): Int? =

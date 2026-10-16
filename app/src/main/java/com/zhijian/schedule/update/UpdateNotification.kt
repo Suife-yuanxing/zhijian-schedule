@@ -34,7 +34,7 @@ object UpdateNotification {
         )
     }
 
-    /** 进度通知；percent 为 null 时显示不确定进度（响应没有长度信息） */
+    /** 进度通知；percent 为 null 时显示不确定进度（响应没有长度信息）；sourceLabel 非空时注明来源 */
     fun buildProgress(
         context: Context,
         version: String,
@@ -42,13 +42,15 @@ object UpdateNotification {
         totalBytes: Long?,
         percent: Int?,
         etaSeconds: Long?,
+        sourceLabel: String? = null,
     ): Notification {
+        val source = sourceLabel?.let { " · 经 $it" }.orEmpty()
         val text = if (totalBytes != null) {
             val tail = ResumableDownload.etaText(etaSeconds)?.let { " · $it" }.orEmpty()
             "${ResumableDownload.formatBytes(downloadedBytes)} / " +
-                "${ResumableDownload.formatBytes(totalBytes)}$tail"
+                "${ResumableDownload.formatBytes(totalBytes)}$tail$source"
         } else {
-            "已下载 ${ResumableDownload.formatBytes(downloadedBytes)}"
+            "已下载 ${ResumableDownload.formatBytes(downloadedBytes)}$source"
         }
         return NotificationCompat.Builder(context, CH_UPDATE)
             .setSmallIcon(R.drawable.ic_stat_notify)
