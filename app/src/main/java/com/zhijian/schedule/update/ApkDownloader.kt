@@ -7,12 +7,18 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.io.IOException
 import java.io.RandomAccessFile
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,9 +32,12 @@ import okhttp3.Response
 /** 一次下载请求：设置页构造，前台服务通过 Intent extras 传递 */
 data class DownloadRequest(
     val version: String,
+    /** 直连地址（GitHub `browser_download_url`），同时是镜像候选的模板 */
     val url: String,
     val sizeBytes: Long?,
     val digest: String?,
+    /** 设置页的「镜像加速」开关；关闭时候选只有直连 */
+    val mirrorsEnabled: Boolean = false,
 )
 
 /** 更新下载的状态；唯一事实来源是 [ApkDownloader] */
@@ -42,6 +51,8 @@ sealed interface DownloadState {
         val bytesPerSecond: Long,
         /** null = 样本不足或没有总长，UI 不显示剩余时间 */
         val etaSeconds: Long?,
+        /** 当前源标签；直连时为 null（默认路径不打扰），走镜像时显示 */
+        val sourceLabel: String? = null,
     ) : DownloadState
 
     /** 用户取消或服务被回收：分片保留，可续传 */
@@ -75,34 +86,35 @@ class ApkDownloader @Inject constructor(
 
     private val cancelRequested = AtomicBoolean(false)
 
-    @Volatile
-    private var activeCall: Call? = null
+    /** 所有在飞的连接；取消时逐个 cancel。并发调度下会有 8 条同时在飞，所以用并发安全的集合 */
+    private val activeCalls: MutableSet<Call> = ConcurrentHashMap.newKeySet()
 
     /**
-     * 开始或继续下载：自动读 `.part` 与 `.meta` 决定是否带 `Range`/`If-Range` 续传。
+     * 开始或继续下载：按磁盘现状决定「按分片续传」还是「单连接顺序续传」；
+     * 有多个候选源时一次尝试只用一个，失败且还有下一个就换源重试一次。
      * 必须在调用方（前台服务）的 scope 中执行。
      */
     suspend fun download(request: DownloadRequest) {
         cancelRequested.set(false)
-        val result = withContext(Dispatchers.IO) {
-            try {
-                runDownload(request)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: IOException) {
-                if (cancelRequested.get()) paused(request.version)
-                else DownloadState.Failed(request.version, "网络中断（${e.message ?: "IO 错误"}）", canResume = true)
-            } catch (t: Throwable) {
-                DownloadState.Failed(request.version, "下载出错（${t.message ?: t::class.simpleName}）", canResume = true)
-            }
+        val sources = DownloadSourceSet.availableSources(
+            directUrl = request.url,
+            digest = request.digest,
+            mirrors = if (request.mirrorsEnabled) DownloadSourceSet.MIRRORS else emptyList(),
+        )
+        try {
+            val result = withContext(Dispatchers.IO) { runSourceChain(request, sources) }
+            _state.value = result
+        } catch (e: CancellationException) {
+            // 服务被回收时协程会被取消：把状态落回 Paused（分片保留），再向上传播
+            _state.value = paused(request.version)
+            throw e
         }
-        _state.value = result
     }
 
     /** 用户取消或服务被回收：中止网络读取并把状态落到 Paused，分片保留以便续传 */
     fun cancel() {
         cancelRequested.set(true)
-        runCatching { activeCall?.cancel() }
+        cancelActiveCalls()
         val current = _state.value
         if (current is DownloadState.Running) _state.value = paused(current.version)
     }
@@ -110,7 +122,7 @@ class ApkDownloader @Inject constructor(
     /** 前台服务超时（Android 15+ 的 dataSync 累计上限）：中止并落到 Failed，分片仍然可续传 */
     fun timeout() {
         cancelRequested.set(true)
-        runCatching { activeCall?.cancel() }
+        cancelActiveCalls()
         val current = _state.value
         if (current is DownloadState.Running) {
             _state.value = DownloadState.Failed(
@@ -119,6 +131,10 @@ class ApkDownloader @Inject constructor(
                 canResume = true,
             )
         }
+    }
+
+    private fun cancelActiveCalls() {
+        activeCalls.toList().forEach { runCatching { it.cancel() } }
     }
 
     /** 某个版本已落盘的分片字节数 */
@@ -156,11 +172,18 @@ class ApkDownloader @Inject constructor(
 
     // ---------- 下载体 ----------
 
-    private sealed interface Outcome {
-        data class Done(val state: DownloadState) : Outcome
+    /** 一次下载尝试的说到底怎么了 */
+    private sealed interface Notice {
+        data class Done(val state: DownloadState) : Notice
 
-        /** 需要丢掉分片、从头再来一次（416 损坏，或 206 的起点与现有分片对不上） */
-        data object RetryFromScratch : Outcome
+        /** 用户取消 / 超时：分片保留 */
+        data object Paused : Notice
+
+        /** 这个源没跑通（自己的重试已用尽）；还有下一个候选就换源，已是最后一个则按 [canResume] 收场 */
+        data class Failed(val reason: String, val canResume: Boolean) : Notice
+
+        /** 服务端不支持 Range：清空分片，改用单连接顺序路径重下一次 */
+        data object Fallback : Notice
     }
 
     private fun paused(version: String): DownloadState = DownloadState.Paused(
@@ -169,108 +192,525 @@ class ApkDownloader @Inject constructor(
         totalBytes = store.readMeta(version)?.totalBytes?.takeIf { it > 0 },
     )
 
-    private suspend fun runDownload(request: DownloadRequest): DownloadState {
-        var restarted = false
-        while (true) {
+    /**
+     * 依次尝试候选源。一次下载尝试内只用一个源；该源失败且还有下一个时自动换下一个重试一次
+     * （对用户表现为「点一次下载」）。慢 ≠ 失败：直连虽然慢但能下就不切镜像。
+     */
+    private suspend fun runSourceChain(request: DownloadRequest, sources: List<UpdateSource>): DownloadState {
+        for (index in sources.indices) {
             coroutineContext.ensureActive()
             if (cancelRequested.get()) return paused(request.version)
+            val source = sources[index]
+            when (val notice = downloadSource(request, source)) {
+                is Notice.Done -> return notice.state
+                Notice.Paused -> return paused(request.version)
+                // 这个源失败了
+                is Notice.Failed -> {
+                    // 还有下一个候选就换源。换源必须清空分片（设计 §3.3）：两个源的同名文件可能
+                    // 内容不同，混着拼必然坏，事后只能靠整包 SHA-256 发现，代价是白下 46 MB。
+                    if (index != sources.lastIndex) {
+                        store.deleteAll(request.version)
+                        continue
+                    }
+                    // 已是最后一个源。分片还在、且 `.meta.url` 就是刚才这个源，所以续传仍然有效
+                    // —— 只有真的换过源（sources.size > 1）才因为上面的清空而无物可续，那时才按
+                    // 设计 §3.4 收场。镜像默认关闭时 sources 只有直连，这里的行为与 v1 完全一致。
+                    if (sources.size > 1) {
+                        store.deleteAll(request.version)
+                        return DownloadState.Failed(request.version, "所有下载源都失败", canResume = false)
+                    }
+                    return DownloadState.Failed(request.version, notice.reason, notice.canResume)
+                }
+                // 服务端不认 Range（设计 §2.4）：分片集合已作废，清掉元数据改用单连接重下一次
+                Notice.Fallback -> return downloadSequential(request, source, fromScratch = true)
+                    .settle(request.version)
+            }
+        }
+        // availableSources 至少返回直连一条，所以这里只是防御性收尾
+        return DownloadState.Failed(request.version, "所有下载源都失败", canResume = false)
+    }
 
-            val part = store.partFile(request.version)
-            val meta = store.readMeta(request.version)
-            val partBytes = if (part.isFile) part.length() else 0L
-            val knownTotal = request.sizeBytes?.takeIf { it > 0 }
-                ?: meta?.totalBytes?.takeIf { it > 0 }
+    /**
+     * 把「单个源的尝试结论」收敛成最终状态。保留 [Notice.Failed] 的 `canResume`，不一律压成 false
+     * —— 单源且分片还在时，用户点「重试」是能接着下的。
+     * 降级路径（[downloadSequential]）不可能再返回 [Notice.Fallback]（它进去就是要顺序下完），
+     * 真出现只可能是逻辑写错，这里按不可续传的失败收场，不再递归降级。
+     */
+    private fun Notice.settle(version: String): DownloadState = when (this) {
+        is Notice.Done -> state
+        Notice.Paused -> paused(version)
+        is Notice.Failed -> DownloadState.Failed(version, reason, canResume)
+        Notice.Fallback -> DownloadState.Failed(version, "服务端不支持分片下载，请重试", canResume = false)
+    }
 
-            // 磁盘预检：只按「还差多少」判断，续传时不再要求一整份的空闲空间
-            val missing = (knownTotal ?: partBytes) - partBytes
-            if (missing > 0 && store.freeSpaceBytes() < missing) {
-                return DownloadState.Failed(
+    /** 用单个源下载：按磁盘现状选「分片续传」或「顺序续传」，分片进度唯一权威是 `.meta.completedChunks` */
+    private suspend fun downloadSource(request: DownloadRequest, source: UpdateSource): Notice {
+        val meta = store.readMeta(request.version)
+        val partBytes = store.partBytes(request.version)
+        val knownTotal = request.sizeBytes?.takeIf { it > 0 } ?: meta?.totalBytes?.takeIf { it > 0 }
+        val resume = ResumableDownload.resolveResumePoint(
+            version = request.version,
+            url = source.url,
+            totalBytes = knownTotal,
+            partBytes = partBytes,
+            rawMeta = meta,
+        )
+
+        // 续传要的只有「缺的那部分」，不再要求一整份的空闲空间（设计 §2.6）
+        val missing = when (resume) {
+            is ResumePoint.Chunked -> resume.plan.totalBytes - resume.completed.sumOf { resume.plan.bytesOf(it) }
+            is ResumePoint.Fresh -> knownTotal ?: 0L
+        }
+        if (missing > 0L && store.freeSpaceBytes() < missing) {
+            return Notice.Done(
+                DownloadState.Failed(
                     request.version,
                     "存储空间不足，还需 ${ResumableDownload.formatBytes(missing)}",
                     canResume = false,
                 )
-            }
+            )
+        }
 
-            val builder = Request.Builder()
-                .url(request.url)
-                // 不加这行的话 OkHttp 会透明解压，Content-Length 变成压缩后大小，进度分母就错了
-                .header("Accept-Encoding", "identity")
-                .header("User-Agent", USER_AGENT)
-            if (partBytes > 0L && meta != null && meta.url == request.url) {
-                builder.header("Range", "bytes=$partBytes-")
-                // 交给服务端判断「资源没变才给 206」，能挡住资产被替换导致的新旧分片拼接损坏
-                meta.etag?.let { builder.header("If-Range", it) }
+        return when (resume) {
+            is ResumePoint.Fresh -> {
+                // 来源变了或压根没有断点：清掉已下的字节与元数据，两个源的同名文件不能混着拼
+                store.deleteAll(request.version)
+                val plan = resume.plan ?: return downloadSequential(request, source, fromScratch = true)
+                // 只有一个分片：多开连接只会被服务端限速，不如走单连接
+                if (plan.chunkCount <= 1) return downloadSequential(request, source, fromScratch = true)
+                // 先把「这次是按哪个源、哪个分片大小在拼」锚进 `.meta`：中途被杀时下次才对得上。
+                // 先建空文件再写元数据、且 etag/lastModified 一律留空 —— 两个细节都是为了「已经
+                // 没有断点了、这次真的要从 0 重来」：旧元数据里那对校验器属于上一次会话，照抄会让
+                // If-Range 拿过期校验器去问服务端。真正的校验器由第一片写完时从响应头捕获（见 writeChunk）。
+                store.deleteChunks(request.version)
+                store.writeMeta(
+                    PartMeta(
+                        version = request.version,
+                        url = source.url,
+                        totalBytes = plan.totalBytes,
+                        digest = request.digest,
+                        chunkSize = plan.chunkSize,
+                    )
+                )
+                parallelDownload(request, source, plan, emptyList())
             }
+            is ResumePoint.Chunked -> {
+                val plan = resume.plan
+                // 续传这一支保留旧元数据里的校验器：`.meta.url` 与当前源一致，说明这确实还是同一份文件
+                store.writeMeta(
+                    PartMeta(
+                        version = request.version,
+                        url = source.url,
+                        etag = meta?.etag,
+                        lastModified = meta?.lastModified,
+                        totalBytes = plan.totalBytes,
+                        digest = request.digest,
+                        chunkSize = plan.chunkSize,
+                        completedChunks = resume.completed,
+                    )
+                )
+                parallelDownload(request, source, plan, resume.completed)
+            }
+        }
+    }
 
-            val call = client.newCall(builder.build())
-            activeCall = call
+    /** 分片并行调度的结果 */
+    private sealed interface ChunkOutcome {
+        /** 队列被抢空 */
+        data object Completed : ChunkOutcome
+
+        /** 某个 worker 发现服务端忽略 Range */
+        data object Unsupported : ChunkOutcome
+
+        /** 用户取消 / 超时 */
+        data object Cancelled : ChunkOutcome
+
+        data class Error(val reason: String) : ChunkOutcome
+    }
+
+    /**
+     * `min(8, chunkCount)` 个 worker 抢同一个分片队列，各写自己那一段。**不开分片文件、不需要事后拼接**：
+     * 所有 worker 共用同一个 `RandomAccessFile`，`seek` 到各自分片起点后顺序写。
+     * 每片写完的顺序是「`fd.sync()` → 记账 → 重写 `.meta`」：先落盘再记账，崩溃后才不会把没写完的片当成完成片。
+     */
+    private suspend fun parallelDownload(
+        request: DownloadRequest,
+        source: UpdateSource,
+        plan: ChunkPlan,
+        completed: List<Int>,
+    ): Notice {
+        val part = store.partFile(request.version)
+        val done = completed.toMutableList()
+        val written = LongArray(plan.chunkCount)
+        // 续传时已完成的片按满长度记账，进度才不会从更小的数字开始
+        completed.forEach { index -> written[index] = plan.bytesOf(index) }
+        val lock = Any()
+        val meter = SpeedMeter()
+        val initial = ChunkProgress(plan, done.sorted(), written).downloadedBytes
+        meter.record(System.currentTimeMillis(), initial)
+        publish(request, source, initial, plan.totalBytes, meter)
+
+        val outcome = coroutineScope {
+            RandomAccessFile(part, "rw").use { file ->
+                if (completed.isEmpty()) file.setLength(0L)
+                val queue = kotlinx.coroutines.channels.Channel<Int>(
+                    kotlinx.coroutines.channels.Channel.UNLIMITED
+                )
+                (0 until plan.chunkCount).filter { it !in completed }.forEach { queue.trySend(it) }
+                queue.close()
+
+                val workers = List(minOf(MAX_CONNECTIONS, plan.chunkCount)) {
+                    // 显式钉住 async 的返回类型，且循环用 break 收尾：协程体的末表达式必须是
+                    // ChunkOutcome，否则下面按 ChunkOutcome 分派的 when 会因类型是 Any 而不再穷尽
+                    async<ChunkOutcome>(Dispatchers.IO) {
+                        while (true) {
+                            coroutineContext.ensureActive()
+                            if (cancelRequested.get()) return@async ChunkOutcome.Cancelled
+                            val index = queue.tryReceive().getOrNull() ?: break
+                            val result = downloadChunk(request, source, plan, index, file, written, plan.chunkCount, done, lock, meter)
+                            // 某片发现服务端不认 Range 就没必要把剩下的片也拉下来，立刻收手
+                            if (result !is ChunkOutcome.Completed) return@async result
+                        }
+                        // 队列被抢空：这个 worker 正常收工
+                        ChunkOutcome.Completed
+                    }
+                }
+                // awaitAll 让所有 worker 收尾；只要有一个非 Completed 就取它
+                val results = workers.awaitAll()
+                results.firstOrNull { it !is ChunkOutcome.Completed } ?: ChunkOutcome.Completed
+            }
+        }
+
+        return when (outcome) {
+            ChunkOutcome.Completed -> verifyAndClearChunks(request, part, plan.totalBytes)
+            ChunkOutcome.Unsupported -> Notice.Fallback
+            ChunkOutcome.Cancelled -> Notice.Paused
+            // 片内重试 3 次仍失败（设计 §2.2）：这是「这个源没跑通」，交给源链决定是换下一个源
+            // 还是收场。已完成的片留在磁盘上，单源时 canResume = true 才有东西可续。
+            is ChunkOutcome.Error -> Notice.Failed(outcome.reason, canResume = true)
+        }
+    }
+
+    /** 下载一个分片：200 触发降级、416 触发完成/损坏、其余失败重试 3 次（线性退避） */
+    private suspend fun downloadChunk(
+        request: DownloadRequest,
+        source: UpdateSource,
+        plan: ChunkPlan,
+        index: Int,
+        file: RandomAccessFile,
+        written: LongArray,
+        chunkCount: Int,
+        done: MutableList<Int>,
+        lock: Any,
+        meter: SpeedMeter,
+    ): ChunkOutcome {
+        val chunk = plan.chunks[index]
+        var attempt = 0
+        while (attempt < MAX_CHUNK_ATTEMPTS) {
+            coroutineContext.ensureActive()
+            if (cancelRequested.get()) return ChunkOutcome.Cancelled
+            attempt++
+
+            val etag = store.readMeta(request.version)?.etag
+            val call = client.newCall(chunkRequest(source, chunk, etag))
+            activeCalls.add(call)
             val response = try {
                 call.execute()
             } catch (e: IOException) {
-                activeCall = null
-                return if (cancelRequested.get()) paused(request.version)
-                else DownloadState.Failed(request.version, "网络中断（${e.message ?: "IO 错误"}）", canResume = true)
+                activeCalls.remove(call)
+                if (cancelRequested.get()) return ChunkOutcome.Cancelled
+                if (attempt >= MAX_CHUNK_ATTEMPTS) {
+                    return ChunkOutcome.Error("网络中断（${e.message ?: "IO 错误"}），可继续下载")
+                }
+                delay(RETRY_BASE_MILLIS * attempt)
+                continue
             }
 
-            val outcome = try {
-                response.use { handle(request, it, part, partBytes, knownTotal) }
+            val settled = try {
+                response.use {
+                    applyChunkResponse(request, source, plan, index, file, it, written, chunkCount, done, lock, meter)
+                }
             } finally {
-                activeCall = null
+                activeCalls.remove(call)
             }
 
-            when (outcome) {
-                is Outcome.Done -> return outcome.state
-                Outcome.RetryFromScratch -> {
-                    if (restarted) {
-                        return DownloadState.Failed(request.version, "下载文件损坏，请重新下载", canResume = false)
-                    }
-                    restarted = true
-                    store.deleteAll(request.version)
+            when (settled) {
+                Stop.None -> return ChunkOutcome.Completed
+                Stop.Unsupported -> return ChunkOutcome.Unsupported
+                Stop.Cancelled -> return ChunkOutcome.Cancelled
+                // 416 说明服务端认为整份都在了，直接交校验去判断
+                is Stop.AlreadyComplete -> return ChunkOutcome.Completed
+                is Stop.Corrupt -> return ChunkOutcome.Error(settled.reason)
+                is Stop.Fail -> return ChunkOutcome.Error(settled.reason)
+                is Stop.Retry -> if (attempt >= MAX_CHUNK_ATTEMPTS) {
+                    return ChunkOutcome.Error("下载失败（HTTP ${settled.code}），可继续下载")
+                }
+            }
+            delay(RETRY_BASE_MILLIS * attempt)
+        }
+        return ChunkOutcome.Error("分片下载失败，可继续下载")
+    }
+
+    /** 分片请求；`Accept-Encoding: identity` 不能少，否则 Content-Length 是压缩后大小，长度校验会全错 */
+    private fun chunkRequest(source: UpdateSource, chunk: Chunk, etag: String?): Request {
+        val builder = Request.Builder()
+            .url(source.url)
+            .header("Accept-Encoding", "identity")
+            .header("User-Agent", USER_AGENT)
+            .header("Range", "bytes=${chunk.start}-${chunk.endInclusive}")
+        // 交给服务端判断「资源没变才给 206」，能挡住资产被替换导致的新旧分片拼接损坏
+        etag?.let { builder.header("If-Range", it) }
+        return builder.build()
+    }
+
+    /** 单次分片响应的处理结论 */
+    private sealed interface Stop {
+        /** 这一片写完了 */
+        data object None : Stop
+
+        /** 服务端忽略 Range（200） */
+        data object Unsupported : Stop
+
+        /** 用户取消 / 超时 */
+        data object Cancelled : Stop
+
+        /** 416：服务端认为整份文件都在了，交校验判断 */
+        data class AlreadyComplete(val total: Long) : Stop
+
+        /** 分片集合坏了：起点对不上或没写完的 416 */
+        data class Corrupt(val reason: String) : Stop
+
+        /** 不可重试的失败 */
+        data class Fail(val reason: String) : Stop
+
+        /** 可重试的状态码（5xx / 429 / 响应无 body） */
+        data class Retry(val code: Int) : Stop
+    }
+
+    private fun applyChunkResponse(
+        request: DownloadRequest,
+        source: UpdateSource,
+        plan: ChunkPlan,
+        index: Int,
+        file: RandomAccessFile,
+        response: Response,
+        written: LongArray,
+        chunkCount: Int,
+        done: MutableList<Int>,
+        lock: Any,
+        meter: SpeedMeter,
+    ): Stop {
+        val contentRange = ResumableDownload.parseContentRange(response.header("Content-Range"))
+        val total = contentRange?.total ?: plan.totalBytes
+        val support = ResumableDownload.decideRangeSupport(response.code, chunkCount, done.size)
+        return when (support) {
+            RangeSupport.Unsupported -> Stop.Unsupported
+            RangeSupport.AlreadyComplete -> Stop.AlreadyComplete(total)
+            RangeSupport.Corrupt -> Stop.Corrupt("分片集合损坏，请重新下载")
+            // 500 与 IO 不降级：那是网络问题，重试即可；4xx 是没救了，直接换下一个源
+            is RangeSupport.Fail -> if (support.canResume) {
+                Stop.Retry(response.code)
+            } else {
+                Stop.Fail(support.reason)
+            }
+            RangeSupport.Supported -> {
+                // 206 的起点必须就是这一片的起点，否则拼出来的 APK 是坏的
+                if (contentRange != null && contentRange.start != plan.chunks[index].start) {
+                    return Stop.Corrupt("分片起点不匹配，请重新下载")
+                }
+                val body = response.body ?: return Stop.Retry(response.code)
+                body.byteStream().use { input ->
+                    writeChunk(request, source, plan, index, file, input, response, written, done, lock, meter, total)
                 }
             }
         }
     }
 
-    private fun handle(
+    /** 把这一片写进 `.part`；每 64 KiB 刷新一次进度。片没读完（连接被掐）当作这一片失败重试 */
+    private fun writeChunk(
         request: DownloadRequest,
+        source: UpdateSource,
+        plan: ChunkPlan,
+        index: Int,
+        file: RandomAccessFile,
+        input: java.io.InputStream,
+        response: Response,
+        written: LongArray,
+        done: MutableList<Int>,
+        lock: Any,
+        meter: SpeedMeter,
+        total: Long,
+    ): Stop {
+        val chunk = plan.chunks[index]
+        val buffer = ByteArray(BUFFER_BYTES)
+        var offset = chunk.start
+        var sinceUpdate = 0L
+        while (offset <= chunk.endInclusive) {
+            if (cancelRequested.get()) return Stop.Cancelled
+            val want = minOf(BUFFER_BYTES.toLong(), chunk.endInclusive - offset + 1L).toInt()
+            val read = input.read(buffer, 0, want)
+            if (read < 0) break
+            if (read == 0) continue
+            // seek + write 必须原子：8 个 worker 共用同一个 RandomAccessFile，文件指针是共享状态。
+            // 不锁的话「A 先 seek、被抢占、B 又 seek、A 再 write」会把 A 的数据写到 B 的偏移上，
+            // 拼出来的 APK 静默损坏（长度对得上，只有整包 SHA-256 能发现）。锁与进度记账共用同一把。
+            synchronized(lock) {
+                file.seek(offset)
+                file.write(buffer, 0, read)
+            }
+            offset += read
+            sinceUpdate += read
+            if (sinceUpdate >= PROGRESS_STEP_BYTES) {
+                sinceUpdate = 0L
+                synchronized(lock) {
+                    written[index] = offset - chunk.start
+                    val now = ChunkProgress(plan, done.sorted(), written).downloadedBytes
+                    meter.record(System.currentTimeMillis(), now)
+                    publish(request, source, now, total, meter)
+                }
+            }
+        }
+        // 片没读完（连接被掐）：交给上层重试，这一片下次会被整片覆盖
+        if (offset <= chunk.endInclusive) return Stop.Retry(0)
+
+        file.fd.sync()
+        synchronized(lock) {
+            written[index] = plan.bytesOf(index)
+            if (index !in done) done.add(index)
+            // 校验器：先从响应头捕获（第一片写完时把真正的 ETag/Last-Modified 记下来，
+            // 后续片的 If-Range 才拿得到有效值），再退回元数据里已有的值
+            val etag = response.header("ETag") ?: store.readMeta(request.version)?.etag
+            val lastModified = response.header("Last-Modified") ?: store.readMeta(request.version)?.lastModified
+            store.writeMeta(
+                PartMeta(
+                    version = request.version,
+                    url = source.url,
+                    etag = etag,
+                    lastModified = lastModified,
+                    totalBytes = total,
+                    digest = request.digest,
+                    chunkSize = plan.chunkSize,
+                    completedChunks = done.sorted(),
+                )
+            )
+            val now = ChunkProgress(plan, done.sorted(), written).downloadedBytes
+            meter.record(System.currentTimeMillis(), now)
+            publish(request, source, now, total, meter)
+        }
+        return Stop.None
+    }
+
+    /** 全部片齐了才校验；长度不符保留分片（下次只补缺的片），摘要不符必须整份重下 */
+    private fun verifyAndClearChunks(request: DownloadRequest, part: File, total: Long): Notice {
+        val expectedBytes = request.sizeBytes?.takeIf { it > 0 } ?: total
+        return when (ResumableDownload.verifyFile(part, expectedBytes, request.digest)) {
+            VerifyResult.Ok -> {
+                val apk = store.apkFile(request.version)
+                apk.delete()
+                if (part.renameTo(apk)) {
+                    store.deleteMeta(request.version)
+                    Notice.Done(DownloadState.Ready(request.version, apk, apk.length()))
+                } else {
+                    store.deleteAll(request.version)
+                    Notice.Done(DownloadState.Failed(request.version, "安装包保存失败，请重试", canResume = false))
+                }
+            }
+            // 长度不符多半是还有片没写完，保留分片让用户续传
+            VerifyResult.LengthMismatch -> Notice.Done(
+                DownloadState.Failed(
+                    request.version,
+                    "下载未完成（已收到 ${ResumableDownload.formatBytes(part.length())}），可继续下载",
+                    canResume = true,
+                )
+            )
+            VerifyResult.DigestMismatch -> {
+                store.deleteAll(request.version)
+                Notice.Done(DownloadState.Failed(request.version, "安装包校验失败，请重新下载", canResume = false))
+            }
+        }
+    }
+
+    // ---------- 单连接顺序路径（v1，保留为 Range 不可用时的降级路径） ----------
+
+    /**
+     * 服务端不支持 Range，或只有一两个分片时：回到 v1 已验证过的单连接顺序下载。
+     * [fromScratch] 为 true 时必须清掉元数据，否则顺序路径会读着指向镜像的 `.meta` 判续传，
+     * 把带 Range 的请求打在镜像上；为 false（v1 元数据 + 同源前缀）时保留元数据，让顺序路径正常追加。
+     */
+    private suspend fun downloadSequential(
+        request: DownloadRequest,
+        source: UpdateSource,
+        fromScratch: Boolean,
+    ): Notice {
+        if (fromScratch) store.deleteMeta(request.version)
+        val part = store.partFile(request.version)
+        val builder = Request.Builder()
+            .url(source.url)
+            .header("Accept-Encoding", "identity")
+            .header("User-Agent", USER_AGENT)
+        // 顺序续传时带上 Range/If-Range，语义与 v1 完全一致
+        if (!fromScratch) {
+            val meta = store.readMeta(request.version)
+            val partBytes = store.partBytes(request.version)
+            if (partBytes > 0L && meta != null && meta.url == source.url) {
+                builder.header("Range", "bytes=$partBytes-")
+                meta.etag?.let { builder.header("If-Range", it) }
+            }
+        }
+        val call = client.newCall(builder.build())
+        activeCalls.add(call)
+        val response = try {
+            call.execute()
+        } catch (e: IOException) {
+            activeCalls.remove(call)
+            return if (cancelRequested.get()) {
+                Notice.Paused
+            } else {
+                Notice.Done(DownloadState.Failed(request.version, "网络中断（${e.message ?: "IO 错误"}）", canResume = true))
+            }
+        }
+        return try {
+            response.use { handleSequential(request, source, it, part, fromScratch) }
+        } finally {
+            activeCalls.remove(call)
+        }
+    }
+
+    /** v1 的下载体：从偏移处顺序写到底，中途被杀靠 `.meta` 的 totalBytes 兜进度分母 */
+    private fun handleSequential(
+        request: DownloadRequest,
+        source: UpdateSource,
         response: Response,
         part: File,
-        partBytes: Long,
-        knownTotal: Long?,
-    ): Outcome {
-        val contentRange = ResumableDownload.parseContentRange(response.header("Content-Range"))
-        val decision = ResumableDownload.decideRange(response.code, partBytes, contentRange?.total ?: knownTotal)
-
-        when (decision) {
-            is RangeDecision.Fail -> return Outcome.Done(
-                DownloadState.Failed(request.version, decision.reason, decision.canResume)
+        fromScratch: Boolean,
+    ): Notice {
+        if (response.code !in 200..299) {
+            return Notice.Done(
+                DownloadState.Failed(
+                    request.version,
+                    "下载失败（HTTP ${response.code}），请重试",
+                    canResume = response.code in 500..599,
+                )
             )
-            RangeDecision.AlreadyComplete -> return Outcome.Done(verifyAndFinish(request, part))
-            RangeDecision.Corrupt -> return Outcome.RetryFromScratch
-            else -> Unit
         }
-
-        // 206 的起点必须与已有分片对齐，否则拼出来的 APK 是坏的
-        if (decision is RangeDecision.Append && contentRange != null && contentRange.start != partBytes) {
-            return Outcome.RetryFromScratch
+        val contentRange = ResumableDownload.parseContentRange(response.header("Content-Range"))
+        val partBytes = if (fromScratch) 0L else store.partBytes(request.version)
+        val appendFrom = when {
+            fromScratch -> 0L
+            // 服务端不认 Range、或 If-Range 判定资源已变：这次响应是整份，从头覆盖
+            response.code == 200 -> 0L
+            contentRange != null && contentRange.start == partBytes -> partBytes
+            else -> 0L
         }
-
-        val appendFrom = (decision as? RangeDecision.Append)?.offset ?: 0L
-        if (decision is RangeDecision.Restart) {
-            // 服务端忽略了 Range，或 If-Range 判定资源已变：丢掉分片从头写这一次响应
-            store.deleteMeta(request.version)
-            part.delete()
-        }
-
         val body = response.body
-            ?: return Outcome.Done(DownloadState.Failed(request.version, "响应无内容，请重试", canResume = true))
-        val total = ResumableDownload.resolveTotalBytes(body.contentLength(), contentRange, knownTotal)
+            ?: return Notice.Done(DownloadState.Failed(request.version, "响应无内容，请重试", canResume = true))
+        val total = ResumableDownload.resolveTotalBytes(body.contentLength(), contentRange, request.sizeBytes)
 
-        // 先落元数据再写数据：中途被杀也能靠 .meta 续传
+        // 先落元数据再写数据：中途被杀也能靠 .meta 记住进度分母
         store.writeMeta(
             PartMeta(
                 version = request.version,
-                url = request.url,
+                url = source.url,
                 etag = response.header("ETag"),
                 lastModified = response.header("Last-Modified"),
                 totalBytes = total ?: 0L,
@@ -281,7 +721,7 @@ class ApkDownloader @Inject constructor(
         val meter = SpeedMeter()
         var written = appendFrom
         meter.record(System.currentTimeMillis(), written)
-        _state.value = DownloadState.Running(request.version, written, total, 0L, null)
+        publish(request, source, written, total, meter)
 
         RandomAccessFile(part, "rw").use { file ->
             if (appendFrom == 0L) file.setLength(0L)
@@ -289,27 +729,21 @@ class ApkDownloader @Inject constructor(
             val buffer = ByteArray(BUFFER_BYTES)
             body.byteStream().use { input ->
                 while (true) {
-                    if (cancelRequested.get()) return Outcome.Done(paused(request.version))
+                    if (cancelRequested.get()) return Notice.Paused
                     val read = input.read(buffer)
                     if (read < 0) break
                     if (read == 0) continue
                     file.write(buffer, 0, read)
                     written += read
                     meter.record(System.currentTimeMillis(), written)
-                    _state.value = DownloadState.Running(
-                        version = request.version,
-                        downloadedBytes = written,
-                        totalBytes = total,
-                        bytesPerSecond = meter.bytesPerSecond() ?: 0L,
-                        etaSeconds = meter.etaSeconds(written, total),
-                    )
+                    publish(request, source, written, total, meter)
                 }
             }
             file.fd.sync()
         }
 
         if (total != null && written != total) {
-            return Outcome.Done(
+            return Notice.Done(
                 DownloadState.Failed(
                     request.version,
                     "下载未完成（已收到 ${ResumableDownload.formatBytes(written)}），可继续下载",
@@ -317,40 +751,37 @@ class ApkDownloader @Inject constructor(
                 )
             )
         }
-        return Outcome.Done(verifyAndFinish(request, part))
+        return verifyAndClearChunks(request, part, total ?: part.length())
     }
 
-    /** 校验通过（长度 + 可选哈希）才重命名成 `.apk` 并删除 `.meta`；任何一步不过都不改名 */
-    private fun verifyAndFinish(request: DownloadRequest, part: File): DownloadState {
-        val expectedBytes = request.sizeBytes?.takeIf { it > 0 }
-            ?: store.readMeta(request.version)?.totalBytes?.takeIf { it > 0 }
-        return when (ResumableDownload.verifyFile(part, expectedBytes, request.digest)) {
-            VerifyResult.Ok -> {
-                val apk = store.apkFile(request.version)
-                apk.delete()
-                if (part.renameTo(apk)) {
-                    store.deleteMeta(request.version)
-                    DownloadState.Ready(request.version, apk, apk.length())
-                } else {
-                    store.deleteAll(request.version)
-                    DownloadState.Failed(request.version, "安装包保存失败，请重试", canResume = false)
-                }
-            }
-            // 长度不符多半是分片没写完，保留分片让用户续传
-            VerifyResult.LengthMismatch -> DownloadState.Failed(
-                request.version,
-                "下载未完成（已收到 ${ResumableDownload.formatBytes(part.length())}），可继续下载",
-                canResume = true,
-            )
-            VerifyResult.DigestMismatch -> {
-                store.deleteAll(request.version)
-                DownloadState.Failed(request.version, "安装包校验失败，请重新下载", canResume = false)
-            }
-        }
+    // ---------- 进度发布 ----------
+
+    private fun publish(
+        request: DownloadRequest,
+        source: UpdateSource,
+        downloaded: Long,
+        total: Long?,
+        meter: SpeedMeter,
+    ) {
+        _state.value = DownloadState.Running(
+            version = request.version,
+            downloadedBytes = downloaded,
+            totalBytes = total,
+            bytesPerSecond = meter.bytesPerSecond() ?: 0L,
+            etaSeconds = meter.etaSeconds(downloaded, total),
+            // 直连时不显示来源，默认路径不打扰
+            sourceLabel = source.label.takeIf { source.id != DownloadSourceSet.DIRECT_ID },
+        )
     }
 
     private companion object {
         const val BUFFER_BYTES = 64 * 1024
+
+        /** 实测 8 并发把单连接吞吐提到 5.89 倍；单个常量，日后好调 */
+        const val MAX_CONNECTIONS = 8
+        const val MAX_CHUNK_ATTEMPTS = 3
+        const val RETRY_BASE_MILLIS = 500L
+        const val PROGRESS_STEP_BYTES = 64L * 1024L
         val USER_AGENT = "ZhiJianSchedule/" + BuildConfig.VERSION_NAME
     }
 }
