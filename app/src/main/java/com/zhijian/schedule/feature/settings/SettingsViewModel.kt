@@ -24,6 +24,7 @@ import com.zhijian.schedule.update.ApkDownloader
 import com.zhijian.schedule.update.ApkInstaller
 import com.zhijian.schedule.update.DownloadRequest
 import com.zhijian.schedule.update.DownloadState
+import com.zhijian.schedule.update.ResumableDownload
 import com.zhijian.schedule.update.UpdateChecker
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -274,8 +275,14 @@ class SettingsViewModel @Inject constructor(
                 url = url,
                 sizeBytes = info.apkSize,
                 digest = info.apkDigest,
+                // 没有官方摘要时一律禁用镜像候选，代码层不给自己留后门
+                mirrorsEnabled = uiState.settings.mirrorsEnabled && ResumableDownload.normalizeDigest(info.apkDigest) != null,
             ),
         )
+    }
+
+    fun setMirrorsEnabled(enabled: Boolean) {
+        viewModelScope.launch { settingsStore.setMirrorsEnabled(enabled) }
     }
 
     fun cancelDownload() {
