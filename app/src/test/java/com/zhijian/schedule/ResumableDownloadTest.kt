@@ -1,5 +1,6 @@
 package com.zhijian.schedule
 
+import com.zhijian.schedule.update.Chunk
 import com.zhijian.schedule.update.ContentRange
 import com.zhijian.schedule.update.PartMeta
 import com.zhijian.schedule.update.RangeDecision
@@ -276,6 +277,56 @@ class ResumableDownloadTest {
         assertEquals(false, ResumableDownload.shouldClean("2.0.0.apk", "1.9.9"))
         assertEquals(false, ResumableDownload.shouldClean("random.txt", "1.0.2"))
         assertEquals(false, ResumableDownload.shouldClean("1.0.2-beta.apk", "1.0.2"))
+    }
+
+    // ---------- 分片规划 ----------
+
+    @Test
+    fun planChunksSplitsWithShorterLastChunk() {
+        val plan = ResumableDownload.planChunks(10L, chunkSize = 4L)!!
+        assertEquals(3, plan.chunkCount)
+        assertEquals(
+            listOf(
+                Chunk(0, 0L, 3L),
+                Chunk(1, 4L, 7L),
+                Chunk(2, 8L, 9L),
+            ),
+            plan.chunks,
+        )
+        assertEquals(4L, plan.bytesOf(0))
+        assertEquals(4L, plan.bytesOf(1))
+        assertEquals(2L, plan.bytesOf(2))
+    }
+
+    @Test
+    fun planChunksKeepsSingleChunkWhenTotalIsSmallerThanChunkSize() {
+        val plan = ResumableDownload.planChunks(100L, chunkSize = 4096L)!!
+        assertEquals(1, plan.chunkCount)
+        assertEquals(listOf(Chunk(0, 0L, 99L)), plan.chunks)
+    }
+
+    @Test
+    fun planChunksExactMultipleHasNoRemainder() {
+        val plan = ResumableDownload.planChunks(8L, chunkSize = 4L)!!
+        assertEquals(2, plan.chunkCount)
+        assertEquals(listOf(Chunk(0, 0L, 3L), Chunk(1, 4L, 7L)), plan.chunks)
+        assertEquals(8L, plan.chunks.sumOf { plan.bytesOf(it.index) })
+    }
+
+    @Test
+    fun planChunksSplitsARealApkIntoTwelve() {
+        val plan = ResumableDownload.planChunks(46920382L, chunkSize = 4L * 1024L * 1024L)!!
+        assertEquals(12, plan.chunkCount)
+        assertEquals(11, plan.chunks.last().index)
+        assertEquals(46920382L - 11 * 4L * 1024L * 1024L, plan.bytesOf(11))
+    }
+
+    @Test
+    fun planChunksRejectsInvalidInput() {
+        assertNull(ResumableDownload.planChunks(0L, 4L))
+        assertNull(ResumableDownload.planChunks(-1L, 4L))
+        assertNull(ResumableDownload.planChunks(100L, 0L))
+        assertNull(ResumableDownload.planChunks(100L, -4L))
     }
 
     private fun tempFile(content: String): File {
