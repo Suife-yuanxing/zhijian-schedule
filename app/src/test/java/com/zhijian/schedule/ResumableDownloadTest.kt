@@ -1,10 +1,12 @@
 package com.zhijian.schedule
 
 import com.zhijian.schedule.update.Chunk
+import com.zhijian.schedule.update.ChunkProgress
 import com.zhijian.schedule.update.ContentRange
 import com.zhijian.schedule.update.PartMeta
 import com.zhijian.schedule.update.RangeDecision
 import com.zhijian.schedule.update.ResumableDownload
+import com.zhijian.schedule.update.ResumePoint
 import com.zhijian.schedule.update.VerifyResult
 import java.io.File
 import kotlinx.serialization.json.Json
@@ -327,6 +329,130 @@ class ResumableDownloadTest {
         assertNull(ResumableDownload.planChunks(-1L, 4L))
         assertNull(ResumableDownload.planChunks(100L, 0L))
         assertNull(ResumableDownload.planChunks(100L, -4L))
+    }
+
+    // ---------- 进度聚合 ----------
+
+    @Test
+    fun progressSumsFinishedChunksAndInFlightBytes() {
+        val plan = ResumableDownload.planChunks(10L, chunkSize = 4L)!!
+        val progress = ChunkProgress(plan = plan, completed = listOf(0), written = longArrayOf(4L, 1L, 0L))
+        assertEquals(5L, progress.downloadedBytes)
+    }
+
+    @Test
+    fun progressGoesBackwardsWhenAChunkIsRedone() {
+        val plan = ResumableDownload.planChunks(10L, chunkSize = 4L)!!
+        val progress = ChunkProgress(plan = plan, completed = listOf(0), written = longArrayOf(4L, 3L, 0L))
+        assertEquals(7L, progress.downloadedBytes)
+        progress.resetChunk(1)
+        assertEquals(4L, progress.downloadedBytes)
+    }
+
+    @Test
+    fun progressNeededChunksSkipsCompletedOnes() {
+        val plan = ResumableDownload.planChunks(10L, chunkSize = 4L)!!
+        val progress = ChunkProgress(plan = plan, completed = listOf(0, 2), written = longArrayOf(4L, 0L, 2L))
+        assertEquals(listOf(1), progress.neededChunks())
+    }
+
+    @Test
+    fun remainingBytesCountsOnlyWhatIsStillMissing() {
+        val plan = ResumableDownload.planChunks(10L, chunkSize = 4L)!!
+        val progress = ChunkProgress(plan = plan, completed = listOf(0), written = longArrayOf(4L, 0L, 0L))
+        assertEquals(6L, progress.remainingBytes())
+    }
+
+    // ---------- 续传点 ----------
+
+    @Test
+    fun resumePointReusesPlanWhenSourceAndTotalMatch() {
+        val plan = ResumableDownload.planChunks(10L, chunkSize = 4L)!!
+        val meta = PartMeta(
+            version = "1.0.3",
+            url = "https://example.com/a.apk",
+            totalBytes = 10L,
+            chunkSize = 4L,
+            completedChunks = listOf(0),
+        )
+        val point = ResumableDownload.resolveResumePoint(
+            version = "1.0.3",
+            url = "https://example.com/a.apk",
+            totalBytes = 10L,
+            partBytes = 6L,
+            rawMeta = meta,
+        )
+        assertEquals(ResumePoint.Chunked(plan, listOf(0)), point)
+    }
+
+    @Test
+    fun resumePointUpgradesV1PartFileByReplanningChunks() {
+        // v1 写的元数据没有 chunkSize/completedChunks（取默认值 0 与空表），分片大小归一化成 4 MiB。
+        // 这里用真实的 4 MiB 分片、只是把总长缩到 16 MiB —— 才是在测生产路径，而不是靠一个假的小分片。
+        val total = 16L * 1024L * 1024L
+        val meta = PartMeta(
+            version = "1.0.3",
+            url = "https://example.com/a.apk",
+            totalBytes = total,
+        )
+        val plan = ResumableDownload.planChunks(total)!!
+        val point = ResumableDownload.resolveResumePoint(
+            version = "1.0.3",
+            url = "https://example.com/a.apk",
+            totalBytes = total,
+            partBytes = 10L * 1024L * 1024L,
+            rawMeta = meta,
+        )
+        // 10 MiB = 前 2 片（各 4 MiB）完整 + 第 3 片半截，只有整片算数，半截那片重下
+        assertEquals(ResumePoint.Chunked(plan, listOf(0, 1)), point)
+    }
+
+    @Test
+    fun resumePointStartsFreshWhenSourceChangedAndKeepsThePlan() {
+        val plan = ResumableDownload.planChunks(16L, chunkSize = 4L)!!
+        val meta = PartMeta(
+            version = "1.0.3",
+            url = "https://mirror.example.com/a.apk",
+            totalBytes = 16L,
+            chunkSize = 4L,
+            completedChunks = listOf(0),
+        )
+        val point = ResumableDownload.resolveResumePoint(
+            version = "1.0.3",
+            url = "https://example.com/a.apk",
+            totalBytes = 16L,
+            partBytes = 10L,
+            rawMeta = meta,
+        )
+        // 换了源：已下的字节必须作废，但分片计划要一起带出来，调用方不必再算一遍
+        assertEquals(ResumePoint.Fresh(plan), point)
+    }
+
+    @Test
+    fun resumePointStartsFreshWithoutAnyPartFile() {
+        val total = 16L * 1024L * 1024L
+        val plan = ResumableDownload.planChunks(total)!!
+        assertEquals(
+            ResumePoint.Fresh(plan),
+            ResumableDownload.resolveResumePoint("1.0.3", "https://example.com/a.apk", total, 0L, null),
+        )
+        // 总长未知时照样是 Fresh，只是计划为 null（调用方据此走单连接）
+        assertEquals(
+            ResumePoint.Fresh(null),
+            ResumableDownload.resolveResumePoint("1.0.3", "https://example.com/a.apk", null, 0L, null),
+        )
+    }
+
+    @Test
+    fun chunkCountOfConvertsWrittenBytesIntoWholeChunks() {
+        assertEquals(0, ResumableDownload.chunkCountOf(0L, 4L))
+        assertEquals(0, ResumableDownload.chunkCountOf(3L, 4L))
+        assertEquals(1, ResumableDownload.chunkCountOf(4L, 4L))
+        assertEquals(1, ResumableDownload.chunkCountOf(7L, 4L))
+        assertEquals(2, ResumableDownload.chunkCountOf(10L, 4L))
+        assertEquals(2, ResumableDownload.chunkCountOf(11L, 4L))
+        assertNull(ResumableDownload.chunkCountOf(10L, 0L))
+        assertNull(ResumableDownload.chunkCountOf(10L, -1L))
     }
 
     private fun tempFile(content: String): File {

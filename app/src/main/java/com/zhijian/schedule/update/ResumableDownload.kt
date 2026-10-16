@@ -20,6 +20,10 @@ data class PartMeta(
     val lastModified: String? = null,
     val totalBytes: Long = 0L,
     val digest: String? = null,
+    /** 分片大小；0 = v1 写的旧元数据，按「单连接顺序续传」处理 */
+    val chunkSize: Long = 0L,
+    /** 已完成的分片序号；只有这里的序号才算下载完成 */
+    val completedChunks: List<Int> = emptyList(),
 )
 
 /** `Content-Range: bytes 1234-46920381/46920382` 的解析结果；total 为 `*` 时是 null */
@@ -116,7 +120,78 @@ object ResumableDownload {
         return ChunkPlan(totalBytes, chunkSize, chunks)
     }
 
+    // ---------- 续传点 ----------
+
+    /** 已经连着写了 [writtenBytes] 字节时，其中有几个完整的 [chunkSize] 分片（尾部半截不算） */
+    fun chunkCountOf(writtenBytes: Long, chunkSize: Long): Int? {
+        if (chunkSize <= 0L) return null
+        if (writtenBytes <= 0L) return 0
+        return (writtenBytes / chunkSize).toInt()
+    }
+
+    /**
+     * 从磁盘现状推出这次该走哪条路。
+     *
+     * v1 元数据由 `readMeta` / `parseMeta` 统一归一化（缺的 `chunkSize` 补默认值），所以这里的
+     * `meta.chunkSize` 永远已是正值。v1 遗留的 `.part` 是连续前缀，会被 `chunkCountOf(partBytes, chunkSize)`
+     * 折算成前 N 个整片（最多重下不到一片），剩余分片照常并行 —— 因此不再保留单连接顺序续传分支。
+     *
+     * [Fresh] 在两种情况下出现，都带上分片计划方便调用方直接用：
+     * - 磁盘上什么都没有 → `plan` 由 `knownTotal` 算出来（`knownTotal` 未知时是 null）；
+     * - 有 `.part` 但元数据认不出这个源（`meta.url != url`）→ 必须清空重下。两个源的同名文件
+     *   可能内容不同，混着拼必然坏，事后虽然有 digest 兜住，但代价是白下 46 MB。
+     */
+    fun resolveResumePoint(
+        version: String,
+        url: String,
+        totalBytes: Long?,
+        partBytes: Long,
+        rawMeta: PartMeta?,
+    ): ResumePoint {
+        val meta = rawMeta?.takeIf { it.version == version }
+        val plan = planChunks(
+            totalBytes = totalBytes ?: meta?.totalBytes ?: 0L,
+            chunkSize = meta?.chunkSize?.takeIf { it > 0L } ?: DEFAULT_CHUNK_BYTES,
+        )
+        if (partBytes <= 0L) return ResumePoint.Fresh(plan)
+
+        if (meta == null || meta.url != url || plan == null) return ResumePoint.Fresh(plan)
+
+        // v1 的 `.part` 是连续前缀，可以直接认成前 N 个整片，半截那片重下即可
+        val completed = meta.completedChunks
+            .ifEmpty { (0 until (chunkCountOf(partBytes, plan.chunkSize) ?: 0)).toList() }
+            .filter { it in 0 until plan.chunkCount }
+            .distinct()
+            .sorted()
+
+        // 分片进度唯一权威在 meta；它一片都没记账、磁盘上却已经有东西时，按 `.part` 重新规划
+        return if (completed.isEmpty()) {
+            val safe = chunkCountOf(partBytes, plan.chunkSize) ?: 0
+            ResumePoint.Chunked(plan, (0 until minOf(safe, plan.chunkCount)).toList())
+        } else {
+            ResumePoint.Chunked(plan, completed)
+        }
+    }
+
     // ---------- 校验 ----------
+
+    // ---------- 元数据兼容 ----------
+
+    /**
+     * `.meta` 的兼容解析（v1 ↔ v2）：
+     * 1. `version` 对不上就当作没有断点；
+     * 2. 缺 `chunkSize`/`completedChunks` 的 v1 元数据一律补成默认分片大小 + 空列表 —— **不臆造分片进度**；
+     * 3. 新写的 v2 元数据补上分片大小。
+     */
+    fun parseMeta(version: String, raw: PartMeta?): PartMeta? {
+        val meta = raw ?: return null
+        if (meta.version != version) return null
+        val chunkSize = if (meta.chunkSize > 0L) meta.chunkSize else DEFAULT_CHUNK_BYTES
+        return meta.copy(
+            chunkSize = chunkSize,
+            completedChunks = meta.completedChunks.distinct().sorted(),
+        )
+    }
 
     /** `sha256:abc…` → 小写十六进制；非 SHA-256、缺失或不是 64 位十六进制时返回 null（当作没有摘要） */
     fun normalizeDigest(digest: String?): String? {
@@ -235,6 +310,53 @@ data class ChunkPlan(
     fun bytesOf(index: Int): Long {
         val chunk = chunks.getOrNull(index) ?: return 0L
         return chunk.endInclusive - chunk.start + 1L
+    }
+}
+
+/** 本次下载该从哪里接着写 */
+sealed interface ResumePoint {
+    /**
+     * 不能续传：从第 0 字节重来。
+     * [plan] 是按本次已知总长算好的分片计划（总长未知时为 null），调用方不必重复计算。
+     */
+    data class Fresh(val plan: ChunkPlan?) : ResumePoint
+
+    /** v2 元数据或可升级的裸 `.part`：按 [plan] 的 [completed] 片续传，只补剩下的片 */
+    data class Chunked(val plan: ChunkPlan, val completed: List<Int>) : ResumePoint
+}
+
+/**
+ * 一次进度快照：把「分片计划 + 已完成序号 + 各片已写字节」聚合成 UI 需要的数字。
+ *
+ * 进度 = Σ(已完成片的字节数) + Σ(在飞片的已写字节)，其中在飞片的已写字节按该片长度封顶 ——
+ * 换源或崩溃后重下某片时，[resetChunk] 会把那片清零，于是进度诚实地**往回跳一点**（设计 §2.3）。
+ * 这里不持有文件、不碰状态，只做算术；Task 6 每次要发布进度都是重新构造一个快照。
+ */
+class ChunkProgress(
+    private val plan: ChunkPlan,
+    completed: List<Int>,
+    written: LongArray,
+) {
+    private val done: MutableSet<Int> = completed.filter { it in 0 until plan.chunkCount }.toMutableSet()
+    private val bytes: LongArray = written.copyOf()
+
+    /** 已完成片 + 在飞片已写字节（按片长封顶），即当前进度 */
+    val downloadedBytes: Long
+        get() = done.sumOf { plan.bytesOf(it) } +
+            (0 until plan.chunkCount)
+                .filter { it !in done }
+                .sumOf { minOf(bytes.getOrElse(it) { 0L }, plan.bytesOf(it)) }
+
+    /** 还没写完的分片序号（共享待办队列的初始内容） */
+    fun neededChunks(): List<Int> = (0 until plan.chunkCount).filter { it !in done }
+
+    /** 还差多少字节（磁盘预检用） */
+    fun remainingBytes(): Long = plan.totalBytes - downloadedBytes
+
+    /** 把第 [index] 片退回未完成、已写字节清零（重下该片时调用） */
+    fun resetChunk(index: Int) {
+        done.remove(index)
+        if (index in bytes.indices) bytes[index] = 0L
     }
 }
 
