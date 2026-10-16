@@ -28,6 +28,8 @@ data class AppSettings(
     val capsuleEnabled: Boolean = false,
     val gradesFetchedAt: Long = 0L,
     val holidayFetchedAt: Long = 0L,
+    /** 「镜像加速（实验）」开关；默认关闭 —— 实测镜像比直连还慢，只在直连彻底跑不通时当退路 */
+    val mirrorsEnabled: Boolean = false,
 )
 
 @Singleton
@@ -49,6 +51,7 @@ class SettingsStore @Inject constructor(
         val CAPSULE = booleanPreferencesKey("capsule_enabled")
         val GRADES_FETCHED = longPreferencesKey("grades_fetched_at")
         val HOLIDAY_FETCHED = longPreferencesKey("holiday_fetched_at")
+        val MIRRORS = booleanPreferencesKey("update_mirrors_enabled")
     }
 
     val settings: Flow<AppSettings> = dataStore.data.map { p ->
@@ -67,6 +70,7 @@ class SettingsStore @Inject constructor(
             capsuleEnabled = p[Keys.CAPSULE] ?: false,
             gradesFetchedAt = p[Keys.GRADES_FETCHED] ?: 0L,
             holidayFetchedAt = p[Keys.HOLIDAY_FETCHED] ?: 0L,
+            mirrorsEnabled = p[Keys.MIRRORS] ?: false,
         )
     }
 
@@ -88,4 +92,5 @@ class SettingsStore @Inject constructor(
     suspend fun setCapsule(enabled: Boolean) = dataStore.edit { it[Keys.CAPSULE] = enabled }
     suspend fun setGradesFetchedAt(time: Long) = dataStore.edit { it[Keys.GRADES_FETCHED] = time }
     suspend fun setHolidayFetchedAt(time: Long) = dataStore.edit { it[Keys.HOLIDAY_FETCHED] = time }
+    suspend fun setMirrorsEnabled(enabled: Boolean) = dataStore.edit { it[Keys.MIRRORS] = enabled }
 }
