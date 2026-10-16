@@ -5,6 +5,7 @@ import com.zhijian.schedule.update.ChunkProgress
 import com.zhijian.schedule.update.ContentRange
 import com.zhijian.schedule.update.PartMeta
 import com.zhijian.schedule.update.RangeDecision
+import com.zhijian.schedule.update.RangeSupport
 import com.zhijian.schedule.update.ResumableDownload
 import com.zhijian.schedule.update.ResumePoint
 import com.zhijian.schedule.update.VerifyResult
@@ -453,6 +454,37 @@ class ResumableDownloadTest {
         assertEquals(2, ResumableDownload.chunkCountOf(11L, 4L))
         assertNull(ResumableDownload.chunkCountOf(10L, 0L))
         assertNull(ResumableDownload.chunkCountOf(10L, -1L))
+    }
+
+    // ---------- 降级判据 ----------
+
+    @Test
+    fun partialContentMeansTheServerHonoursRange() {
+        assertEquals(RangeSupport.Supported, ResumableDownload.decideRangeSupport(206, 3, 2))
+    }
+
+    @Test
+    fun okResponseMeansTheServerIgnoresRange() {
+        // 服务端忽略 Range：并行分片毫无意义，立刻回到单连接
+        assertEquals(RangeSupport.Unsupported, ResumableDownload.decideRangeSupport(200, 3, 0))
+    }
+
+    @Test
+    fun partialContentStillNeedsTheLastChunkInFlight() {
+        // 还差最后一片：不能当成「已经下完」，否则会误进校验
+        assertEquals(RangeSupport.Supported, ResumableDownload.decideRangeSupport(206, 3, 1))
+    }
+
+    @Test
+    fun rangeNotSatisfiableWithAllChunksDoneIsAlreadyComplete() {
+        assertEquals(RangeSupport.AlreadyComplete, ResumableDownload.decideRangeSupport(416, 3, 3))
+    }
+
+    @Test
+    fun serverAndClientErrorsAreNotADowngrade() {
+        assertTrue(ResumableDownload.decideRangeSupport(502, 3, 0) is RangeSupport.Fail)
+        val fail = ResumableDownload.decideRangeSupport(404, 3, 0) as RangeSupport.Fail
+        assertEquals(false, fail.canResume)
     }
 
     private fun tempFile(content: String): File {

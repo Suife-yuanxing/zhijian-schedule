@@ -103,6 +103,21 @@ object ResumableDownload {
         else -> RangeDecision.Fail("下载失败（HTTP $code），可重试", canResume = true)
     }
 
+    // ---------- 降级判据 ----------
+
+    /**
+     * 分片请求的响应该当成什么。**只有 200 触发降级** —— 那是服务端在说「我不认 Range」，
+     * 继续并发就是 8 份重复的整包。[doneChunks] 与 [chunkCount] 用于区分 416 的两种含义。
+     * 500 与 IO 异常不降级：那是网络问题，按 v1 的失败+重试处理。
+     */
+    fun decideRangeSupport(code: Int, chunkCount: Int, doneChunks: Int): RangeSupport = when {
+        code == 206 -> RangeSupport.Supported
+        code == 200 -> RangeSupport.Unsupported
+        code == 416 -> if (doneChunks >= chunkCount) RangeSupport.AlreadyComplete else RangeSupport.Corrupt
+        code in 400..499 -> RangeSupport.Fail("下载失败（HTTP $code），请重新下载", canResume = false)
+        else -> RangeSupport.Fail("服务端错误（HTTP $code），可重试", canResume = true)
+    }
+
     // ---------- 分片规划 ----------
 
     /**
@@ -323,6 +338,24 @@ sealed interface ResumePoint {
 
     /** v2 元数据或可升级的裸 `.part`：按 [plan] 的 [completed] 片续传，只补剩下的片 */
     data class Chunked(val plan: ChunkPlan, val completed: List<Int>) : ResumePoint
+}
+
+/** 分片响应的处理结论 */
+sealed interface RangeSupport {
+    /** 206：服务端支持 Range，继续并行 */
+    data object Supported : RangeSupport
+
+    /** 200：服务端忽略了 Range，放弃并行、清掉分片改用单连接顺序路径 */
+    data object Unsupported : RangeSupport
+
+    /** 416 且所有分片都已写完：直接进校验 */
+    data object AlreadyComplete : RangeSupport
+
+    /** 416 但分片没写完：分片集合损坏，清空重下 */
+    data object Corrupt : RangeSupport
+
+    /** 由 [RangeSupport.Fail.canResume] 决定卡片给「重试」还是「重新下载」 */
+    data class Fail(val reason: String, val canResume: Boolean) : RangeSupport
 }
 
 /**
