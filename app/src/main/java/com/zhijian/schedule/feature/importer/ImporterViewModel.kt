@@ -21,6 +21,9 @@ import com.zhijian.schedule.feature.importer.parsers.JsonParser
 import com.zhijian.schedule.feature.importer.parsers.TableMapping
 import com.zhijian.schedule.feature.importer.parsers.WakeUpParser
 import com.zhijian.schedule.feature.importer.parsers.XlsxParser
+import com.zhijian.schedule.feature.importer.qr.QrPayload
+import com.zhijian.schedule.feature.importer.qr.QrShareState
+import com.zhijian.schedule.feature.importer.qr.renderQrBitmap
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.ByteArrayInputStream
@@ -37,6 +40,8 @@ sealed interface ImportUiState {
     data object Idle : ImportUiState
     data object Parsing : ImportUiState
     data object OcrReview : ImportUiState
+    data object QrScan : ImportUiState
+    data object QrShare : ImportUiState
     data class Preview(val preview: ImportPreview) : ImportUiState
     data class Done(val summary: String) : ImportUiState
     data class Error(val message: String) : ImportUiState
@@ -64,6 +69,9 @@ class ImporterViewModel @Inject constructor(
     var ocrReview by mutableStateOf<OcrReviewState?>(null)
         private set
 
+    var qrShare by mutableStateOf<QrShareState?>(null)
+        private set
+
     var parsingNote by mutableStateOf("")
         private set
 
@@ -74,7 +82,54 @@ class ImporterViewModel @Inject constructor(
     fun reset() {
         state = ImportUiState.Idle
         ocrReview = null
+        qrShare = null
         parsingNote = ""
+    }
+
+    // ---------- 二维码互传 ----------
+
+    fun openQrScan() {
+        qrShare = null
+        state = ImportUiState.QrScan
+    }
+
+    fun openQrShare() {
+        qrShare = null
+        state = ImportUiState.QrShare
+        viewModelScope.launch {
+            val courses = repository.activeCourses.first()
+            if (courses.isEmpty()) {
+                qrShare = QrShareState(message = "当前课表还没有课程，先导入或添加课程再分享")
+                return@launch
+            }
+            val payload = withContext(Dispatchers.Default) { QrPayload.encode(courses) }
+            if (payload.size > QrPayload.MAX_QR_BYTES) {
+                qrShare = QrShareState(
+                    courseCount = courses.size,
+                    message = "课程较多（${courses.size} 门），一张二维码装不下；" +
+                        "可改用「备份与恢复」导出 JSON 文件分享",
+                )
+                return@launch
+            }
+            val bitmap = withContext(Dispatchers.Default) {
+                runCatching { renderQrBitmap(payload, 1024) }.getOrNull()
+            }
+            qrShare = if (bitmap != null) {
+                QrShareState(bitmap = bitmap, courseCount = courses.size, payload = payload)
+            } else {
+                QrShareState(message = "二维码生成失败，请重试")
+            }
+        }
+    }
+
+    fun importFromQr(raw: ByteArray) {
+        viewModelScope.launch {
+            state = ImportUiState.Parsing
+            parsingNote = "正在解析分享码…"
+            val totalWeeks = repository.activeTimetable.first()?.totalWeeks ?: 20
+            val result = withContext(Dispatchers.Default) { QrPayload.decode(raw, totalWeeks) }
+            handleResult(result, ImportSource.QR)
+        }
     }
 
     // ---------- 截图识别 ----------

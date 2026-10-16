@@ -1,0 +1,11 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- 二维码：三个定位角（环+中心点）+ 散点模块 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M3,3h8v8h-8zM5,5h4v4h-4zM6,6h2v2h-2zM13,3h8v8h-8zM15,5h4v4h-4zM16,6h2v2h-2zM3,13h8v8h-8zM5,15h4v4h-4zM6,16h2v2h-2zM13,13h2v2h-2zM17,13h2v2h-2zM13,16h2v2h-2zM19,16h2v2h-2zM16,18h2v2h-2zM13,19h2v2h-2zM19,19h2v2h-2z" />
+</vector>

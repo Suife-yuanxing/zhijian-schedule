@@ -28,6 +28,7 @@ enum class ImportSource(val label: String) {
     WAKEUP("口令"),
     OCR("截图"),
     ICS("日历"),
+    QR("二维码"),
     JW("教务"),
 }
 

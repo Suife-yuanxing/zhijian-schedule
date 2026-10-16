@@ -2,4 +2,6 @@
 <paths>
     <!-- 更新安装包落在内部存储 filesDir/updates/ -->
     <files-path name="updates" path="updates/" />
+    <!-- 课程分享二维码 PNG 落在 cacheDir/qr_share/ -->
+    <cache-path name="qr_share" path="qr_share/" />
 </paths>

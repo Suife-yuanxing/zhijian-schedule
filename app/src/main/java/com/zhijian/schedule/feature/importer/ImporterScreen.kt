@@ -1,5 +1,6 @@
 package com.zhijian.schedule.feature.importer
 
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -36,6 +37,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -73,6 +75,8 @@ import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.SecondaryTopBar
 import com.zhijian.schedule.core.ui.StaggerIn
 import com.zhijian.schedule.core.ui.pressScale
+import com.zhijian.schedule.feature.importer.qr.QrScanContent
+import com.zhijian.schedule.feature.importer.qr.QrShareContent
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -84,6 +88,11 @@ fun ImporterScreen(
     val colors = LocalCourseColors.current
     val state = viewModel.state
     var showPasteDialog by remember { mutableStateOf(false) }
+
+    // 系统返回（手势/按键）与顶栏返回保持一致：扫码/分享是页内流程态，先回方法列表
+    BackHandler(enabled = state is ImportUiState.QrScan || state is ImportUiState.QrShare) {
+        viewModel.reset()
+    }
 
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -99,7 +108,17 @@ fun ImporterScreen(
 
     Scaffold(
         topBar = {
-            SecondaryTopBar(title = "导入课表", onBack = onBack)
+            SecondaryTopBar(
+                title = topTitle(state),
+                onBack = {
+                    // 扫码/分享是导入页内的流程态：返回先回方法列表，而不是直接退出页面
+                    if (state is ImportUiState.QrScan || state is ImportUiState.QrShare) {
+                        viewModel.reset()
+                    } else {
+                        onBack()
+                    }
+                },
+            )
         },
         containerColor = colors.bg,
     ) { padding ->
@@ -137,6 +156,15 @@ fun ImporterScreen(
                                 PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                             )
                         },
+                        onQrTransfer = { viewModel.openQrScan() },
+                    )
+                    is ImportUiState.QrScan -> QrScanContent(
+                        onDecoded = { viewModel.importFromQr(it) },
+                        onSwitchToShare = { viewModel.openQrShare() },
+                    )
+                    is ImportUiState.QrShare -> QrShareContent(
+                        state = viewModel.qrShare,
+                        onSwitchToScan = { viewModel.openQrScan() },
                     )
                     is ImportUiState.Parsing -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -207,6 +235,7 @@ private fun MethodList(
     onPickFile: () -> Unit,
     onPaste: () -> Unit,
     onPickImages: () -> Unit,
+    onQrTransfer: () -> Unit,
 ) {
     val colors = LocalCourseColors.current
     Column(
@@ -222,6 +251,12 @@ private fun MethodList(
             subtitle = "直连学校教务（正方等），账号仅在你与学校之间传递",
             highlight = true,
             onClick = onJwImport,
+        )
+        MethodCard(
+            icon = Icons.Filled.Share,
+            title = "二维码互传",
+            subtitle = "扫同学分享的二维码导入课表，或生成我的分享码",
+            onClick = onQrTransfer,
         )
         MethodCard(
             icon = Icons.Filled.List,
@@ -482,7 +517,16 @@ private fun importStateOrder(state: ImportUiState): Int = when (state) {
     is ImportUiState.Idle -> 0
     is ImportUiState.Parsing -> 1
     is ImportUiState.Error -> 1
+    is ImportUiState.QrScan -> 1
+    is ImportUiState.QrShare -> 1
     is ImportUiState.OcrReview -> 2
     is ImportUiState.Preview -> 3
     is ImportUiState.Done -> 4
+}
+
+/** 顶栏标题随导入流程态切换 */
+private fun topTitle(state: ImportUiState): String = when (state) {
+    is ImportUiState.QrScan -> "扫码导入"
+    is ImportUiState.QrShare -> "分享二维码"
+    else -> "导入课表"
 }
