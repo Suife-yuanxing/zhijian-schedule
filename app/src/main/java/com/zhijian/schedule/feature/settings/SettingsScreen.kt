@@ -63,6 +63,7 @@ import com.zhijian.schedule.core.ui.SecondaryTopBar
 import com.zhijian.schedule.core.ui.StaggerIn
 import com.zhijian.schedule.core.ui.pressScale
 import com.zhijian.schedule.core.theme.LocalCourseColors
+import com.zhijian.schedule.update.DownloadSourceSet
 import com.zhijian.schedule.update.DownloadState
 import com.zhijian.schedule.update.ResumableDownload
 import com.zhijian.schedule.update.UpdateChecker
@@ -437,6 +438,23 @@ private fun UpdateSection(
             }
         }
 
+        // 镜像加速（实验）：默认关闭。开关在缓存清理之前，直连正常时用不上它
+        Spacer(Modifier.height(10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("镜像加速（实验）", color = colors.text, fontSize = 13.sp)
+                Text(
+                    text = mirrorHint(ui),
+                    color = colors.textMuted,
+                    fontSize = 12.sp,
+                )
+            }
+            Switch(
+                checked = ui.settings.mirrorsEnabled,
+                onCheckedChange = { viewModel.setMirrorsEnabled(it) },
+            )
+        }
+
         // 下载中隐藏：分片正被写入，而且此时 updateCacheBytes 还是上一次终态的旧值
         if (ui.updateCacheBytes > 0L && download !is DownloadState.Running) {
             Spacer(Modifier.height(4.dp))
@@ -494,7 +512,23 @@ private fun runningLine(state: DownloadState.Running): String {
     val head = state.totalBytes
         ?.let { "已下载 ${ResumableDownload.formatBytes(state.downloadedBytes)} / ${ResumableDownload.formatBytes(it)}" }
         ?: "已下载 ${ResumableDownload.formatBytes(state.downloadedBytes)}"
-    return head + (ResumableDownload.etaText(state.etaSeconds)?.let { " · $it" }.orEmpty())
+    // 直连时 sourceLabel 为 null，默认路径不显示来源
+    val source = state.sourceLabel?.let { " · 经 $it" }.orEmpty()
+    return head + source + (ResumableDownload.etaText(state.etaSeconds)?.let { " · $it" }.orEmpty())
+}
+
+/** 镜像提示：先说合法性（有没有官方摘要），再说用途（实测镜像更慢，只当退路） */
+private fun mirrorHint(ui: SettingsUiState): String {
+    val reason = DownloadSourceSet.mirrorDisabledReason(
+        digest = ui.updateInfo?.apkDigest,
+        mirrorsEnabled = ui.settings.mirrorsEnabled,
+    )
+    return when (reason) {
+        null -> "直连跑不通时自动换镜像重试；实测镜像更慢，能直连就不会切"
+        "镜像加速已关闭" -> "关闭中：只用 GitHub 直连"
+        // reason 已经是完整句（含「已禁用镜像」），直接用它，别再拼「本次只用直连」造成重复
+        else -> reason
+    }
 }
 
 private fun versionLine(info: UpdateChecker.UpdateInfo): String = if (info.apkUrl == null) {
