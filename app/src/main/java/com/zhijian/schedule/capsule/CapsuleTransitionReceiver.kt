@@ -29,7 +29,7 @@ class CapsuleTransitionReceiver : BroadcastReceiver() {
                 val posted = coordinator.renderNow()
                 if (posted != null) {
                     // 顺手拉起前台服务让进程内刷新循环继续（精确闹钟触发允许启动；失败不影响本次渲染）
-                    runCatching { LiveCapsuleService.start(context, posted.notification) }
+                    runCatching { LiveCapsuleService.start(context, posted.serviceNotification) }
                 }
             } catch (t: Throwable) {
                 // 单次失败不致命：下一次切换闹钟或打开 App 时会重算

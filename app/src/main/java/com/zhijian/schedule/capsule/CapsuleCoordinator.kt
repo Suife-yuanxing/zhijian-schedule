@@ -21,6 +21,11 @@ import kotlinx.coroutines.flow.first
  * ColorOS 冻结后台进程时循环停摆，胶囊会停在旧状态，课前提醒时刻流体云不会切换。
  * 因此每次渲染后用 AlarmManager 精确闹钟登记下一次切换时刻，进程被冻结/杀死
  * 也由系统按时唤醒重算，让「即将上课」倒计时准时出现。
+ *
+ * 真机事故（2026-10-16）：14:20 的上课切换闹钟丢失后，胶囊停在「即将上课 00:00」
+ * 直到用户打开 App——单次丢失即全天卡死。因此每次渲染同时登记一个**心跳闹钟**
+ * （独立 PendingIntent，见 [nextRefreshAtMillis]）：实时态每 6 分钟保鲜、切换丢失
+ * 1 分钟内自愈，非实时态切换丢失 2 分钟内自愈。
  */
 @Singleton
 class CapsuleCoordinator @Inject constructor(
@@ -31,7 +36,10 @@ class CapsuleCoordinator @Inject constructor(
 ) {
 
     /** 渲染当前胶囊并登记下一次切换闹钟；胶囊功能关闭时撤销闹钟并返回 null */
-    suspend fun renderNow(previousKey: String? = null): CapsuleNotifier.Posted? {
+    suspend fun renderNow(
+        previousCardKey: String? = null,
+        previousSkeletonKey: String? = null,
+    ): CapsuleNotifier.Posted? {
         val settings = settingsStore.settings.first()
         if (!settings.capsuleEnabled) {
             cancelTransition()
@@ -46,14 +54,16 @@ class CapsuleCoordinator @Inject constructor(
             reminderMinutes = if (settings.reminderEnabled) settings.reminderMinutes else 0,
             holidayName = todayHolidayName(now),
         )
-        val posted = CapsuleNotifier.post(context, plan, previousKey)
+        val posted = CapsuleNotifier.post(context, plan, previousCardKey, previousSkeletonKey)
         scheduleNextTransition(plan, now)
         return posted
     }
 
-    /** 胶囊关闭（或不再需要）时撤销待触发的切换闹钟 */
+    /** 胶囊关闭（或不再需要）时撤销待触发的切换闹钟（含心跳） */
     fun cancelTransition() {
-        context.getSystemService(AlarmManager::class.java)?.cancel(transitionPendingIntent())
+        val manager = context.getSystemService(AlarmManager::class.java) ?: return
+        manager.cancel(transitionPendingIntent())
+        manager.cancel(beatPendingIntent())
     }
 
     private suspend fun todayHolidayName(now: LocalDateTime): String? =
@@ -63,8 +73,11 @@ class CapsuleCoordinator @Inject constructor(
 
     private fun scheduleNextTransition(plan: CapsulePlan, now: LocalDateTime) {
         val manager = context.getSystemService(AlarmManager::class.java)
-        val pendingIntent = transitionPendingIntent()
-        val at = nextTransitionAtMillis(plan, now)
+        scheduleAt(manager, nextTransitionAtMillis(plan, now), transitionPendingIntent())
+        scheduleAt(manager, nextRefreshAtMillis(plan, now), beatPendingIntent())
+    }
+
+    private fun scheduleAt(manager: AlarmManager, at: Long?, pendingIntent: PendingIntent) {
         if (at == null || at <= System.currentTimeMillis()) {
             manager.cancel(pendingIntent)
             return
@@ -77,10 +90,14 @@ class CapsuleCoordinator @Inject constructor(
         }
     }
 
-    private fun transitionPendingIntent(): PendingIntent =
+    private fun transitionPendingIntent(): PendingIntent = broadcastPendingIntent(REQUEST_CODE)
+
+    private fun beatPendingIntent(): PendingIntent = broadcastPendingIntent(REQUEST_CODE_BEAT)
+
+    private fun broadcastPendingIntent(requestCode: Int): PendingIntent =
         PendingIntent.getBroadcast(
             context,
-            REQUEST_CODE,
+            requestCode,
             Intent(context, CapsuleTransitionReceiver::class.java).apply { action = ACTION_TRANSITION },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
@@ -90,5 +107,8 @@ class CapsuleCoordinator @Inject constructor(
 
         /** 与课前提醒闹钟（requestCode=courseId）区分，固定占用一个号段 */
         private const val REQUEST_CODE = 3002
+
+        /** 心跳闹钟：独立槽位，避免与切换闹钟互相覆盖 */
+        private const val REQUEST_CODE_BEAT = 3003
     }
 }

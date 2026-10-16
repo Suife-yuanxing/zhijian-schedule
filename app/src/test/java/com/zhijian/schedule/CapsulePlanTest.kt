@@ -2,6 +2,8 @@ package com.zhijian.schedule
 
 import com.zhijian.schedule.capsule.CapsulePlan
 import com.zhijian.schedule.capsule.buildCapsulePlan
+import com.zhijian.schedule.capsule.countdownCleanupDelayMillis
+import com.zhijian.schedule.capsule.nextRefreshAtMillis
 import com.zhijian.schedule.capsule.nextTransitionAtMillis
 import com.zhijian.schedule.core.data.db.CourseEntity
 import com.zhijian.schedule.core.data.db.SectionTimeEntity
@@ -293,6 +295,80 @@ class CapsulePlanTest {
         val plan = buildCapsulePlan(null, emptyList(), sections(), tuesday(10, 30), reminderMinutes = 30)
         assertEquals(CapsulePlan.NoTable, plan)
         assertEquals("纸间课表", plan.chip)
+    }
+
+    @Test
+    fun refreshBeatSecuresLiveStatesAndIdleStates() {
+        // 上课中且切换还很远（11:45）：心跳 = now + 6min，课堂期间持续保鲜
+        val ongoing = buildCapsulePlan(
+            timetable(), listOf(course(day = 2, 3, 4)), sections(), tuesday(10, 30),
+            reminderMinutes = 30,
+        ) as CapsulePlan.Ongoing
+        assertEquals(epochOf(10, 36), nextRefreshAtMillis(ongoing, tuesday(10, 30)))
+
+        // 即将上课：心跳最多 6 分钟后（10:01），入场后的第一次保活
+        val about = buildCapsulePlan(
+            timetable(), listOf(course(day = 2, 3, 4)), sections(), tuesday(9, 55),
+            reminderMinutes = 30,
+        ) as CapsulePlan.AboutToStart
+        assertEquals(epochOf(10, 1), nextRefreshAtMillis(about, tuesday(9, 55)))
+
+        // 即将开课（距离切换 < 5min）：心跳 = 切换 + 1min，切换丢失 1 分钟内自愈
+        val aboutNear = buildCapsulePlan(
+            timetable(), listOf(course(day = 2, 3, 4)), sections(), tuesday(10, 6),
+            reminderMinutes = 30,
+        ) as CapsulePlan.AboutToStart
+        assertEquals(epochOf(10, 11), nextRefreshAtMillis(aboutNear, tuesday(10, 6)))
+
+        // 已结束：心跳 = 次日 00:02，切换（跨天）丢失 2 分钟内自愈，平时不打扰
+        val done = buildCapsulePlan(
+            timetable(), listOf(course(day = 2, 3, 4)), sections(), tuesday(12, 30),
+            reminderMinutes = 30,
+        ) as CapsulePlan.DayDone
+        val beat = LocalDateTime.of(2026, 10, 14, 0, 2)
+            .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        assertEquals(beat, nextRefreshAtMillis(done, tuesday(12, 30)))
+
+        assertNull(nextRefreshAtMillis(CapsulePlan.NoTable, tuesday(10, 30)))
+    }
+
+    @Test
+    fun countdownCleanupDeadlineFollowsClassPhases() {
+        val courses = listOf(course(day = 2, 3, 4))
+        // 上课中：距下课 75 分钟 + 10s 宽限（系统在延时到点后撤下卡片，闹钟被吞也不停在 00:00）
+        val ongoing = buildCapsulePlan(
+            timetable(), courses, sections(), tuesday(10, 30), reminderMinutes = 30,
+        ) as CapsulePlan.Ongoing
+        assertEquals(
+            75 * 60_000L + 10_000L,
+            countdownCleanupDelayMillis(ongoing, epochOf(10, 30)),
+        )
+
+        // 即将上课：距开课 15 分钟 + 40s 宽限（给进程存活时的正常切换留出刷新窗口）
+        val about = buildCapsulePlan(
+            timetable(), courses, sections(), tuesday(9, 55), reminderMinutes = 30,
+        ) as CapsulePlan.AboutToStart
+        assertEquals(
+            15 * 60_000L + 40_000L,
+            countdownCleanupDelayMillis(about, epochOf(9, 55)),
+        )
+
+        // 非倒计时状态不设兜底
+        val done = buildCapsulePlan(
+            timetable(), courses, sections(), tuesday(12, 30), reminderMinutes = 30,
+        ) as CapsulePlan.DayDone
+        assertNull(countdownCleanupDelayMillis(done, epochOf(12, 30)))
+        assertNull(countdownCleanupDelayMillis(CapsulePlan.NoTable, epochOf(12, 30)))
+    }
+
+    @Test
+    fun countdownCleanupNeverGoesNonPositive() {
+        // 时钟边界（渲染恰好落在时刻线之后）：只保留宽限期，不允许 ≤0
+        val ongoing = buildCapsulePlan(
+            timetable(), listOf(course(day = 2, 3, 4)), sections(), tuesday(11, 44),
+            reminderMinutes = 30,
+        ) as CapsulePlan.Ongoing
+        assertEquals(10_000L, countdownCleanupDelayMillis(ongoing, epochOf(11, 50)))
     }
 
     private fun epochOf(h: Int, m: Int) =

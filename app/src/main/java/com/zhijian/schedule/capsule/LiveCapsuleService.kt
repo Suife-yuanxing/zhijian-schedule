@@ -1,6 +1,7 @@
 package com.zhijian.schedule.capsule
 
 import android.app.Notification
+import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -37,9 +38,10 @@ class LiveCapsuleService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var loop: Job? = null
-    private var lastKey: String? = null
+    private var lastCardKey: String? = null
+    private var lastSkeletonKey: String? = null
 
-    /** 最近一次真正渲染的通知：再次 startForeground 时复用，避免把实时内容打回「启动中…」占位 */
+    /** 最近一次构建的骨架通知：再次 startForeground 时复用，避免把内容打回「启动中…」占位 */
     @Volatile
     private var lastRendered: Notification? = null
 
@@ -59,7 +61,7 @@ class LiveCapsuleService : Service() {
         }
         ServiceCompat.startForeground(
             this,
-            CapsuleNotifier.NOTIFICATION_ID,
+            CapsuleNotifier.SERVICE_NOTIFICATION_ID,
             lastRendered ?: CapsuleNotifier.placeholder(this),
             type,
         )
@@ -67,12 +69,21 @@ class LiveCapsuleService : Service() {
             loop = scope.launch {
                 while (isActive) {
                     try {
-                        val posted = coordinator.renderNow(lastKey) ?: run {
+                        // 实时卡片被系统超时撤下（倒计时兜底）/ 被划掉后，与上轮 key 相同会一直
+                        // 去重跳过——发现卡片缺失就强制重建重发（含再次请求提升，流体云恢复）
+                        val nm = getSystemService(NotificationManager::class.java)
+                        val cardPosted = nm?.activeNotifications
+                            ?.any { it.id == CapsuleNotifier.LIVE_CARD_ID } == true
+                        val posted = coordinator.renderNow(
+                            previousCardKey = lastCardKey.takeIf { cardPosted },
+                            previousSkeletonKey = lastSkeletonKey,
+                        ) ?: run {
                             stopSelf()
                             break
                         }
-                        lastKey = posted.key
-                        posted.notification?.let { lastRendered = it }
+                        lastCardKey = posted.cardKey
+                        lastSkeletonKey = posted.skeletonKey
+                        posted.serviceNotification?.let { lastRendered = it }
                     } catch (e: CancellationException) {
                         throw e
                     } catch (t: Throwable) {

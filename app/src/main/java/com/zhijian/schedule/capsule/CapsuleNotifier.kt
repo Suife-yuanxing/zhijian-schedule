@@ -24,7 +24,21 @@ import com.zhijian.schedule.core.util.TimeUtils
 object CapsuleNotifier {
 
     const val CH_CAPSULE = "capsule"
-    const val NOTIFICATION_ID = 3001
+
+    /**
+     * FGS 骨架通知：前台服务存活的载体，随服务常驻。非实时态（下节课/已结束/假期）由它承载
+     * 用户可见状态；实时态退为一行静默说明。系统对 FGS 通知豁免 timeoutAfter（撤销它会违反
+     * 前台服务契约，撤了也保不住），所以实时卡片刻意与它分离——见 [LIVE_CARD_ID]。
+     */
+    const val SERVICE_NOTIFICATION_ID = 3000
+
+    /**
+     * 实时卡片（课程进行中 / 即将上课）：请求提升为流体云，并带系统级 timeoutAfter——
+     * 进程冻结、切换闹钟被 ROM 吞掉时（2026-10-16 21:35 事故：卡片停在「正在上课 00:00」
+     * 47 分钟直到打开 App），由 system_server 在倒计时跑完后准点撤下，不依赖 App 被唤醒。
+     * 必须是非 FGS 通知：FGS 通知被系统豁免 timeout，永远撤不下来。
+     */
+    const val LIVE_CARD_ID = 3001
 
     /** 请求系统提升为 Live Update / 流体云胶囊（Android 16 正式 API 的 extra 键） */
     private const val EXTRA_REQUEST_PROMOTED_ONGOING = "android.requestPromotedOngoing"
@@ -58,40 +72,81 @@ object CapsuleNotifier {
         baseBuilder(context, "纸间课表", "实时胶囊启动中…", chip = "", promote = false, color = 0, countdownTo = null)
             .build()
 
-    /** 一次渲染的结果：key 用于内容去重；去重跳过时 notification 为 null */
-    class Posted(val key: String, val notification: Notification?)
+    /** 一次渲染的结果；骨架通知内容未变更时 [serviceNotification] 为 null（不重复抢发） */
+    class Posted(
+        /** 实时卡片内容 key；非实时态为 null（卡片已撤下） */
+        val cardKey: String?,
+        /** 骨架通知内容 key */
+        val skeletonKey: String,
+        /** 本次新构建的骨架通知（startForeground 复用），未变更时为 null */
+        val serviceNotification: Notification?,
+    )
 
-    /** 渲染并推送通知；与上次内容相同时跳过刷新 */
-    fun post(context: Context, plan: CapsulePlan, previousKey: String?): Posted {
-        val (title, text) = texts(plan)
-        val progress = progressOf(plan)
-        // chip 进 key：每分钟的「剩 X 分」变化也要触发刷新
-        val key = "$title|$text|${plan.chip}|${progress ?: -1}"
-        if (key == previousKey) return Posted(key, null)
-
-        val promote = isPromotable(plan)
-        val builder = baseBuilder(
-            context, title, text, plan.chip,
-            promote = promote,
-            color = if (promote) courseColorOf(plan) else 0,
-            countdownTo = countdownTargetOf(plan),
-            smallIcon = smallIconOf(plan),
-            subtext = courseSectionOf(plan),
-        )
-        if (progress != null) {
-            if (Build.VERSION.SDK_INT >= 36) {
-                applyProgressStyle(builder, plan, progress)
-            } else {
-                builder.setProgress(100, progress, false)
+    /**
+     * 渲染并推送两条通知：实时卡片（可提升、系统兜底退场）+ FGS 骨架（常驻）。
+     * 与上次内容相同时按各自的 key 跳过刷新。
+     */
+    fun post(
+        context: Context,
+        plan: CapsulePlan,
+        previousCardKey: String?,
+        previousSkeletonKey: String?,
+    ): Posted {
+        val nm = context.getSystemService(NotificationManager::class.java)
+        // ---- 实时卡片：独立通知（非 FGS），timeout 到点由系统撤下 ----
+        val cardKey: String? = if (isPromotable(plan)) {
+            val (title, text) = texts(plan)
+            val progress = progressOf(plan)
+            // chip 进 key：每分钟的「剩 X 分」变化也要触发刷新
+            val key = "$title|$text|${plan.chip}|${progress ?: -1}"
+            if (key != previousCardKey) {
+                val builder = baseBuilder(
+                    context, title, text, plan.chip,
+                    promote = true,
+                    color = courseColorOf(plan),
+                    countdownTo = countdownTargetOf(plan),
+                    smallIcon = smallIconOf(plan),
+                    subtext = courseSectionOf(plan),
+                )
+                if (progress != null) {
+                    if (Build.VERSION.SDK_INT >= 36) {
+                        applyProgressStyle(builder, plan, progress)
+                    } else {
+                        builder.setProgress(100, progress, false)
+                    }
+                }
+                // 系统级兜底：倒计时跑完 + 宽限后由 system_server 撤下（进程冻结/闹钟被吞也不卡死）
+                countdownCleanupDelayMillis(plan, System.currentTimeMillis())
+                    ?.let { builder.setTimeoutAfter(it) }
+                runCatching { nm?.notify(LIVE_CARD_ID, builder.build()) }
             }
+            key
+        } else {
+            runCatching { nm?.cancel(LIVE_CARD_ID) }
+            null
         }
-        val notification = builder.build()
-        runCatching {
-            context.getSystemService(NotificationManager::class.java)
-                ?.notify(NOTIFICATION_ID, notification)
-        }
-        return Posted(key, notification)
+        // ---- FGS 骨架：非实时态承载状态文本；实时态让位给实时卡片 ----
+        val (skelTitle, skelText, skelChip) = skeletonTexts(plan)
+        val skeletonKey = "$skelTitle|$skelText"
+        val serviceNotification = if (skeletonKey != previousSkeletonKey) {
+            val skeleton = baseBuilder(
+                context, skelTitle, skelText, skelChip,
+                promote = false, color = 0, countdownTo = null,
+            ).build()
+            runCatching { nm?.notify(SERVICE_NOTIFICATION_ID, skeleton) }
+            skeleton
+        } else null
+        return Posted(cardKey, skeletonKey, serviceNotification)
     }
+
+    /** 骨架通知文案：非实时态与之前一致（它就是用户看到的状态卡）；实时态退为静默说明 */
+    private fun skeletonTexts(plan: CapsulePlan): Triple<String, String, String> =
+        if (isPromotable(plan)) {
+            Triple("纸间课表", "课程胶囊运行中 · 打开今日课表", "")
+        } else {
+            val (title, text) = texts(plan)
+            Triple(title, text, plan.chip)
+        }
 
     /**
      * 倒计时目标：上课中→下课，即将上课→上课。
@@ -245,7 +300,7 @@ object CapsuleNotifier {
             context,
             // 独立 requestCode：避免与站内其它 MainActivity PendingIntent（requestCode 0）
             // 因 extras 合并规则互相覆盖
-            NOTIFICATION_ID,
+            LIVE_CARD_ID,
             Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or
                     Intent.FLAG_ACTIVITY_CLEAR_TOP or

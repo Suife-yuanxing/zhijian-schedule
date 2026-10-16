@@ -198,6 +198,53 @@ fun nextTransitionAtMillis(plan: CapsulePlan, now: LocalDateTime): Long? = when 
     CapsulePlan.NoTable -> null
 }
 
+/**
+ * 心跳闹钟时刻（epoch 毫秒）：切换闹钟之外的第二道保障，兼作胶囊保鲜。
+ * -「即将上课 / 上课中」：min(切换 + 1min, now + 6min) —— 切换闹钟被系统丢弃或
+ *   单次渲染失败时 1 分钟内自愈（真机事故 2026-10-16：14:20 上课切换丢失，
+ *   胶囊停在「即将上课 00:00」直到打开 App）；课堂期间每 6 分钟重渲染一次，
+ *   被冻结时 chip「剩 N 分」与进度条也不会陈旧过久
+ * - 其它状态：切换 + 2min —— 切换丢失时 2 分钟内自愈，其余时间不打扰
+ * 返回 null 表示无需登记（没有下一次切换）。
+ */
+fun nextRefreshAtMillis(plan: CapsulePlan, now: LocalDateTime): Long? {
+    val next = nextTransitionAtMillis(plan, now) ?: return null
+    return if (plan is CapsulePlan.Ongoing || plan is CapsulePlan.AboutToStart) {
+        val heartbeat = now.plusMinutes(6).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        minOf(next + BEAT_AFTER_TRANSITION_MS, heartbeat)
+    } else {
+        next + BEAT_AFTER_TRANSITION_IDLE_MS
+    }
+}
+
+/** 实时态：切换后 1 分钟的自愈心跳 */
+private const val BEAT_AFTER_TRANSITION_MS = 60_000L
+
+/** 非实时态：切换后 2 分钟的自愈心跳 */
+private const val BEAT_AFTER_TRANSITION_IDLE_MS = 120_000L
+
+/**
+ * 倒计时卡片的系统级兜底**延时**（ms，交给 setTimeoutAfter）：从这个时长之后，
+ * 系统自动撤下实时态通知——不依赖 App 被唤醒。
+ *
+ * 真机事故（2026-10-16 21:35）：下课切换闹钟与心跳闹钟被 ROM 一并吞掉（进程冻结期），
+ * 卡片停在「正在上课 · 00:00」47 分钟直到打开 App。倒计时文字由系统 chronometer 自绘
+ * 所以准时归零，但状态切换全靠 App 侧触发——这条兜底让「过期卡片」由系统计时保证退场。
+ *
+ * 「即将上课」宽限更长：进程存活时切换（上课中）通常 30s 内到达，留出窗口避免开场闪断；
+ * 「上课中」宽限短：下课就该尽快退场，别继续挂着 00:00。
+ */
+fun countdownCleanupDelayMillis(plan: CapsulePlan, nowMillis: Long): Long? = when (plan) {
+    is CapsulePlan.Ongoing ->
+        (plan.endAtMillis - nowMillis).coerceAtLeast(0) + CLEANUP_GRACE_AFTER_END_MS
+    is CapsulePlan.AboutToStart ->
+        (plan.startAtMillis - nowMillis).coerceAtLeast(0) + CLEANUP_GRACE_AFTER_START_MS
+    else -> null
+}
+
+private const val CLEANUP_GRACE_AFTER_END_MS = 10_000L
+private const val CLEANUP_GRACE_AFTER_START_MS = 40_000L
+
 private fun nextMidnightMillis(now: LocalDateTime): Long =
     now.toLocalDate().plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
 
