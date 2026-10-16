@@ -5,6 +5,7 @@ import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import com.zhijian.schedule.alarm.Notifications
 import com.zhijian.schedule.alarm.ReminderCoordinator
+import com.zhijian.schedule.calendar.CalendarSyncCoordinator
 import com.zhijian.schedule.core.data.prefs.SettingsStore
 import com.zhijian.schedule.core.repository.ScheduleRepository
 import com.zhijian.schedule.sync.SyncScheduler
@@ -36,6 +37,9 @@ class ZhiJianApp : Application(), Configuration.Provider {
     lateinit var reminderCoordinator: ReminderCoordinator
 
     @Inject
+    lateinit var calendarSyncCoordinator: CalendarSyncCoordinator
+
+    @Inject
     lateinit var apkDownloader: ApkDownloader
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -58,6 +62,8 @@ class ZhiJianApp : Application(), Configuration.Provider {
         }
         // 监听数据变化，自动重排课前提醒
         reminderCoordinator.start()
+        // 课表数据变化时自动重刷系统日历（「写入系统日历」开关打开时）
+        calendarSyncCoordinator.start()
     }
 
     override val workManagerConfiguration: Configuration

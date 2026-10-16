@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.zhijian.schedule.core.theme.ThemeIds
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -52,6 +53,7 @@ class SettingsStore @Inject constructor(
         val GRADES_FETCHED = longPreferencesKey("grades_fetched_at")
         val HOLIDAY_FETCHED = longPreferencesKey("holiday_fetched_at")
         val MIRRORS = booleanPreferencesKey("update_mirrors_enabled")
+        val CALENDAR_FINGERPRINT = stringPreferencesKey("calendar_sync_fingerprint")
     }
 
     val settings: Flow<AppSettings> = dataStore.data.map { p ->
@@ -93,4 +95,11 @@ class SettingsStore @Inject constructor(
     suspend fun setGradesFetchedAt(time: Long) = dataStore.edit { it[Keys.GRADES_FETCHED] = time }
     suspend fun setHolidayFetchedAt(time: Long) = dataStore.edit { it[Keys.HOLIDAY_FETCHED] = time }
     suspend fun setMirrorsEnabled(enabled: Boolean) = dataStore.edit { it[Keys.MIRRORS] = enabled }
+
+    /** 已写入系统日历的课表内容指纹（内部状态，不参与 AppSettings） */
+    suspend fun calendarFingerprint(): String? =
+        dataStore.data.map { it[Keys.CALENDAR_FINGERPRINT] }.first()
+
+    suspend fun setCalendarFingerprint(value: String) =
+        dataStore.edit { it[Keys.CALENDAR_FINGERPRINT] = value }
 }
