@@ -41,13 +41,15 @@ class UpdateStore @Inject constructor(
     /**
      * 读断点元数据。文件缺失、JSON 损坏、版本对不上时返回 null，调用方一律按「没有断点」处理，
      * 也就是不带 Range 重新下 —— 绝不因为一个坏 meta 就卡住用户。
+     * v1 的旧元数据（没有 `chunkSize`/`completedChunks`）由 [ResumableDownload.parseMeta] 统一归一化：
+     * 缺失的 `chunkSize` 补成默认分片大小（不是 0），v1 遗留的连续 `.part` 会被折算成整片，不会被丢弃。
      */
     fun readMeta(version: String): PartMeta? {
         val file = metaFile(version)
         if (!file.isFile) return null
         return runCatching { json.decodeFromString<PartMeta>(file.readText()) }
             .getOrNull()
-            ?.takeIf { it.version == version }
+            ?.let { ResumableDownload.parseMeta(version, it) }
     }
 
     /** 写断点元数据；写失败只当没有断点，不影响这次下载继续跑 */
@@ -57,6 +59,15 @@ class UpdateStore @Inject constructor(
 
     fun deleteMeta(version: String) {
         metaFile(version).delete()
+    }
+
+    /**
+     * 清掉分片文件但保留元数据：换源重下、或降级到单连接时用。
+     * 必须把文件截断成 0 而不是删除 —— 元数据已经被清空，留下任何一个字节都会被当成「已有断点」。
+     */
+    fun deleteChunks(version: String) {
+        val part = partFile(version)
+        if (part.isFile) part.outputStream().use { }
     }
 
     /** 删除某个版本的分片与元数据（待安装的 `.apk` 不动） */
