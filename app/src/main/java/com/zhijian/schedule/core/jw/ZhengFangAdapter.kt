@@ -33,6 +33,20 @@ object ZhengFangAdapter : JwAdapter {
         baseUrl: String,
         totalWeeks: Int,
     ): List<CourseDraft> = withContext(Dispatchers.IO) {
+        try {
+            fetchCourses(client, baseUrl, totalWeeks)
+        } catch (e: JwException.NeedsLogin) {
+            // 会话过期：先尝试统一认证静默重登（后台自动同步与手动抓取共用），再重试一次
+            if (!JwSessionRecovery.trySilentRecover(client, baseUrl)) throw e
+            fetchCourses(client, baseUrl, totalWeeks)
+        }
+    }
+
+    private suspend fun fetchCourses(
+        client: OkHttpClient,
+        baseUrl: String,
+        totalWeeks: Int,
+    ): List<CourseDraft> = withContext(Dispatchers.IO) {
         val base = normalizeBase(baseUrl)
         val referer = "${base}framework/xsMain.jsp"
         val candidates = listOf(
@@ -59,8 +73,7 @@ object ZhengFangAdapter : JwAdapter {
     }
 
     private fun isLoginPage(html: String): Boolean =
-        html.contains("type=\"password\"", ignoreCase = true) ||
-            html.contains("LoginToXk", ignoreCase = true) ||
+        isSessionDeadPage(html) ||
             (html.contains("<title>登录</title>") && !html.contains("kbtable"))
 
     private fun get(client: OkHttpClient, url: String, referer: String): String {

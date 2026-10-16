@@ -3,11 +3,12 @@ package com.zhijian.schedule.feature.grades
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.zhijian.schedule.core.data.db.GradeDao
-import com.zhijian.schedule.core.data.db.GradeEntity
 import com.zhijian.schedule.core.data.prefs.SettingsStore
 import com.zhijian.schedule.core.jw.GradeFetcher
 import com.zhijian.schedule.core.jw.GradeRecord
 import com.zhijian.schedule.core.jw.JwException
+import com.zhijian.schedule.core.jw.toEntity
+import com.zhijian.schedule.core.jw.toRecord
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -88,15 +89,3 @@ class GradesViewModel @Inject constructor(
         }
     }
 }
-
-private fun GradeEntity.toRecord() = GradeRecord(
-    term = term, code = code, name = name, score = score, scoreFlag = scoreFlag,
-    credit = credit, hours = hours, gpa = gpa, retakeTerm = retakeTerm,
-    examMode = examMode, examNature = examNature, attr = attr, category = category,
-)
-
-private fun GradeRecord.toEntity() = GradeEntity(
-    term = term, code = code, name = name, score = score, scoreFlag = scoreFlag,
-    credit = credit, hours = hours, gpa = gpa, retakeTerm = retakeTerm,
-    examMode = examMode, examNature = examNature, attr = attr, category = category,
-)

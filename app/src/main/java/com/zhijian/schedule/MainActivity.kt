@@ -33,6 +33,9 @@ class MainActivity : ComponentActivity() {
     /** 点实时胶囊进「今日」页的请求计数，AppRoot 观察它切一次 tab */
     private var openTodayCount by mutableIntStateOf(0)
 
+    /** 点同步失败通知直达教务导入页的请求计数 */
+    private var openJwImportCount by mutableIntStateOf(0)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -40,9 +43,12 @@ class MainActivity : ComponentActivity() {
         reviveCapsuleIfEnabled()
         refreshHolidays()
         // 冷启动带进来的请求直接消费；重建（如旋转）不重复消费
-        if (savedInstanceState == null) consumeOpenToday(intent)
+        if (savedInstanceState == null) {
+            consumeOpenToday(intent)
+            consumeOpenJwImport(intent)
+        }
         setContent {
-            AppRoot(openTodayCount = openTodayCount)
+            AppRoot(openTodayCount = openTodayCount, openJwImportCount = openJwImportCount)
         }
     }
 
@@ -55,11 +61,18 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         consumeOpenToday(intent)
+        consumeOpenJwImport(intent)
     }
 
     private fun consumeOpenToday(intent: Intent?) {
         if (intent?.getBooleanExtra(EXTRA_OPEN_TODAY, false) == true) {
             openTodayCount++
+        }
+    }
+
+    private fun consumeOpenJwImport(intent: Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_OPEN_JW_IMPORT, false) == true) {
+            openJwImportCount++
         }
     }
 
@@ -83,5 +96,8 @@ class MainActivity : ComponentActivity() {
     companion object {
         /** 实时胶囊点击的 PendingIntent 携带；据此跳到「今日」tab */
         const val EXTRA_OPEN_TODAY = "com.zhijian.schedule.OPEN_TODAY"
+
+        /** 同步失败通知点击携带；据此直达「教务导入」页 */
+        const val EXTRA_OPEN_JW_IMPORT = "com.zhijian.schedule.OPEN_JW_IMPORT"
     }
 }

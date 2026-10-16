@@ -16,6 +16,16 @@ object GradeFetcher {
 
     suspend fun fetch(client: OkHttpClient, baseUrl: String): List<GradeRecord> =
         withContext(Dispatchers.IO) {
+            try {
+                fetchRecords(client, baseUrl)
+            } catch (e: JwException.NeedsLogin) {
+                if (!JwSessionRecovery.trySilentRecover(client, baseUrl)) throw e
+                fetchRecords(client, baseUrl)
+            }
+        }
+
+    private suspend fun fetchRecords(client: OkHttpClient, baseUrl: String): List<GradeRecord> =
+        withContext(Dispatchers.IO) {
             val base = ZhengFangAdapter.normalizeBase(baseUrl)
             val request = Request.Builder()
                 .url("${base}kscj/cjcx_list?kksj=")
@@ -26,12 +36,8 @@ object GradeFetcher {
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) throw JwException.NetworkFailed("HTTP ${response.code}")
                 val html = response.body?.string().orEmpty()
-                if (isLoginPage(html)) throw JwException.NeedsLogin()
+                if (isSessionDeadPage(html)) throw JwException.NeedsLogin()
                 GradeParser.parse(html)
             }
         }
-
-    private fun isLoginPage(html: String): Boolean =
-        html.contains("type=\"password\"", ignoreCase = true) ||
-            html.contains("LoginToXk", ignoreCase = true)
 }
