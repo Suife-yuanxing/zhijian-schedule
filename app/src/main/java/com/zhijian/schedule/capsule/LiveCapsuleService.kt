@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import dagger.hilt.android.AndroidEntryPoint
@@ -40,6 +41,15 @@ class LiveCapsuleService : Service() {
     private var loop: Job? = null
     private var lastCardKey: String? = null
     private var lastSkeletonKey: String? = null
+
+    /**
+     * 实时态（课前倒数/上课中）持有的 partial wake lock：ColorOS 的 osense 会把只有
+     * specialUse 前台服务的进程判为 non-perceptible 并冻结。持锁后 CPU 不休眠，
+     * 30s 刷新循环与切换闹钟的存活率显著提高；离开实时态立即释放，避免全天耗电。
+     */
+    private var wakeLock: PowerManager.WakeLock? = null
+
+    private val wakeLockGuard = Any()
 
     /** 最近一次构建的骨架通知：再次 startForeground 时复用，避免把内容打回「启动中…」占位 */
     @Volatile
@@ -84,6 +94,7 @@ class LiveCapsuleService : Service() {
                         lastCardKey = posted.cardKey
                         lastSkeletonKey = posted.skeletonKey
                         posted.serviceNotification?.let { lastRendered = it }
+                        setLiveState(posted.live)
                     } catch (e: CancellationException) {
                         throw e
                     } catch (t: Throwable) {
@@ -97,8 +108,41 @@ class LiveCapsuleService : Service() {
     }
 
     override fun onDestroy() {
+        releaseWakeLock()
         scope.cancel()
         super.onDestroy()
+    }
+
+    private fun setLiveState(live: Boolean) {
+        synchronized(wakeLockGuard) {
+            if (live) {
+                if (wakeLock?.isHeld == true) return
+                val manager = getSystemService(PowerManager::class.java) ?: return
+                runCatching {
+                    wakeLock = manager.newWakeLock(
+                        PowerManager.PARTIAL_WAKE_LOCK,
+                        WAKE_LOCK_TAG,
+                    ).apply {
+                        setReferenceCounted(false)
+                        // 4 小时上限是防泄漏兜底：正常路径在状态离开实时态时主动释放
+                        acquire(WAKE_LOCK_TIMEOUT_MS)
+                    }
+                }.onFailure { wakeLock = null }
+            } else {
+                releaseWakeLockLocked()
+            }
+        }
+    }
+
+    private fun releaseWakeLock() {
+        synchronized(wakeLockGuard) { releaseWakeLockLocked() }
+    }
+
+    private fun releaseWakeLockLocked() {
+        wakeLock?.let { lock ->
+            runCatching { if (lock.isHeld) lock.release() }
+        }
+        wakeLock = null
     }
 
     /** 切换闹钟唤醒时把刚渲染好的通知带进来，避免冷启动瞬间以占位覆盖实时内容 */
@@ -114,6 +158,11 @@ class LiveCapsuleService : Service() {
         private const val REFRESH_INTERVAL_MS = 30_000L
 
         private const val EXTRA_NOTIFICATION = "capsule_notification"
+
+        private const val WAKE_LOCK_TAG = "zhijian:capsule-live"
+
+        /** 实时态 wake lock 的防泄漏上限 */
+        private const val WAKE_LOCK_TIMEOUT_MS = 4 * 60 * 60 * 1000L
 
         fun start(context: Context, notification: Notification? = null) {
             val intent = Intent(context, LiveCapsuleService::class.java)

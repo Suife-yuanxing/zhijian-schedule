@@ -1,5 +1,6 @@
 package com.zhijian.schedule.feature.update
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -89,13 +90,20 @@ fun UpdateDialog(
                 Spacer(Modifier.height(12.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("镜像加速（实验）", color = colors.text, fontSize = 13.sp)
+                        Text("镜像加速", color = colors.text, fontSize = 13.sp)
                         Text(mirrorHint(ui), color = colors.textMuted, fontSize = 12.sp)
                     }
                     Switch(
                         checked = ui.mirrorsEnabled,
                         onCheckedChange = { viewModel.setMirrorsEnabled(it) },
                     )
+                }
+
+                val info = ui.updateInfo
+                if (info?.apkUrl != null) {
+                    TextButton(onClick = { openInBrowser(context, info) }) {
+                        Text("直连不通？用浏览器下载", color = colors.accent, fontSize = 12.sp)
+                    }
                 }
 
                 // 下载中隐藏：分片正被写入，而且此时 updateCacheBytes 还是上一次终态的旧值
@@ -171,7 +179,10 @@ private fun UpdateStatusLine(ui: UpdateUiState) {
         download is DownloadState.Paused ->
             "已取消 · 已保留 ${ResumableDownload.formatBytes(download.downloadedBytes)} 进度" to false
         download is DownloadState.Ready -> "下载完成，待安装（${ResumableDownload.formatBytes(download.sizeBytes)}）" to true
-        download is DownloadState.Failed -> download.reason to false
+        download is DownloadState.Failed -> {
+            val hint = if (!ui.mirrorsEnabled) " · 可开启镜像加速或浏览器下载" else ""
+            (download.reason + hint) to false
+        }
         ui.updateError != null -> "检查更新失败：${ui.updateError}" to false
         ui.updateInfo != null -> versionLine(ui.updateInfo) to true
         ui.updateChecked -> "已是最新版本 v${BuildConfig.VERSION_NAME}" to false
@@ -191,16 +202,39 @@ private fun runningLine(state: DownloadState.Running): String {
 
 /** 镜像提示：先说合法性（有没有官方摘要），再说用途（实测镜像更慢，只当退路） */
 private fun mirrorHint(ui: UpdateUiState): String {
+    // 还没有检查到新版本时没有 digest 可谈，别误报「该版本未提供官方摘要」
+    if (ui.updateInfo == null) {
+        return if (ui.mirrorsEnabled) {
+            "有新版本时，直连不通会自动换镜像重试（推荐）"
+        } else {
+            "关闭中：有新版本时只用 GitHub 直连"
+        }
+    }
     val reason = DownloadSourceSet.mirrorDisabledReason(
-        digest = ui.updateInfo?.apkDigest,
+        digest = ui.updateInfo.apkDigest,
         mirrorsEnabled = ui.mirrorsEnabled,
     )
     return when (reason) {
-        null -> "直连跑不通时自动换镜像重试；实测镜像更慢，能直连就不会切"
-        "镜像加速已关闭" -> "关闭中：只用 GitHub 直连"
+        null -> "直连不通时自动换镜像重试（推荐）"
+        "镜像加速已关闭" -> "关闭中：只用 GitHub 直连（可用浏览器下载兜底）"
         // reason 已经是完整句（含「已禁用镜像」），直接用它，别再拼「本次只用直连」造成重复
         else -> reason
     }
+}
+
+/**
+ * 浏览器下载兜底：优先用带官方摘要的镜像地址。
+ * 应用内下载走 FGS，系统省电策略可能中断；浏览器交给系统下载器，成功率更高。
+ */
+private fun openInBrowser(context: Context, info: UpdateChecker.UpdateInfo) {
+    val directUrl = info.apkUrl ?: return
+    val mirror = DownloadSourceSet.availableSources(
+        directUrl = directUrl,
+        digest = info.apkDigest,
+        mirrors = DownloadSourceSet.MIRRORS,
+    ).firstOrNull { it.id != DownloadSourceSet.DIRECT_ID }
+    val target = mirror?.url ?: directUrl
+    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(target))) }
 }
 
 private fun versionLine(info: UpdateChecker.UpdateInfo): String = if (info.apkUrl == null) {

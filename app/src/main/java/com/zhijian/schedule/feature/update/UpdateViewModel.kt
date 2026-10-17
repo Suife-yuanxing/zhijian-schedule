@@ -19,6 +19,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -34,7 +35,7 @@ data class UpdateUiState(
     /** `filesDir/updates/` 当前占用字节数；> 0 时出现「清理下载缓存」 */
     val updateCacheBytes: Long = 0L,
     /** 镜像加速开关（持久化在 SettingsStore，仅透传给下载服务） */
-    val mirrorsEnabled: Boolean = false,
+    val mirrorsEnabled: Boolean = true,
 )
 
 /** 检查更新独立页的状态与动作；更新检查/下载的机器都挂在 Singleton 上，本 VM 只做透传与聚合 */
@@ -51,6 +52,9 @@ class UpdateViewModel @Inject constructor(
     var uiState by mutableStateOf(UpdateUiState())
         private set
 
+    /** 每个版本只自动切一次镜像，避免「直连失败→镜像失败→再重试」死循环 */
+    private var autoMirrorRetriedVersion: String? = null
+
     init {
         viewModelScope.launch {
             repository.settings.collect { settings ->
@@ -60,6 +64,7 @@ class UpdateViewModel @Inject constructor(
         viewModelScope.launch {
             downloader.state.collect { state ->
                 uiState = uiState.copy(download = state)
+                maybeAutoEnableMirrors(state)
                 // 只在终态重算占盘，避免下载中每个分片都去列目录
                 if (state !is DownloadState.Running) refreshUpdateCache()
             }
@@ -108,24 +113,62 @@ class UpdateViewModel @Inject constructor(
         }
     }
 
-    fun downloadUpdate() {
+    /**
+     * 直连失败且镜像关闭时自动开启镜像并重试一次。
+     * 用户的设备上镜像开关可能来自旧版本的关闭状态；不这样做的话「直连下载不可用」
+     * 会一直复现，用户还得自己发现下面那个开关。
+     */
+    private fun maybeAutoEnableMirrors(state: DownloadState) {
+        if (state !is DownloadState.Failed) return
+        if (uiState.mirrorsEnabled) return
+        if (autoMirrorRetriedVersion == state.version) return
+        if (!isSourceFailure(state.reason)) return
+        autoMirrorRetriedVersion = state.version
+        viewModelScope.launch {
+            settingsStore.setMirrorsEnabled(true)
+            uiState = uiState.copy(
+                mirrorsEnabled = true,
+                message = "直连不通，已自动开启镜像，正在重试…",
+            )
+            // 等旧的前台服务收尾（stopSelf）后再拉起新请求
+            delay(1500)
+            startDownload(forceMirrors = true, keepMessage = true)
+        }
+    }
+
+    /** 网络/下载源类失败才值得换镜像；磁盘不足、校验失败换源也没用 */
+    private fun isSourceFailure(reason: String): Boolean =
+        listOf("网络", "源", "HTTP", "停滞", "过慢", "中断", "响应", "未完成").any { reason.contains(it) }
+
+    fun downloadUpdate() = startDownload(forceMirrors = false)
+
+    private fun startDownload(forceMirrors: Boolean, keepMessage: Boolean = false) {
         val info = uiState.updateInfo
         val url = info?.apkUrl
         if (info == null || url.isNullOrBlank()) {
             uiState = uiState.copy(message = "请先检查更新")
             return
         }
-        ApkDownloadService.start(
-            context,
-            DownloadRequest(
-                version = info.version,
-                url = url,
-                sizeBytes = info.apkSize,
-                digest = info.apkDigest,
-                // 没有官方摘要时一律禁用镜像候选，代码层不给自己留后门
-                mirrorsEnabled = uiState.mirrorsEnabled && ResumableDownload.normalizeDigest(info.apkDigest) != null,
-            ),
-        )
+        val mirrorsAllowed = (uiState.mirrorsEnabled || forceMirrors) &&
+            ResumableDownload.normalizeDigest(info.apkDigest) != null
+        val started = runCatching {
+            ApkDownloadService.start(
+                context,
+                DownloadRequest(
+                    version = info.version,
+                    url = url,
+                    sizeBytes = info.apkSize,
+                    digest = info.apkDigest,
+                    // 没有官方摘要时一律禁用镜像候选，代码层不给自己留后门
+                    mirrorsEnabled = mirrorsAllowed,
+                ),
+            )
+        }.isSuccess
+        if (!started) {
+            uiState = uiState.copy(message = "无法启动下载，请回到应用后重试")
+        } else if (!keepMessage) {
+            uiState = uiState.copy(message = null)
+        }
     }
 
     fun setMirrorsEnabled(enabled: Boolean) {

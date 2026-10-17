@@ -5,11 +5,13 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import com.zhijian.schedule.MainActivity
 import com.zhijian.schedule.core.data.db.HolidayDao
 import com.zhijian.schedule.core.data.prefs.SettingsStore
 import com.zhijian.schedule.core.repository.ScheduleRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.LocalDateTime
+import java.time.ZoneId
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.first
@@ -26,6 +28,10 @@ import kotlinx.coroutines.flow.first
  * 直到用户打开 App——单次丢失即全天卡死。因此每次渲染同时登记一个**心跳闹钟**
  * （独立 PendingIntent，见 [nextRefreshAtMillis]）：实时态每 6 分钟保鲜、切换丢失
  * 1 分钟内自愈，非实时态切换丢失 2 分钟内自愈。
+ *
+ * ColorOS 还会把普通精确闹钟降级成 +1h 窗口。默认开启「系统闹钟兜底」：
+ * 临近切换时改用 `setAlarmClock`（系统闹钟级 API，Doze 也准点，状态栏短暂显示
+ * 闹钟图标）；用户配置好后台运行后可在设置里关闭它，恢复无图标的精确闹钟。
  */
 @Singleton
 class CapsuleCoordinator @Inject constructor(
@@ -55,7 +61,7 @@ class CapsuleCoordinator @Inject constructor(
             holidayName = todayHolidayName(now),
         )
         val posted = CapsuleNotifier.post(context, plan, previousCardKey, previousSkeletonKey)
-        scheduleNextTransition(plan, now)
+        scheduleNextTransition(plan, now, settings.capsuleAlarmFallbackEnabled)
         return posted
     }
 
@@ -71,24 +77,68 @@ class CapsuleCoordinator @Inject constructor(
             .firstOrNull { it.date == now.toLocalDate().toString() && it.isOffDay }
             ?.name
 
-    private fun scheduleNextTransition(plan: CapsulePlan, now: LocalDateTime) {
+    private fun scheduleNextTransition(plan: CapsulePlan, now: LocalDateTime, alarmFallback: Boolean) {
         val manager = context.getSystemService(AlarmManager::class.java)
-        scheduleAt(manager, nextTransitionAtMillis(plan, now), transitionPendingIntent())
-        scheduleAt(manager, nextRefreshAtMillis(plan, now), beatPendingIntent())
+        val nowMillis = now.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        scheduleAt(
+            manager, nextTransitionAtMillis(plan, now), transitionPendingIntent(),
+            isTransition = true, alarmFallback, nowMillis,
+        )
+        scheduleAt(
+            manager, nextRefreshAtMillis(plan, now), beatPendingIntent(),
+            isTransition = false, alarmFallback, nowMillis,
+        )
     }
 
-    private fun scheduleAt(manager: AlarmManager, at: Long?, pendingIntent: PendingIntent) {
-        if (at == null || at <= System.currentTimeMillis()) {
+    private fun scheduleAt(
+        manager: AlarmManager?,
+        at: Long?,
+        pendingIntent: PendingIntent,
+        isTransition: Boolean,
+        alarmFallback: Boolean,
+        nowMillis: Long,
+    ) {
+        if (manager == null) return
+        if (at == null || at <= nowMillis) {
             manager.cancel(pendingIntent)
             return
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !manager.canScheduleExactAlarms()) {
+        val exactAllowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || manager.canScheduleExactAlarms()
+        if (!exactAllowed) {
             // 未授予精确闹钟权限时退化为非精确（与课前提醒同一策略）
             manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pendingIntent)
-        } else {
-            manager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pendingIntent)
+            return
         }
+        // 临近切换用 setAlarmClock 兜底：ColorOS 会冻结进程并把普通精确闹钟降级成 +1h 窗口，
+        // 只有闹钟级 API 能准点唤醒；代价是状态栏短暂出现闹钟图标（设置里可关闭）。
+        if (isTransition && shouldUseAlarmClockFallback(
+                nowMillis = nowMillis,
+                transitionAtMillis = at,
+                alarmFallbackEnabled = alarmFallback,
+                exactAlarmsAllowed = exactAllowed,
+            )
+        ) {
+            val scheduled = runCatching {
+                manager.setAlarmClock(AlarmManager.AlarmClockInfo(at, alarmClockShowIntent()), pendingIntent)
+            }.isSuccess
+            if (scheduled) return
+        }
+        manager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pendingIntent)
     }
+
+    /** 闹钟图标点开时进入今日页 */
+    private fun alarmClockShowIntent(): PendingIntent =
+        PendingIntent.getActivity(
+            context,
+            REQUEST_CODE_ALARM_SHOW,
+            Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra(MainActivity.EXTRA_OPEN_TODAY, true)
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
 
     private fun transitionPendingIntent(): PendingIntent = broadcastPendingIntent(REQUEST_CODE)
 
@@ -110,5 +160,8 @@ class CapsuleCoordinator @Inject constructor(
 
         /** 心跳闹钟：独立槽位，避免与切换闹钟互相覆盖 */
         private const val REQUEST_CODE_BEAT = 3003
+
+        /** 闹钟兜底的展示 Intent，独立槽位避免覆盖卡片跳转 */
+        private const val REQUEST_CODE_ALARM_SHOW = 3004
     }
 }

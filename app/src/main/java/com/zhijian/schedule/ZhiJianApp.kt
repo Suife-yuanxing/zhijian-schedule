@@ -52,6 +52,8 @@ class ZhiJianApp : Application(), Configuration.Provider {
         appScope.launch {
             // 「版本 <= 当前已安装版本」的更新残留（含待安装 APK 与断点）已经没用了
             runCatching { apkDownloader.cleanupOutdated(BuildConfig.VERSION_NAME) }
+            // 旧版本的镜像开关默认关闭；升级后一次性打开，保证直连不可用时能自动换源
+            runCatching { settingsStore.migrateIfNeeded() }
             repository.ensureInitialized()
             Notifications.ensureChannels(this@ZhiJianApp)
             val settings = settingsStore.settings.first()

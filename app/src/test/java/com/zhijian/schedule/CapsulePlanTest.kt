@@ -5,6 +5,7 @@ import com.zhijian.schedule.capsule.buildCapsulePlan
 import com.zhijian.schedule.capsule.countdownCleanupDelayMillis
 import com.zhijian.schedule.capsule.nextRefreshAtMillis
 import com.zhijian.schedule.capsule.nextTransitionAtMillis
+import com.zhijian.schedule.capsule.shouldUseAlarmClockFallback
 import com.zhijian.schedule.core.data.db.CourseEntity
 import com.zhijian.schedule.core.data.db.SectionTimeEntity
 import com.zhijian.schedule.core.data.db.TimetableEntity
@@ -47,9 +48,10 @@ class CapsulePlanTest {
         weeks: Collection<Int> = (1..20).toList(),
         name: String = "课程",
         room: String = "8A206",
+        teacher: String = "张老师",
         color: Int = 0xFF4285F4.toInt(),
     ) = CourseEntity(
-        id = 0, tableId = 1, name = name, room = room,
+        id = 0, tableId = 1, name = name, room = room, teacher = teacher,
         dayOfWeek = day, startSection = startSection, endSection = endSection,
         weekMask = WeekMask.fromWeeks(20, weeks), color = color,
     )
@@ -68,6 +70,9 @@ class CapsulePlanTest {
         assertEquals(75, ongoing.remainingMinutes)
         assertEquals("剩 75 分", ongoing.chip)
         assertEquals("第3-4节", ongoing.course.sectionText)
+        assertEquals("张老师", ongoing.course.teacher)
+        assertEquals(2, ongoing.course.sectionCount)
+        assertEquals(listOf(45L, 45L), ongoing.course.sectionMinutes)
     }
 
     @Test
@@ -151,7 +156,7 @@ class CapsulePlanTest {
         assertEquals("接档课", about.course.name)
         assertEquals(10, about.minutesUntil)
         assertEquals(66, about.progress) // 倒数从下课 09:55 起：15 分钟剩 10 分钟
-        assertEquals("即将上课", about.chip)
+        assertEquals("还有 10 分", about.chip)
     }
 
     @Test
@@ -369,6 +374,42 @@ class CapsulePlanTest {
             reminderMinutes = 30,
         ) as CapsulePlan.Ongoing
         assertEquals(10_000L, countdownCleanupDelayMillis(ongoing, epochOf(11, 50)))
+    }
+
+    @Test
+    fun aboutToStartChipShowsRemainingMinutes() {
+        val plan = buildCapsulePlan(
+            timetable(), listOf(course(day = 2, 3, 4)), sections(), tuesday(10, 5),
+            reminderMinutes = 30,
+        ) as CapsulePlan.AboutToStart
+        assertEquals(5, plan.minutesUntil)
+        assertEquals("还有 5 分", plan.chip)
+    }
+
+    @Test
+    fun upcomingGetsPreTransitionWake() {
+        // 08:00 时下节课 10:10，倒数窗口 09:40：心跳应在 09:25 先唤醒，
+        // 好让 Coordinator 把 09:40 的切换升级成系统闹钟兜底
+        val plan = buildCapsulePlan(
+            timetable(), listOf(course(day = 2, 3, 4)), sections(), tuesday(8, 0),
+            reminderMinutes = 30,
+        ) as CapsulePlan.Upcoming
+        assertEquals(epochOf(9, 25), nextRefreshAtMillis(plan, tuesday(8, 0)))
+    }
+
+    @Test
+    fun alarmClockFallbackOnlyNearTransitionAndWhenEnabled() {
+        val now = epochOf(10, 0)
+        // 15 分钟内 + 开关开启 + 有精确闹钟权限 → 用闹钟级兜底
+        assertTrue(shouldUseAlarmClockFallback(now, now + 15 * 60_000L, alarmFallbackEnabled = true, exactAlarmsAllowed = true))
+        // 开关关闭 → 不用闹钟图标
+        assertEquals(false, shouldUseAlarmClockFallback(now, now + 5 * 60_000L, alarmFallbackEnabled = false, exactAlarmsAllowed = true))
+        // 距离切换还早 → 普通精确闹钟
+        assertEquals(false, shouldUseAlarmClockFallback(now, now + 16 * 60_000L, alarmFallbackEnabled = true, exactAlarmsAllowed = true))
+        // 没有精确闹钟权限 → 无法调用 setAlarmClock
+        assertEquals(false, shouldUseAlarmClockFallback(now, now + 5 * 60_000L, alarmFallbackEnabled = true, exactAlarmsAllowed = false))
+        // 时刻已过 → 不兜底
+        assertEquals(false, shouldUseAlarmClockFallback(now, now - 1L, alarmFallbackEnabled = true, exactAlarmsAllowed = true))
     }
 
     private fun epochOf(h: Int, m: Int) =

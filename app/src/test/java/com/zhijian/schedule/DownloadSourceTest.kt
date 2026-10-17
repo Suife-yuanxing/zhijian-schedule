@@ -46,6 +46,18 @@ class DownloadSourceTest {
         assertEquals(listOf("direct"), DownloadSourceSet.availableSources(ghUrl, null, emptyList()).map { it.id })
     }
 
+    @Test
+    fun nonGithubUrlsAreNotDuplicatedByMirrorPrefixes() {
+        val url = "https://cdn.example.com/a.apk"
+        val sources = DownloadSourceSet.availableSources(
+            directUrl = url,
+            digest = "sha256:" + "a".repeat(64),
+            mirrors = DownloadSourceSet.MIRRORS,
+        )
+        assertEquals(listOf("direct"), sources.map { it.id })
+        assertEquals(url, sources.single().url)
+    }
+
     // ---------- 模板 ----------
 
     @Test
@@ -80,5 +92,65 @@ class DownloadSourceTest {
             DownloadSourceSet.mirrorDisabledReason("md5:x", mirrorsEnabled = true),
         )
         assertEquals(null, DownloadSourceSet.mirrorDisabledReason("sha256:" + "a".repeat(64), mirrorsEnabled = true))
+    }
+
+    // ---------- 下载前探测排序 ----------
+
+    @Test
+    fun probeOrderPutsFastestWorkingSourceFirst() {
+        val sources = listOf(
+            UpdateSource("direct", "直连", "https://github.com/a.apk"),
+            UpdateSource("gh-proxy", "镜像", "https://gh-proxy.com/https://github.com/a.apk"),
+        )
+        val ordered = DownloadSourceSet.orderByProbe(
+            sources,
+            mapOf("direct" to 900L, "gh-proxy" to 120L),
+        )
+        assertEquals(listOf("gh-proxy", "direct"), ordered.map { it.id })
+    }
+
+    @Test
+    fun probeOrderKeepsFailedSourcesAsLastResort() {
+        val sources = listOf(
+            UpdateSource("direct", "直连", "https://github.com/a.apk"),
+            UpdateSource("gh-proxy", "镜像", "https://gh-proxy.com/https://github.com/a.apk"),
+        )
+        val ordered = DownloadSourceSet.orderByProbe(
+            sources,
+            mapOf("direct" to null, "gh-proxy" to 150L),
+        )
+        assertEquals(listOf("gh-proxy", "direct"), ordered.map { it.id })
+    }
+
+    @Test
+    fun probeOrderFallsBackToOriginalWhenAllFail() {
+        val sources = listOf(
+            UpdateSource("direct", "直连", "https://github.com/a.apk"),
+            UpdateSource("gh-proxy", "镜像", "https://gh-proxy.com/https://github.com/a.apk"),
+        )
+        val ordered = DownloadSourceSet.orderByProbe(
+            sources,
+            mapOf("direct" to null, "gh-proxy" to null),
+        )
+        assertEquals(sources, ordered)
+    }
+
+    @Test
+    fun resumePrefersPreviousSourceEvenIfProbePutsAnotherFirst() {
+        val direct = UpdateSource("direct", "直连", "https://github.com/a.apk")
+        val mirror = UpdateSource("gh-proxy", "镜像", "https://gh-proxy.com/https://github.com/a.apk")
+        val ordered = DownloadSourceSet.preferResumeSource(listOf(direct, mirror), mirror.url)
+        assertEquals(listOf("gh-proxy", "direct"), ordered.map { it.id })
+    }
+
+    @Test
+    fun resumeKeepsProbeOrderWhenPreviousSourceIsGone() {
+        val direct = UpdateSource("direct", "直连", "https://github.com/a.apk")
+        val mirror = UpdateSource("gh-proxy", "镜像", "https://gh-proxy.com/https://github.com/a.apk")
+        val sources = listOf(mirror, direct)
+        assertEquals(
+            sources,
+            DownloadSourceSet.preferResumeSource(sources, "https://old-mirror.example/a.apk"),
+        )
     }
 }

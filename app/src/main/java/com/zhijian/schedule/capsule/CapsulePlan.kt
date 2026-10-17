@@ -36,7 +36,10 @@ sealed interface CapsulePlan {
         val progress: Int,
         /** 上课时刻（epoch 毫秒）：交系统 chronometer 每秒自绘 */
         val startAtMillis: Long,
-        override val chip: String = "即将上课",
+        override val chip: String = when {
+            minutesUntil <= 0 -> "马上上课"
+            else -> "还有 $minutesUntil 分"
+        },
     ) : CapsulePlan
 
     /** 下节课（还没到课前提醒窗口）：不画进度条、不提升为流体云 */
@@ -74,12 +77,24 @@ sealed interface CapsulePlan {
 data class CapsuleCourse(
     val name: String,
     val room: String,
+    val teacher: String,
     val color: Int,
     val start: LocalTime,
     val end: LocalTime,
+    /** 起始/结束小节（1..12），流体云进度条按小节分段 */
+    val startSection: Int = 0,
+    val endSection: Int = 0,
+    /** 各小节时长（分钟）；缺失时进度条退回单段 */
+    val sectionMinutes: List<Long> = emptyList(),
     /** 节次描述（如「第7-8节」），通知副标题用 */
     val sectionText: String? = null,
-)
+) {
+    val sectionCount: Int get() = (endSection - startSection + 1).coerceAtLeast(0)
+}
+
+/** 「即将上课 / 上课中」需要实时刷新，也是持有 wake lock 的时段 */
+val CapsulePlan.isLive: Boolean
+    get() = this is CapsulePlan.Ongoing || this is CapsulePlan.AboutToStart
 
 fun buildCapsulePlan(
     timetable: TimetableEntity?,
@@ -168,7 +183,20 @@ private fun courseOf(entity: CourseEntity, sections: List<SectionTimeEntity>): C
     val end = sections.getOrNull(entity.endSection - 1)?.endTime?.let { TimeUtils.parseTime(it) }
     if (start == null || end == null || !start.isBefore(end)) return null
     return CapsuleCourse(
-        name = entity.name, room = entity.room, color = entity.color, start = start, end = end,
+        name = entity.name,
+        room = entity.room,
+        teacher = entity.teacher,
+        color = entity.color,
+        start = start,
+        end = end,
+        startSection = entity.startSection,
+        endSection = entity.endSection,
+        sectionMinutes = (entity.startSection..entity.endSection).mapNotNull { sectionNo ->
+            val section = sections.getOrNull(sectionNo - 1) ?: return@mapNotNull null
+            val sectionStart = TimeUtils.parseTime(section.startTime) ?: return@mapNotNull null
+            val sectionEnd = TimeUtils.parseTime(section.endTime) ?: return@mapNotNull null
+            Duration.between(sectionStart, sectionEnd).toMinutes().coerceAtLeast(1)
+        },
         sectionText = if (entity.startSection == entity.endSection) {
             "第${entity.startSection}节"
         } else {
@@ -204,18 +232,33 @@ fun nextTransitionAtMillis(plan: CapsulePlan, now: LocalDateTime): Long? = when 
  *   单次渲染失败时 1 分钟内自愈（真机事故 2026-10-16：14:20 上课切换丢失，
  *   胶囊停在「即将上课 00:00」直到打开 App）；课堂期间每 6 分钟重渲染一次，
  *   被冻结时 chip「剩 N 分」与进度条也不会陈旧过久
- * - 其它状态：切换 + 2min —— 切换丢失时 2 分钟内自愈，其余时间不打扰
+ * - 所有课程态在**切换前 15 分钟**额外唤醒一次：这次唤醒让 Coordinator 有机会
+ *   把切换闹钟升级成 setAlarmClock（ColorOS 会把普通精确闹钟降级成 +1h 窗口）
+ * - 假期 / 已结束：切换 + 2min —— 切换丢失时 2 分钟内自愈，其余时间不打扰
  * 返回 null 表示无需登记（没有下一次切换）。
  */
 fun nextRefreshAtMillis(plan: CapsulePlan, now: LocalDateTime): Long? {
     val next = nextTransitionAtMillis(plan, now) ?: return null
-    return if (plan is CapsulePlan.Ongoing || plan is CapsulePlan.AboutToStart) {
+    val nowMillis = now.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    val preTransition = if (plan is CapsulePlan.Ongoing ||
+        plan is CapsulePlan.AboutToStart ||
+        plan is CapsulePlan.Upcoming
+    ) {
+        (next - PRE_TRANSITION_WAKE_MS).takeIf { it > nowMillis }
+    } else {
+        null
+    }
+    val regular = if (plan is CapsulePlan.Ongoing || plan is CapsulePlan.AboutToStart) {
         val heartbeat = now.plusMinutes(6).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
         minOf(next + BEAT_AFTER_TRANSITION_MS, heartbeat)
     } else {
         next + BEAT_AFTER_TRANSITION_IDLE_MS
     }
+    return if (preTransition == null) regular else minOf(regular, preTransition)
 }
+
+/** 切换前多久额外唤醒一次（用于把普通精确闹钟升级成系统闹钟兜底） */
+private const val PRE_TRANSITION_WAKE_MS = 15 * 60_000L
 
 /** 实时态：切换后 1 分钟的自愈心跳 */
 private const val BEAT_AFTER_TRANSITION_MS = 60_000L
@@ -244,6 +287,26 @@ fun countdownCleanupDelayMillis(plan: CapsulePlan, nowMillis: Long): Long? = whe
 
 private const val CLEANUP_GRACE_AFTER_END_MS = 10_000L
 private const val CLEANUP_GRACE_AFTER_START_MS = 40_000L
+
+/**
+ * 临近状态切换时是否用 [android.app.AlarmManager.setAlarmClock] 兜底。
+ *
+ * ColorOS 会冻结后台进程并把第三方精确闹钟降级成 +1h 窗口（真机事故 2026-10-16/17），
+ * `setAlarmClock` 是系统优先级最高的闹钟，Doze 中也能准点唤醒，代价是状态栏出现闹钟图标。
+ * 因此只对「切换」且已进入 15 分钟窗口时使用，并由设置开关控制（默认开启）。
+ */
+fun shouldUseAlarmClockFallback(
+    nowMillis: Long,
+    transitionAtMillis: Long,
+    alarmFallbackEnabled: Boolean,
+    exactAlarmsAllowed: Boolean,
+): Boolean = alarmFallbackEnabled &&
+    exactAlarmsAllowed &&
+    transitionAtMillis > nowMillis &&
+    transitionAtMillis - nowMillis <= ALARM_CLOCK_WINDOW_MS
+
+/** 切换前多久开始用系统闹钟兜底 */
+const val ALARM_CLOCK_WINDOW_MS = 15 * 60_000L
 
 private fun nextMidnightMillis(now: LocalDateTime): Long =
     now.toLocalDate().plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()

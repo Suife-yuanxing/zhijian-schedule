@@ -27,10 +27,12 @@ data class AppSettings(
     val lastSyncTime: Long = 0L,
     val calendarSyncEnabled: Boolean = false,
     val capsuleEnabled: Boolean = false,
+    /** 临近状态切换时用系统闹钟兜底（状态栏会短暂出现闹钟图标）；默认开启保证准时 */
+    val capsuleAlarmFallbackEnabled: Boolean = true,
     val gradesFetchedAt: Long = 0L,
     val holidayFetchedAt: Long = 0L,
-    /** 「镜像加速（实验）」开关；默认关闭 —— 实测镜像比直连还慢，只在直连彻底跑不通时当退路 */
-    val mirrorsEnabled: Boolean = false,
+    /** 「镜像加速」开关；默认开启 —— GitHub 直连在国内经常不可用，镜像作为自动退路 */
+    val mirrorsEnabled: Boolean = true,
 )
 
 @Singleton
@@ -50,10 +52,12 @@ class SettingsStore @Inject constructor(
         val LAST_SYNC = longPreferencesKey("last_sync_time")
         val CALENDAR_SYNC = booleanPreferencesKey("calendar_sync_enabled")
         val CAPSULE = booleanPreferencesKey("capsule_enabled")
+        val CAPSULE_ALARM_FALLBACK = booleanPreferencesKey("capsule_alarm_fallback")
         val GRADES_FETCHED = longPreferencesKey("grades_fetched_at")
         val HOLIDAY_FETCHED = longPreferencesKey("holiday_fetched_at")
         val MIRRORS = booleanPreferencesKey("update_mirrors_enabled")
         val CALENDAR_FINGERPRINT = stringPreferencesKey("calendar_sync_fingerprint")
+        val SETTINGS_SCHEMA = intPreferencesKey("settings_schema")
     }
 
     val settings: Flow<AppSettings> = dataStore.data.map { p ->
@@ -70,9 +74,10 @@ class SettingsStore @Inject constructor(
             lastSyncTime = p[Keys.LAST_SYNC] ?: 0L,
             calendarSyncEnabled = p[Keys.CALENDAR_SYNC] ?: false,
             capsuleEnabled = p[Keys.CAPSULE] ?: false,
+            capsuleAlarmFallbackEnabled = p[Keys.CAPSULE_ALARM_FALLBACK] ?: true,
             gradesFetchedAt = p[Keys.GRADES_FETCHED] ?: 0L,
             holidayFetchedAt = p[Keys.HOLIDAY_FETCHED] ?: 0L,
-            mirrorsEnabled = p[Keys.MIRRORS] ?: false,
+            mirrorsEnabled = p[Keys.MIRRORS] ?: true,
         )
     }
 
@@ -92,9 +97,27 @@ class SettingsStore @Inject constructor(
     suspend fun setLastSyncTime(time: Long) = dataStore.edit { it[Keys.LAST_SYNC] = time }
     suspend fun setCalendarSync(enabled: Boolean) = dataStore.edit { it[Keys.CALENDAR_SYNC] = enabled }
     suspend fun setCapsule(enabled: Boolean) = dataStore.edit { it[Keys.CAPSULE] = enabled }
+    suspend fun setCapsuleAlarmFallback(enabled: Boolean) = dataStore.edit {
+        it[Keys.CAPSULE_ALARM_FALLBACK] = enabled
+    }
     suspend fun setGradesFetchedAt(time: Long) = dataStore.edit { it[Keys.GRADES_FETCHED] = time }
     suspend fun setHolidayFetchedAt(time: Long) = dataStore.edit { it[Keys.HOLIDAY_FETCHED] = time }
     suspend fun setMirrorsEnabled(enabled: Boolean) = dataStore.edit { it[Keys.MIRRORS] = enabled }
+
+    /**
+     * v1.0.6 及以前的镜像开关默认关闭，升级用户在直连不可用时完全无法下载更新。
+     * schema 2 起强制打开一次（用户之后仍可在检查更新窗口关闭）；同时保留对用户
+     * 后续选择的尊重，不再重复覆盖。
+     */
+    suspend fun migrateIfNeeded() {
+        dataStore.edit { prefs ->
+            val schema = prefs[Keys.SETTINGS_SCHEMA] ?: 1
+            if (schema < 2) {
+                prefs[Keys.MIRRORS] = true
+                prefs[Keys.SETTINGS_SCHEMA] = 2
+            }
+        }
+    }
 
     /** 已写入系统日历的课表内容指纹（内部状态，不参与 AppSettings） */
     suspend fun calendarFingerprint(): String? =

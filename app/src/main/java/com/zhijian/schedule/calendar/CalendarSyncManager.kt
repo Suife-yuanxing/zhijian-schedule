@@ -1,9 +1,12 @@
 package com.zhijian.schedule.calendar
 
+import android.Manifest
 import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
+import android.content.pm.PackageManager
 import android.provider.CalendarContract
+import androidx.core.content.ContextCompat
 import com.zhijian.schedule.BuildConfig
 import com.zhijian.schedule.core.data.db.CourseEntity
 import com.zhijian.schedule.core.data.db.SectionTimeEntity
@@ -43,6 +46,23 @@ class CalendarSyncManager @Inject constructor(
 
     /** 手动开关同步与协调器自动重刷可能并发，串行化避免「删+插」交错写出重复事件 */
     private val syncMutex = Mutex()
+
+    fun hasPermission(): Boolean =
+        ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALENDAR) ==
+            PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CALENDAR) ==
+                PackageManager.PERMISSION_GRANTED
+
+    /**
+     * 日历 Provider 是否存在。查询日历数据需要 READ_CALENDAR，未授权时
+     * resolveAuthority() 必然失败，只能改用 PackageManager 判断。
+     */
+    fun hasCalendarProvider(): Boolean {
+        val manager = context.packageManager
+        return listOf(AUTHORITY_COLOROS, AUTHORITY_AOSP).any { authority ->
+            runCatching { manager.resolveContentProvider(authority, 0) }.getOrNull() != null
+        }
+    }
 
     /** 探测可用的日历 Provider（ColorOS 私有库优先） */
     fun resolveAuthority(): String? {

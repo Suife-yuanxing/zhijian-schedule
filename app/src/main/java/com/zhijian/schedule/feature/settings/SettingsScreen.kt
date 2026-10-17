@@ -1,8 +1,11 @@
 package com.zhijian.schedule.feature.settings
 
+import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -52,9 +55,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.ActivityCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import com.zhijian.schedule.capsule.CapsuleReliability
 import com.zhijian.schedule.core.data.db.SectionTimeEntity
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.SecondaryTopBar
@@ -72,9 +77,9 @@ fun SettingsScreen(
     val colors = LocalCourseColors.current
     val context = LocalContext.current
 
-    // 从系统设置返回时刷新流体云放行状态
+    // 从系统设置返回时刷新流体云放行 / 日历权限状态
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
-        viewModel.refreshCapsulePromote()
+        viewModel.refreshRuntimeState()
     }
 
     var editTimetable by remember { mutableStateOf(false) }
@@ -88,14 +93,16 @@ fun SettingsScreen(
         ActivityResultContracts.OpenDocument(),
     ) { uri -> uri?.let { viewModel.importBackup(it) } }
 
+    val activity = LocalActivity.current
     val calendarPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { grants ->
-        if (grants.values.all { it }) {
-            viewModel.setCalendarSync(true)
-        } else {
-            viewModel.clearMessage()
-        }
+        val granted = CALENDAR_PERMISSIONS.all { grants[it] == true }
+        val permanentlyDenied = !granted && activity != null &&
+            CALENDAR_PERMISSIONS
+                .filter { grants[it] != true }
+                .all { !ActivityCompat.shouldShowRequestPermissionRationale(activity, it) }
+        viewModel.onCalendarPermissionResult(granted, permanentlyDenied)
     }
 
     Scaffold(
@@ -252,6 +259,43 @@ fun SettingsScreen(
 
                             null -> Unit
                         }
+                        Spacer(Modifier.height(6.dp))
+                        if (!ui.batteryOptimizationIgnored) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "后台运行未放行：系统可能冻结胶囊状态",
+                                    color = colors.accent,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                TextButton(onClick = {
+                                    CapsuleReliability.requestIgnoreBatteryOptimization(context)
+                                }) { Text("去允许") }
+                            }
+                        } else {
+                            Text(
+                                text = "后台运行已放行，状态切换更可靠",
+                                color = colors.textMuted,
+                                fontSize = 12.sp,
+                            )
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("系统闹钟兜底", color = colors.text, fontSize = 13.sp)
+                                Text(
+                                    "临近切换用系统闹钟唤醒，状态栏会短暂显示闹钟图标",
+                                    color = colors.textMuted,
+                                    fontSize = 12.sp,
+                                )
+                            }
+                            Switch(
+                                checked = ui.settings.capsuleAlarmFallbackEnabled,
+                                onCheckedChange = { viewModel.setCapsuleAlarmFallback(it) },
+                            )
+                        }
+                        TextButton(onClick = { CapsuleReliability.openAppDetails(context) }) {
+                            Text("自启动 / 耗电管理", fontSize = 12.sp)
+                        }
                     }
                 }
             }
@@ -263,31 +307,55 @@ fun SettingsScreen(
                         Column(Modifier.weight(1f)) {
                             Text("写入系统日历", color = colors.text, fontWeight = FontWeight.SemiBold)
                             Text(
-                                text = if (ui.calendarAvailable) {
-                                    "把课程写入「纸间课表」日历，负一屏日程可见"
-                                } else {
-                                    "未检测到系统日历"
+                                text = when {
+                                    !ui.calendarAvailable -> "未检测到系统日历"
+                                    !ui.calendarPermissionGranted ->
+                                        "开启后把课程写入「纸间课表」日历，负一屏日程可见"
+                                    else -> "把课程写入「纸间课表」日历，负一屏日程可见"
                                 },
                                 color = colors.textMuted,
                                 fontSize = 12.sp,
                             )
                         }
                         Switch(
-                            checked = ui.settings.calendarSyncEnabled,
+                            checked = ui.settings.calendarSyncEnabled && ui.calendarPermissionGranted,
                             enabled = ui.calendarAvailable,
                             onCheckedChange = { checked ->
-                                if (checked) {
-                                    calendarPermissionLauncher.launch(
-                                        arrayOf(
-                                            android.Manifest.permission.READ_CALENDAR,
-                                            android.Manifest.permission.WRITE_CALENDAR,
-                                        )
-                                    )
-                                } else {
-                                    viewModel.setCalendarSync(false)
+                                when {
+                                    !ui.calendarPermissionGranted ->
+                                        calendarPermissionLauncher.launch(CALENDAR_PERMISSIONS)
+                                    !checked -> viewModel.setCalendarSync(false)
+                                    else -> viewModel.setCalendarSync(true)
                                 }
                             },
                         )
+                    }
+                    if (ui.calendarAvailable && !ui.calendarPermissionGranted) {
+                        Spacer(Modifier.height(10.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = when {
+                                    ui.calendarPermissionPermanentlyDenied ->
+                                        "日历权限已被拒绝，请到系统设置中允许"
+                                    ui.calendarPermissionDenied ->
+                                        "未授予日历权限，无法写入系统日历"
+                                    else -> "需要读取和写入日历权限"
+                                },
+                                color = colors.accent,
+                                fontSize = 12.sp,
+                                modifier = Modifier.weight(1f),
+                            )
+                            TextButton(onClick = {
+                                if (ui.calendarPermissionPermanentlyDenied) {
+                                    viewModel.onCalendarPermissionSettingsOpened()
+                                    openCalendarPermissionSettings(context)
+                                } else {
+                                    calendarPermissionLauncher.launch(CALENDAR_PERMISSIONS)
+                                }
+                            }) {
+                                Text(if (ui.calendarPermissionPermanentlyDenied) "去设置" else "去授权")
+                            }
+                        }
                     }
                 }
             }
@@ -483,5 +551,19 @@ private fun SectionEditDialog(
 private fun openCapsuleSystemSettings(context: android.content.Context) {
     val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
         .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+    runCatching { context.startActivity(intent) }
+}
+
+private val CALENDAR_PERMISSIONS = arrayOf(
+    Manifest.permission.READ_CALENDAR,
+    Manifest.permission.WRITE_CALENDAR,
+)
+
+/** 「拒绝且不再询问」后只能去系统设置的权限页手动打开 */
+private fun openCalendarPermissionSettings(context: Context) {
+    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+        data = Uri.fromParts("package", context.packageName, null)
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
     runCatching { context.startActivity(intent) }
 }

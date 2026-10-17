@@ -10,6 +10,7 @@ import java.io.File
 import java.io.IOException
 import java.io.RandomAccessFile
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -142,13 +143,60 @@ class ApkDownloader @Inject constructor(
             mirrors = if (request.mirrorsEnabled) DownloadSourceSet.MIRRORS else emptyList(),
         )
         try {
-            val result = withContext(Dispatchers.IO) { runSourceChain(request, sources) }
+            val previousUrl = withContext(Dispatchers.IO) { store.readMeta(request.version)?.url }
+            val ordered = withContext(Dispatchers.IO) { probeSources(sources, request.sizeBytes) }
+            val finalSources = DownloadSourceSet.preferResumeSource(ordered, previousUrl)
+            if (previousUrl != null && finalSources.firstOrNull()?.url == previousUrl) {
+                Log.i(TAG, "续传沿用上次下载源 ${finalSources.first().id}")
+            }
+            val result = withContext(Dispatchers.IO) { runSourceChain(request, finalSources) }
             _state.value = result
         } catch (e: CancellationException) {
             // 服务被回收时协程会被取消：把状态落回 Paused（分片保留），再向上传播
             _state.value = paused(request.version)
             throw e
         }
+    }
+
+    /**
+     * 下载前用 1KB Range 请求探测候选源，按延迟排序。
+     * 直连被黑洞时不用等源监视器 25s 才换镜像；探测失败的源保留在链尾，仍可作为退路。
+     * 同时校验响应长度，避免把「200 的镜像错误页」当成可用源。
+     */
+    private suspend fun probeSources(
+        sources: List<UpdateSource>,
+        expectedSize: Long?,
+    ): List<UpdateSource> {
+        if (sources.size <= 1) return sources
+        val probeClient = client.newBuilder()
+            .callTimeout(PROBE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            .build()
+        val latencies = coroutineScope {
+            sources.map { source ->
+                async(Dispatchers.IO) {
+                    val started = SystemClock.elapsedRealtime()
+                    val ok = runCatching {
+                        val request = Request.Builder()
+                            .url(source.url)
+                            .header("Range", "bytes=0-1023")
+                            .header("Accept-Encoding", "identity")
+                            .header("User-Agent", USER_AGENT)
+                            .build()
+                        probeClient.newCall(request).execute().use { response ->
+                            if (!response.isSuccessful) return@use false
+                            val total = ResumableDownload
+                                .parseContentRange(response.header("Content-Range"))?.total
+                                ?: response.body?.contentLength()
+                            total == null || expectedSize == null || total == expectedSize
+                        }
+                    }.getOrDefault(false)
+                    source.id to if (ok) SystemClock.elapsedRealtime() - started else null
+                }
+            }.awaitAll().toMap()
+        }
+        val ordered = DownloadSourceSet.orderByProbe(sources, latencies)
+        Log.i(TAG, "源探测延迟(ms) $latencies → ${ordered.map { it.id }}")
+        return ordered
     }
 
     /** 用户取消或服务被回收：中止网络读取并把状态落到 Paused，分片保留以便续传 */
@@ -933,6 +981,9 @@ class ApkDownloader @Inject constructor(
 
         /** 源监视器巡检间隔 */
         const val WATCHDOG_TICK_MS = 3_000L
+
+        /** 下载前源探测超时：超过这个时间就当该源不可达 */
+        const val PROBE_TIMEOUT_MS = 5_000L
         val USER_AGENT = "ZhiJianSchedule/" + BuildConfig.VERSION_NAME
     }
 }

@@ -11,7 +11,18 @@
     <!-- 调起系统安装器安装应用内下载的更新包 -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- 课表=日历类应用：API 33+ 用 USE_EXACT_ALARM 免用户授权，API 31-32 回退 SCHEDULE_EXACT_ALARM -->
+    <uses-permission
+        android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        android:maxSdkVersion="32" />
+    <uses-permission
+        android:name="android.permission.USE_EXACT_ALARM"
+        tools:ignore="ExactAlarm" />
+    <uses-permission
+        android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
+        tools:ignore="BatteryLife" />
+    <!-- 实时胶囊在上课/课前倒数期间持有 partial wake lock，防止 ColorOS 冻结刷新循环 -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- 写入系统日历（方案 6.5：ColorOS 私有库 + 原生库兼容） -->
@@ -19,6 +30,12 @@
     <uses-permission android:name="android.permission.WRITE_CALENDAR" />
     <uses-permission android:name="com.coloros.permission.READ_COLOROS_CALENDAR" />
     <uses-permission android:name="com.coloros.permission.WRITE_COLOROS_CALENDAR" />
+
+    <!-- 未授权时用 PackageManager 探测日历 Provider（包可见性过滤需要显式声明） -->
+    <queries>
+        <provider android:authorities="com.coloros.calendar" />
+        <provider android:authorities="com.android.calendar" />
+    </queries>
 
     <!-- 扫码导入课表：相机仅在本机解析二维码画面，不拍照也不上传 -->
     <uses-permission android:name="android.permission.CAMERA" />

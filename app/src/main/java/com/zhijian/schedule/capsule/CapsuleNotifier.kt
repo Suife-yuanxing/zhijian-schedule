@@ -10,6 +10,7 @@ import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.Bundle
 import androidx.annotation.RequiresApi
+import androidx.core.graphics.ColorUtils
 import com.zhijian.schedule.MainActivity
 import com.zhijian.schedule.R
 import com.zhijian.schedule.core.util.TimeUtils
@@ -80,6 +81,8 @@ object CapsuleNotifier {
         val skeletonKey: String,
         /** 本次新构建的骨架通知（startForeground 复用），未变更时为 null */
         val serviceNotification: Notification?,
+        /** 当前是否处于「即将上课 / 上课中」实时态，服务据此持有 wake lock */
+        val live: Boolean,
     )
 
     /**
@@ -94,7 +97,8 @@ object CapsuleNotifier {
     ): Posted {
         val nm = context.getSystemService(NotificationManager::class.java)
         // ---- 实时卡片：独立通知（非 FGS），timeout 到点由系统撤下 ----
-        val cardKey: String? = if (isPromotable(plan)) {
+        val live = plan.isLive
+        val cardKey: String? = if (live) {
             val (title, text) = texts(plan)
             val progress = progressOf(plan)
             // chip 进 key：每分钟的「剩 X 分」变化也要触发刷新
@@ -106,7 +110,7 @@ object CapsuleNotifier {
                     color = courseColorOf(plan),
                     countdownTo = countdownTargetOf(plan),
                     smallIcon = smallIconOf(plan),
-                    subtext = courseSectionOf(plan),
+                    subtext = courseSubText(plan),
                 )
                 if (progress != null) {
                     if (Build.VERSION.SDK_INT >= 36) {
@@ -127,21 +131,22 @@ object CapsuleNotifier {
         }
         // ---- FGS 骨架：非实时态承载状态文本；实时态让位给实时卡片 ----
         val (skelTitle, skelText, skelChip) = skeletonTexts(plan)
-        val skeletonKey = "$skelTitle|$skelText"
+        val skeletonKey = "$skelTitle|$skelText|${if (live) "" else courseSubText(plan).orEmpty()}"
         val serviceNotification = if (skeletonKey != previousSkeletonKey) {
             val skeleton = baseBuilder(
                 context, skelTitle, skelText, skelChip,
                 promote = false, color = 0, countdownTo = null,
+                subtext = if (live) null else courseSubText(plan),
             ).build()
             runCatching { nm?.notify(SERVICE_NOTIFICATION_ID, skeleton) }
             skeleton
         } else null
-        return Posted(cardKey, skeletonKey, serviceNotification)
+        return Posted(cardKey, skeletonKey, serviceNotification, live)
     }
 
     /** 骨架通知文案：非实时态与之前一致（它就是用户看到的状态卡）；实时态退为静默说明 */
     private fun skeletonTexts(plan: CapsulePlan): Triple<String, String, String> =
-        if (isPromotable(plan)) {
+        if (plan.isLive) {
             Triple("纸间课表", "课程胶囊运行中 · 打开今日课表", "")
         } else {
             val (title, text) = texts(plan)
@@ -161,7 +166,8 @@ object CapsuleNotifier {
     fun texts(plan: CapsulePlan): Pair<String, String> = when (plan) {
         is CapsulePlan.Ongoing -> {
             val c = plan.course
-            val where = if (c.room.isBlank()) "" else "${c.room} · "
+            val where = listOf(c.room, c.teacher).filter { it.isNotBlank() }
+                .joinToString(" · ").let { if (it.isEmpty()) "" else "$it · " }
             // 开始时间已过，给下课时刻更实用
             val tail = if (plan.remainingMinutes <= 0) "即将下课"
                 else "${TimeUtils.formatTime(c.end)} 下课 · 还剩 ${plan.remainingMinutes} 分钟"
@@ -170,7 +176,8 @@ object CapsuleNotifier {
 
         is CapsulePlan.AboutToStart -> {
             val c = plan.course
-            val where = if (c.room.isBlank()) "" else "${c.room} · "
+            val where = listOf(c.room, c.teacher).filter { it.isNotBlank() }
+                .joinToString(" · ").let { if (it.isEmpty()) "" else "$it · " }
             val left = if (plan.minutesUntil <= 0) "马上开始" else "还有 ${TimeUtils.minutesText(plan.minutesUntil)}"
             "即将上课 · ${c.name}" to
                 "$where${TimeUtils.formatTime(c.start)} · $left"
@@ -178,7 +185,8 @@ object CapsuleNotifier {
 
         is CapsulePlan.Upcoming -> {
             val c = plan.course
-            val where = if (c.room.isBlank()) "" else "${c.room} · "
+            val where = listOf(c.room, c.teacher).filter { it.isNotBlank() }
+                .joinToString(" · ").let { if (it.isEmpty()) "" else "$it · " }
             val until = if (plan.minutesUntil <= 0) "马上开始" else "${TimeUtils.minutesText(plan.minutesUntil)}后"
             "下节课 · ${c.name}" to
                 "$where${TimeUtils.formatTime(c.start)} · $until"
@@ -197,10 +205,6 @@ object CapsuleNotifier {
 
         CapsulePlan.NoTable -> "纸间课表" to "还没有课表，先导入或手动创建一张"
     }
-
-    /** 只有「即将上课/上课中」的实时状态才请求提升为胶囊 */
-    private fun isPromotable(plan: CapsulePlan): Boolean =
-        plan is CapsulePlan.Ongoing || plan is CapsulePlan.AboutToStart
 
     /** 上课中按剩余进度逐块消耗小图标；即将上课尚未开课，保持满格 */
     private fun smallIconOf(plan: CapsulePlan): Int =
@@ -224,12 +228,24 @@ object CapsuleNotifier {
         else -> 0
     }
 
-    /** 通知副标题（节次），无课程状态时为 null */
-    private fun courseSectionOf(plan: CapsulePlan): String? = when (plan) {
-        is CapsulePlan.Ongoing -> plan.course.sectionText
-        is CapsulePlan.AboutToStart -> plan.course.sectionText
-        is CapsulePlan.Upcoming -> plan.course.sectionText
-        else -> null
+    /**
+     * 通知副标题：节次 · 教室 · 上课时间段 · 教师。
+     * ColorOS 提升卡片不显示 contentText，副标题是卡面上唯一能补充信息的文本行。
+     */
+    private fun courseSubText(plan: CapsulePlan): String? {
+        val course = when (plan) {
+            is CapsulePlan.Ongoing -> plan.course
+            is CapsulePlan.AboutToStart -> plan.course
+            is CapsulePlan.Upcoming -> plan.course
+            else -> null
+        } ?: return null
+        val parts = buildList {
+            course.sectionText?.takeIf { it.isNotBlank() }?.let(::add)
+            course.room.takeIf { it.isNotBlank() }?.let(::add)
+            add("${TimeUtils.formatTime(course.start)}-${TimeUtils.formatTime(course.end)}")
+            course.teacher.takeIf { it.isNotBlank() }?.let(::add)
+        }
+        return parts.joinToString(" · ")
     }
 
     private fun progressOf(plan: CapsulePlan): Int? = when (plan) {
@@ -289,11 +305,36 @@ object CapsuleNotifier {
 
     @RequiresApi(36)
     private fun applyProgressStyle(builder: Notification.Builder, plan: CapsulePlan, progress: Int) {
-        val style = Notification.ProgressStyle()
-            .setProgress(progress.coerceIn(0, 100))
-            .addProgressSegment(Notification.ProgressStyle.Segment(100).setColor(courseColorOf(plan)))
+        val color = courseColorOf(plan)
+        val course = when (plan) {
+            is CapsulePlan.Ongoing -> plan.course
+            is CapsulePlan.AboutToStart -> plan.course
+            else -> null
+        }
+        val sectionCount = course?.sectionCount ?: 0
+        val style = Notification.ProgressStyle().setProgress(progress.coerceIn(0, 100))
+        if (course != null && sectionCount > 1) {
+            // 与今日页「课节轨道」一致：一个大节里的每个小节各占一段，颜色交替提亮
+            val weights = if (course.sectionMinutes.size == sectionCount) {
+                course.sectionMinutes
+            } else {
+                List(sectionCount) { 1L }
+            }
+            weights.forEachIndexed { index, minutes ->
+                style.addProgressSegment(
+                    Notification.ProgressStyle.Segment(minutes.toInt().coerceAtLeast(1))
+                        .setColor(segmentColor(color, index))
+                )
+            }
+        } else {
+            style.addProgressSegment(Notification.ProgressStyle.Segment(100).setColor(color))
+        }
         builder.setStyle(style)
     }
+
+    /** 小节分段交替提亮 16%，让卡面能一眼看出「第几小节」 */
+    private fun segmentColor(base: Int, index: Int): Int =
+        if (index % 2 == 0) base else ColorUtils.blendARGB(base, 0xFFFFFFFF.toInt(), 0.16f)
 
     private fun contentIntent(context: Context): PendingIntent =
         PendingIntent.getActivity(

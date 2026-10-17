@@ -39,7 +39,8 @@ object DownloadSourceSet {
     ): List<UpdateSource> {
         val direct = UpdateSource(DIRECT_ID, DIRECT_LABEL, directUrl)
         if (ResumableDownload.normalizeDigest(digest) == null) return listOf(direct)
-        return listOf(direct) + mirrors.map { it.copy(url = withPrefix(it.url, directUrl)) }
+        return (listOf(direct) + mirrors.map { it.copy(url = withPrefix(it.url, directUrl)) })
+            .distinctBy { it.url }
     }
 
     /** 把直连地址挂到镜像前缀后面（`gh-proxy.com/<完整原始 URL>`）；非 GitHub 地址原样返回 */
@@ -47,6 +48,34 @@ object DownloadSourceSet {
         val base = prefix.trimEnd('/')
         if (!url.startsWith(GITHUB_PREFIX)) return url
         return "$base/$url"
+    }
+
+    /**
+     * 续传时优先上次写入 `.meta` 的源：换源必须清空分片，若探测把顺序改了就会把
+     * 已经下了一半的进度丢掉。源不在候选里（例如镜像被移除）则保持探测顺序。
+     */
+    fun preferResumeSource(sources: List<UpdateSource>, previousUrl: String?): List<UpdateSource> {
+        if (previousUrl.isNullOrBlank()) return sources
+        val previous = sources.firstOrNull { it.url == previousUrl } ?: return sources
+        return listOf(previous) + sources.filter { it.url != previousUrl }
+    }
+
+    /**
+     * 按探测延迟排序候选源：能连通的排前面（快者优先），探测失败的排最后。
+     * 探测失败不代表源永久不可用，所以保留在链尾，而不是直接丢弃。
+     * [latenciesMs] 为 null 表示探测失败；全部失败时退回原始顺序。
+     */
+    fun orderByProbe(
+        sources: List<UpdateSource>,
+        latenciesMs: Map<String, Long?>,
+    ): List<UpdateSource> {
+        if (sources.size <= 1) return sources
+        val working = sources
+            .filter { latenciesMs[it.id] != null }
+            .sortedBy { latenciesMs[it.id] ?: Long.MAX_VALUE }
+        if (working.isEmpty()) return sources
+        val failed = sources.filter { latenciesMs[it.id] == null }
+        return working + failed
     }
 
     /**
