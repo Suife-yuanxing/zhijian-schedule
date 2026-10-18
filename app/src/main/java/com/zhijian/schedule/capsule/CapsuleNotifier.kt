@@ -168,10 +168,16 @@ object CapsuleNotifier {
             val c = plan.course
             val where = listOf(c.room, c.teacher).filter { it.isNotBlank() }
                 .joinToString(" · ").let { if (it.isEmpty()) "" else "$it · " }
-            // 开始时间已过，给下课时刻更实用
-            val tail = if (plan.remainingMinutes <= 0) "即将下课"
-                else "${TimeUtils.formatTime(c.end)} 下课 · 还剩 ${plan.remainingMinutes} 分钟"
-            "正在上课 · ${c.name}" to "$where$tail"
+            val reminder = plan.reminderMinutes
+            if (reminder != null) {
+                "距离下课仅剩 $reminder 分钟" to
+                    "${c.name} · $where${TimeUtils.formatTime(c.end)} 下课"
+            } else {
+                // 开始时间已过，给下课时刻更实用
+                val tail = if (plan.remainingMinutes <= 0) "即将下课"
+                    else "${TimeUtils.formatTime(c.end)} 下课 · 还剩 ${plan.remainingMinutes} 分钟"
+                "正在上课 · ${c.name}" to "$where$tail"
+            }
         }
 
         is CapsulePlan.AboutToStart -> {
@@ -206,9 +212,15 @@ object CapsuleNotifier {
         CapsulePlan.NoTable -> "纸间课表" to "还没有课表，先导入或手动创建一张"
     }
 
-    /** 上课中按剩余进度逐块消耗小图标；即将上课尚未开课，保持满格 */
-    private fun smallIconOf(plan: CapsulePlan): Int =
-        if (plan is CapsulePlan.Ongoing) consumedIcon(plan.progress) else R.drawable.ic_stat_notify
+    /**
+     * 上课中按剩余进度逐块消耗小图标；即将上课尚未开课，保持满格。
+     * 提醒节点把暗掉的课块重新点亮，让状态栏图标也能看出状态切换。
+     */
+    private fun smallIconOf(plan: CapsulePlan): Int = when {
+        plan is CapsulePlan.Ongoing && plan.reminderMinutes != null -> R.drawable.ic_stat_notify
+        plan is CapsulePlan.Ongoing -> consumedIcon(plan.progress)
+        else -> R.drawable.ic_stat_notify
+    }
 
     /**
      * 每消耗 1/4 课堂，按课表阅读顺序（左上→右上→左下→右下）暗掉一块课块，
@@ -221,9 +233,10 @@ object CapsuleNotifier {
         else -> R.drawable.ic_stat_notify_used3
     }
 
-    /** 状态色区分：上课中用课程色；即将上课用品牌陶土色，两个提升状态一眼可辨 */
+    /** 状态色区分：上课中用课程色，提醒节点与即将上课用品牌陶土色，一眼可辨 */
     private fun courseColorOf(plan: CapsulePlan): Int = when (plan) {
-        is CapsulePlan.Ongoing -> plan.course.color
+        is CapsulePlan.Ongoing ->
+            if (plan.reminderMinutes != null) COLOR_ABOUT_TO_START else plan.course.color
         is CapsulePlan.AboutToStart -> COLOR_ABOUT_TO_START
         else -> 0
     }

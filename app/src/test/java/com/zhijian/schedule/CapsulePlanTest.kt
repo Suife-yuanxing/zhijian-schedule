@@ -1,10 +1,12 @@
 package com.zhijian.schedule
 
+import com.zhijian.schedule.capsule.CapsuleNotifier
 import com.zhijian.schedule.capsule.CapsulePlan
 import com.zhijian.schedule.capsule.buildCapsulePlan
 import com.zhijian.schedule.capsule.countdownCleanupDelayMillis
 import com.zhijian.schedule.capsule.nextRefreshAtMillis
 import com.zhijian.schedule.capsule.nextTransitionAtMillis
+import com.zhijian.schedule.capsule.reminderMilestones
 import com.zhijian.schedule.capsule.shouldUseAlarmClockFallback
 import com.zhijian.schedule.core.data.db.CourseEntity
 import com.zhijian.schedule.core.data.db.SectionTimeEntity
@@ -110,6 +112,98 @@ class CapsulePlanTest {
         val expected = LocalDateTime.of(2026, 10, 13, 11, 45)
             .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
         assertEquals(expected, plan.endAtMillis)
+    }
+
+    @Test
+    fun reminderMilestonesAdaptToCourseLength() {
+        assertEquals(listOf(15L, 5L), reminderMilestones(45))
+        assertEquals(listOf(30L, 5L), reminderMilestones(95))
+        assertEquals(listOf(40L, 5L), reminderMilestones(120))
+        assertEquals(listOf(60L, 5L), reminderMilestones(180))
+        // 短课主节点会落到课堂前半段，只保留最后 5 分钟
+        assertEquals(listOf(5L), reminderMilestones(15))
+        assertTrue(reminderMilestones(5).isEmpty())
+    }
+
+    @Test
+    fun ongoingAtReminderNodeSwitchesToReminderCopy() {
+        val courses = listOf(course(day = 2, 3, 4, name = "毛泽东思想"))
+        // 10:10–11:45：剩余 30 分钟节点在 11:15
+        val atNode = buildCapsulePlan(
+            timetable(), courses, sections(), tuesday(11, 15), reminderMinutes = 30,
+        ) as CapsulePlan.Ongoing
+        assertEquals(30L, atNode.reminderMinutes)
+        assertEquals("距下课30分", atNode.chip)
+        assertEquals(epochOf(11, 17), atNode.reminderUntilMillis)
+        assertEquals(epochOf(11, 40), atNode.nextReminderAtMillis)
+
+        // 2 分钟窗口内打开 App，仍应恢复到提醒态
+        val withinWindow = buildCapsulePlan(
+            timetable(), courses, sections(), tuesday(11, 16), reminderMinutes = 30,
+        ) as CapsulePlan.Ongoing
+        assertEquals(30L, withinWindow.reminderMinutes)
+    }
+
+    @Test
+    fun ongoingReminderCopyMentionsRemainingMinutes() {
+        val courses = listOf(course(day = 2, 3, 4, name = "毛泽东思想", room = "8B101"))
+        val reminder = buildCapsulePlan(
+            timetable(), courses, sections(), tuesday(11, 15), reminderMinutes = 30,
+        ) as CapsulePlan.Ongoing
+        val (reminderTitle, reminderText) = CapsuleNotifier.texts(reminder)
+        assertEquals("距离下课仅剩 30 分钟", reminderTitle)
+        assertEquals("毛泽东思想 · 8B101 · 张老师 · 11:45 下课", reminderText)
+
+        val live = buildCapsulePlan(
+            timetable(), courses, sections(), tuesday(10, 30), reminderMinutes = 30,
+        ) as CapsulePlan.Ongoing
+        val (liveTitle, liveText) = CapsuleNotifier.texts(live)
+        assertEquals("正在上课 · 毛泽东思想", liveTitle)
+        assertEquals("8B101 · 张老师 · 11:45 下课 · 还剩 75 分钟", liveText)
+    }
+
+    @Test
+    fun ongoingReminderRevertsAfterHighlightWindow() {
+        val courses = listOf(course(day = 2, 3, 4))
+        val after = buildCapsulePlan(
+            timetable(), courses, sections(), tuesday(11, 17), reminderMinutes = 30,
+        ) as CapsulePlan.Ongoing
+        assertNull(after.reminderMinutes)
+        assertEquals("剩 28 分", after.chip)
+        assertEquals(epochOf(11, 40), after.nextReminderAtMillis)
+        assertEquals(epochOf(11, 40), nextTransitionAtMillis(after, tuesday(11, 17)))
+    }
+
+    @Test
+    fun finalFiveMinuteNodeAlsoHighlights() {
+        val courses = listOf(course(day = 2, 3, 4))
+        val atNode = buildCapsulePlan(
+            timetable(), courses, sections(), tuesday(11, 40), reminderMinutes = 30,
+        ) as CapsulePlan.Ongoing
+        assertEquals(5L, atNode.reminderMinutes)
+        assertEquals("距下课5分", atNode.chip)
+        assertEquals(epochOf(11, 42), atNode.reminderUntilMillis)
+
+        val after = buildCapsulePlan(
+            timetable(), courses, sections(), tuesday(11, 42), reminderMinutes = 30,
+        ) as CapsulePlan.Ongoing
+        assertNull(after.reminderMinutes)
+        assertEquals("剩 3 分", after.chip)
+        assertEquals(epochOf(11, 45), nextTransitionAtMillis(after, tuesday(11, 42)))
+    }
+
+    @Test
+    fun nextTransitionTargetsReminderNodeAndHighlightEnd() {
+        val courses = listOf(course(day = 2, 3, 4))
+        val beforeNode = buildCapsulePlan(
+            timetable(), courses, sections(), tuesday(10, 30), reminderMinutes = 30,
+        ) as CapsulePlan.Ongoing
+        assertEquals(epochOf(11, 15), nextTransitionAtMillis(beforeNode, tuesday(10, 30)))
+
+        val atNode = buildCapsulePlan(
+            timetable(), courses, sections(), tuesday(11, 15), reminderMinutes = 30,
+        ) as CapsulePlan.Ongoing
+        assertEquals(epochOf(11, 17), nextTransitionAtMillis(atNode, tuesday(11, 15)))
     }
 
     @Test
@@ -442,7 +536,8 @@ class CapsulePlanTest {
         val ongoing = buildCapsulePlan(
             timetable(), courses, sections(), tuesday(10, 30), reminderMinutes = 30,
         ) as CapsulePlan.Ongoing
-        assertEquals(epochOf(11, 45), nextTransitionAtMillis(ongoing, tuesday(10, 30)))
+        // 10:10–11:45 的课，主提醒节点在剩余 30 分钟处（11:15）
+        assertEquals(epochOf(11, 15), nextTransitionAtMillis(ongoing, tuesday(10, 30)))
 
         val about = buildCapsulePlan(
             timetable(), courses, sections(), tuesday(9, 55), reminderMinutes = 30,

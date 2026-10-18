@@ -10,6 +10,7 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
+import kotlin.math.roundToInt
 
 /** 实时胶囊的状态快照（纯数据，便于单测） */
 sealed interface CapsulePlan {
@@ -24,9 +25,20 @@ sealed interface CapsulePlan {
         val remainingMinutes: Long,
         /** 下课时刻（epoch 毫秒）：交系统 chronometer 每秒自绘，进程被冻结也照常走秒 */
         val endAtMillis: Long,
-        /** 状态栏 chip 直接给剩余分钟，扫一眼就知道还剩多久 */
-        override val chip: String = if (remainingMinutes <= 0) "即将下课" else "剩 $remainingMinutes 分",
-    ) : CapsulePlan
+        /** 命中的提醒节点（剩余分钟）；非提醒态为 null */
+        val reminderMinutes: Long? = null,
+        /** 提醒态结束时刻（epoch 毫秒）；非提醒态为 null */
+        val reminderUntilMillis: Long? = null,
+        /** 下一提醒节点时刻（epoch 毫秒）；没有后续节点为 null */
+        val nextReminderAtMillis: Long? = null,
+    ) : CapsulePlan {
+        override val chip: String
+            get() = when {
+                reminderMinutes != null -> "距下课${reminderMinutes}分"
+                remainingMinutes <= 0 -> "即将下课"
+                else -> "剩 $remainingMinutes 分"
+            }
+    }
 
     /** 即将上课：已进入课前提醒窗口，画倒数进度条（联动「课前提醒」设置） */
     data class AboutToStart(
@@ -92,6 +104,25 @@ data class CapsuleCourse(
     val sectionCount: Int get() = (endSection - startSection + 1).coerceAtLeast(0)
 }
 
+/**
+ * 上课中的提醒节点（剩余分钟，降序）。
+ * 主节点取课堂最后 1/3（10–60 分钟，按 5 分钟取整），最后 5 分钟再提醒一次；
+ * 过短课程若主节点会落在课堂前半段，则只保留最后 5 分钟节点。
+ */
+fun reminderMilestones(totalMinutes: Long): List<Long> {
+    if (totalMinutes <= 5) return emptyList()
+    val primary = (((totalMinutes / 3.0) / 5).roundToInt() * 5).coerceIn(10, 60)
+    return buildList {
+        if (primary.toLong() * 2 <= totalMinutes) add(primary.toLong())
+        add(5L)
+    }.filter { it in 1L until totalMinutes }.distinct().sortedDescending()
+}
+
+/** 节点提醒文案停留时长（分钟），之后回到实时倒计时 */
+const val REMINDER_HIGHLIGHT_MINUTES = 2L
+
+private const val REMINDER_HIGHLIGHT_MS = REMINDER_HIGHLIGHT_MINUTES * 60_000L
+
 /** 「即将上课 / 上课中」需要实时刷新，也是持有 wake lock 的时段 */
 val CapsulePlan.isLive: Boolean
     get() = this is CapsulePlan.Ongoing || this is CapsulePlan.AboutToStart
@@ -135,12 +166,27 @@ fun buildCapsulePlan(
         ?.let { c ->
             val total = secondsBetween(c.start, c.end)
             val elapsed = secondsBetween(c.start, nowTime).coerceIn(0, total)
+            val endAtMillis = epochMillisOf(now, c.end)
+            val nowMillis = now.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+            val nodes = reminderMilestones(Duration.between(c.start, c.end).toMinutes())
+            val activeNode = nodes.firstOrNull { minutes ->
+                val at = endAtMillis - minutes * 60_000L
+                nowMillis >= at && nowMillis < at + REMINDER_HIGHLIGHT_MS
+            }
+            val nextNode = nodes.firstOrNull { minutes ->
+                endAtMillis - minutes * 60_000L > nowMillis
+            }
             return CapsulePlan.Ongoing(
                 course = c,
                 // 剩余占比：开课满格、随课堂消耗到 0，与系统倒计时同向
                 progress = (((total - elapsed) * 100) / total).toInt(),
                 remainingMinutes = Duration.between(nowTime, c.end).toMinutes().coerceAtLeast(0),
-                endAtMillis = epochMillisOf(now, c.end),
+                endAtMillis = endAtMillis,
+                reminderMinutes = activeNode,
+                reminderUntilMillis = activeNode?.let {
+                    endAtMillis - it * 60_000L + REMINDER_HIGHLIGHT_MS
+                },
+                nextReminderAtMillis = nextNode?.let { endAtMillis - it * 60_000L },
             )
         }
 
@@ -216,10 +262,12 @@ private fun epochMillisOf(now: LocalDateTime, time: LocalTime): Long =
 /**
  * 下一次胶囊状态会变化的时刻（epoch 毫秒），null 表示无需重算。
  * 供 CapsuleCoordinator 登记精确闹钟：ColorOS 冻结后台进程时服务刷新循环停摆，
- * 只有系统闹钟能按时唤醒 App 切换到「即将上课 / 上课中」等新状态。
+ * 只有系统闹钟能按时唤醒 App 切换到「即将上课 / 提醒节点 / 上课中」等新状态。
  */
 fun nextTransitionAtMillis(plan: CapsulePlan, now: LocalDateTime): Long? = when (plan) {
-    is CapsulePlan.Ongoing -> plan.endAtMillis
+    // 提醒态先到点回落；否则等下一提醒节点，最后才等下课
+    is CapsulePlan.Ongoing ->
+        plan.reminderUntilMillis ?: plan.nextReminderAtMillis ?: plan.endAtMillis
     is CapsulePlan.AboutToStart -> plan.startAtMillis
     is CapsulePlan.Upcoming -> plan.aboutToStartAtMillis ?: epochMillisOf(now, plan.course.start)
     is CapsulePlan.Holiday, is CapsulePlan.DayDone -> nextMidnightMillis(now)
@@ -228,12 +276,12 @@ fun nextTransitionAtMillis(plan: CapsulePlan, now: LocalDateTime): Long? = when 
 
 /**
  * 心跳闹钟时刻（epoch 毫秒）：切换闹钟之外的第二道保障，兼作胶囊保鲜。
- * -「即将上课 / 上课中」：min(切换 + 1min, now + 6min) —— 切换闹钟被系统丢弃或
- *   单次渲染失败时 1 分钟内自愈（真机事故 2026-10-16：14:20 上课切换丢失，
+ * -「即将上课 / 上课中」：min(切换 + 1min, now + 6min) —— 切换或提醒节点闹钟被系统
+ *   丢弃、单次渲染失败时 1 分钟内自愈（真机事故 2026-10-16：14:20 上课切换丢失，
  *   胶囊停在「即将上课 00:00」直到打开 App）；课堂期间每 6 分钟重渲染一次，
  *   被冻结时 chip「剩 N 分」与进度条也不会陈旧过久
  * - 所有课程态在**切换前 15 分钟**额外唤醒一次：这次唤醒让 Coordinator 有机会
- *   把切换闹钟升级成 setAlarmClock（ColorOS 会把普通精确闹钟降级成 +1h 窗口）
+ *   把切换/提醒节点闹钟升级成 setAlarmClock（ColorOS 会把普通精确闹钟降级成 +1h 窗口）
  * - 假期 / 已结束：切换 + 2min —— 切换丢失时 2 分钟内自愈，其余时间不打扰
  * 返回 null 表示无需登记（没有下一次切换）。
  */

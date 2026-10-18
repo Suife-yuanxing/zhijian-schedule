@@ -16,7 +16,7 @@
     <string name="channel_exam_name">考试提醒</string>
     <string name="channel_exam_desc">考试倒计时提醒</string>
     <string name="channel_capsule_name">课程实时胶囊</string>
-    <string name="channel_capsule_desc">在状态栏顶部实时显示正在上的课与下节课</string>
+    <string name="channel_capsule_desc">显示当前课程与下节课，并在关键节点提醒剩余时间</string>
     <string name="capsule_service_label">课程实时胶囊</string>
     <string name="channel_update_name">应用更新</string>
     <string name="channel_update_desc">下载新版本安装包的进度</string>

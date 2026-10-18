@@ -228,7 +228,7 @@ fun SettingsScreen(
                         Column(Modifier.weight(1f)) {
                             Text("课程实时胶囊", color = colors.text, fontWeight = FontWeight.SemiBold)
                             Text(
-                                text = "「即将上课 / 上课中」会显示为状态栏流体云（课前按提醒设置倒数），需 Android 16+",
+                                text = "「即将上课」显示倒数；上课中保留秒级倒计时与进度，并在关键节点提醒剩余时间，需 Android 16+",
                                 color = colors.textMuted,
                                 fontSize = 12.sp,
                             )
