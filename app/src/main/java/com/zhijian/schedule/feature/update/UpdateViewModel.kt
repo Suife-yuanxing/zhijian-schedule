@@ -90,6 +90,16 @@ class UpdateViewModel @Inject constructor(
         uiState = uiState.copy(updateCacheBytes = bytes)
     }
 
+    /** 窗口每次打开时校正一次：系统清理可能删掉待安装的 APK，而状态还留在内存里 */
+    fun refreshFromDisk() {
+        val info = uiState.updateInfo ?: return
+        if (info.apkUrl == null) return
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { downloader.restoreFromDisk(info.version, info.apkSize) }
+            refreshUpdateCache()
+        }
+    }
+
     fun checkUpdate() {
         viewModelScope.launch {
             uiState = uiState.copy(busy = true, updateChecked = false, updateError = null)
@@ -136,10 +146,6 @@ class UpdateViewModel @Inject constructor(
         }
     }
 
-    /** 网络/下载源类失败才值得换镜像；磁盘不足、校验失败换源也没用 */
-    private fun isSourceFailure(reason: String): Boolean =
-        listOf("网络", "源", "HTTP", "停滞", "过慢", "中断", "响应", "未完成").any { reason.contains(it) }
-
     fun downloadUpdate() = startDownload(forceMirrors = false)
 
     private fun startDownload(forceMirrors: Boolean, keepMessage: Boolean = false) {
@@ -181,6 +187,8 @@ class UpdateViewModel @Inject constructor(
 
     fun installUpdate() {
         val ready = uiState.download as? DownloadState.Ready ?: return
+        // 安装包可能在下载完成后被系统清理；先核对文件，失效时状态会切到「重新下载」
+        if (!downloader.validateReady()) return
         if (!apkInstaller.canInstall()) {
             uiState = uiState.copy(message = "请先允许「安装未知应用」，返回后再点安装")
             runCatching { context.startActivity(apkInstaller.unknownSourcesIntent()) }
@@ -204,3 +212,7 @@ class UpdateViewModel @Inject constructor(
         }
     }
 }
+
+/** 网络/下载源类失败才值得换镜像；磁盘不足、校验失败换源也没用 */
+internal fun isSourceFailure(reason: String): Boolean =
+    listOf("网络", "源", "HTTP", "停滞", "过慢", "中断", "响应", "未完成").any { reason.contains(it) }

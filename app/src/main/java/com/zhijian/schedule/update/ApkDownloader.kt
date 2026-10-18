@@ -231,8 +231,28 @@ class ApkDownloader @Inject constructor(
     /** `filesDir/updates/` 当前占用字节数 */
     fun cacheBytes(): Long = store.cacheBytes()
 
-    /** 清空下载缓存，返回删除的文件数 */
-    fun clearCache(): Int = store.clearCache()
+    /** 清空下载缓存，返回删除的文件数；文件没了，状态也必须退出 Ready/Paused，否则安装永远打不开 */
+    fun clearCache(): Int {
+        val deleted = store.clearCache()
+        if (_state.value !is DownloadState.Running) _state.value = DownloadState.Idle
+        return deleted
+    }
+
+    /**
+     * 安装前核对待安装的 APK 是否仍在、长度是否与校验通过时一致。
+     * 系统清理或「清理下载缓存」可能删掉文件，此时把状态落成可重新下载的失败态并返回 false。
+     */
+    fun validateReady(): Boolean {
+        val ready = _state.value as? DownloadState.Ready ?: return true
+        if (ready.file.isFile && ready.file.length() == ready.sizeBytes) return true
+        ready.file.delete()
+        _state.value = DownloadState.Failed(
+            ready.version,
+            "安装包已被清理或损坏，请重新下载",
+            canResume = false,
+        )
+        return false
+    }
 
     /** 应用启动时清理「版本 <= 当前已安装版本」的残留，返回删除的文件数 */
     fun cleanupOutdated(currentVersion: String): Int = store.cleanupOutdated(currentVersion)
@@ -243,6 +263,16 @@ class ApkDownloader @Inject constructor(
      */
     fun restoreFromDisk(version: String, sizeBytes: Long?) {
         if (_state.value is DownloadState.Running) return
+        // 状态属于别的版本时先丢掉，避免把旧版安装包当成新版本提供安装
+        val current = _state.value
+        val currentVersion = when (current) {
+            is DownloadState.Ready -> current.version
+            is DownloadState.Paused -> current.version
+            else -> null
+        }
+        if (currentVersion != null && currentVersion != version) {
+            _state.value = DownloadState.Idle
+        }
         val apk = store.apkFile(version)
         if (apk.isFile && apk.length() > 0L && (sizeBytes == null || apk.length() == sizeBytes)) {
             _state.value = DownloadState.Ready(version, apk, apk.length())
@@ -254,6 +284,16 @@ class ApkDownloader @Inject constructor(
                 version = version,
                 downloadedBytes = bytes,
                 totalBytes = sizeBytes ?: store.readMeta(version)?.totalBytes?.takeIf { it > 0 },
+            )
+            return
+        }
+        // 文件与分片都不在：若状态还停在 Ready，说明安装包被外部清掉了，给用户明确的重新下载入口
+        val ready = _state.value
+        if (ready is DownloadState.Ready) {
+            _state.value = DownloadState.Failed(
+                version,
+                "安装包已被清理或损坏，请重新下载",
+                canResume = false,
             )
         }
     }
