@@ -3,6 +3,7 @@ package com.zhijian.schedule.feature.course_editor
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,14 +25,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -72,6 +77,7 @@ fun CourseEditorScreen(
     val colors = LocalCourseColors.current
     val preset = LocalCoursePreset.current
     val haptics = LocalHapticFeedback.current
+    val tick = { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove) }
 
     LaunchedEffect(ui.saved) {
         if (ui.saved) {
@@ -86,17 +92,22 @@ fun CourseEditorScreen(
                 title = if (ui.isEdit) "编辑课程" else "添加课程",
                 onBack = onDone,
             ) {
-                val saveColor by animateColorAsState(
-                    targetValue = if (ui.canSave) colors.accent else colors.textMuted,
-                    animationSpec = tween(durationMillis = Motion.DurFast),
-                    label = "saveColor",
-                )
-                TextButton(onClick = { viewModel.save() }, enabled = ui.canSave) {
-                    Text(
-                        text = "保存",
-                        color = saveColor,
-                        fontWeight = FontWeight.SemiBold,
-                    )
+                if (ui.isEdit) {
+                    val deleteSource = remember { MutableInteractionSource() }
+                    TextButton(
+                        onClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            viewModel.delete()
+                        },
+                        interactionSource = deleteSource,
+                        modifier = Modifier.pressScale(deleteSource, pressedScale = 0.92f),
+                    ) {
+                        Text(
+                            text = "删除",
+                            color = Color(0xFFE5484D),
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
                 }
             }
         },
@@ -143,11 +154,26 @@ fun CourseEditorScreen(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 (1..7).forEach { day ->
+                    val selected = ui.dayOfWeek == day
+                    val source = remember { MutableInteractionSource() }
                     FilterChip(
-                        selected = ui.dayOfWeek == day,
-                        onClick = { viewModel.setField(dayOfWeek = day) },
-                        label = { Text(TimeUtils.dayName(day).removePrefix("周")) },
-                        modifier = Modifier.selectedPop(ui.dayOfWeek == day),
+                        selected = selected,
+                        onClick = {
+                            tick()
+                            viewModel.setField(dayOfWeek = day)
+                        },
+                        label = {
+                            Text(
+                                TimeUtils.dayName(day).removePrefix("周"),
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            )
+                        },
+                        interactionSource = source,
+                        colors = editorChipColors(),
+                        border = editorChipBorder(selected),
+                        modifier = Modifier
+                            .pressScale(source, pressedScale = 0.92f)
+                            .selectedPop(selected),
                     )
                 }
             }
@@ -190,19 +216,34 @@ fun CourseEditorScreen(
                     fontSize = 12.sp,
                 )
                 Spacer(Modifier.weight(1f))
-                TextButton(onClick = { viewModel.setAllWeeks() }) { Text("全选") }
-                TextButton(onClick = { viewModel.setParity(odd = true) }) { Text("单周") }
-                TextButton(onClick = { viewModel.setParity(odd = false) }) { Text("双周") }
-                TextButton(onClick = { viewModel.clearWeeks() }) { Text("清空") }
+                WeekQuickAction("全选") { viewModel.setAllWeeks() }
+                WeekQuickAction("单周") { viewModel.setParity(odd = true) }
+                WeekQuickAction("双周") { viewModel.setParity(odd = false) }
+                WeekQuickAction("清空") { viewModel.clearWeeks() }
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 (1..ui.totalWeeks).forEach { w ->
                     val selected = ui.weeks.contains(w)
+                    val source = remember { MutableInteractionSource() }
                     FilterChip(
                         selected = selected,
-                        onClick = { viewModel.toggleWeek(w) },
-                        label = { Text("$w", fontSize = 12.sp) },
-                        modifier = Modifier.selectedPop(selected, popScale = 1.1f),
+                        onClick = {
+                            tick()
+                            viewModel.toggleWeek(w)
+                        },
+                        label = {
+                            Text(
+                                "$w",
+                                fontSize = 12.sp,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            )
+                        },
+                        interactionSource = source,
+                        colors = editorChipColors(),
+                        border = editorChipBorder(selected),
+                        modifier = Modifier
+                            .pressScale(source, pressedScale = 0.9f)
+                            .selectedPop(selected, popScale = 1.1f),
                     )
                 }
             }
@@ -238,6 +279,7 @@ fun CourseEditorScreen(
                                 interactionSource = pressSource,
                                 indication = LocalIndication.current,
                             ) {
+                                tick()
                                 viewModel.setField(color = paletteColor.toArgbInt())
                             },
                     )
@@ -253,24 +295,32 @@ fun CourseEditorScreen(
             )
 
             Spacer(Modifier.height(28.dp))
-            if (ui.isEdit) {
-                val deleteSource = remember { MutableInteractionSource() }
-                Button(
-                    onClick = {
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        viewModel.delete()
-                    },
-                    interactionSource = deleteSource,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .pressScale(deleteSource, pressedScale = 0.97f),
-                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFE5484D),
-                        contentColor = Color.White,
-                    ),
-                ) {
-                    Text("删除课程")
-                }
+            val saveContainer by animateColorAsState(
+                targetValue = if (ui.canSave) colors.accent else colors.textMuted.copy(alpha = 0.14f),
+                animationSpec = tween(durationMillis = Motion.DurFast),
+                label = "saveContainer",
+            )
+            val saveContent by animateColorAsState(
+                targetValue = if (ui.canSave) colors.onAccent else colors.textMuted,
+                animationSpec = tween(durationMillis = Motion.DurFast),
+                label = "saveContent",
+            )
+            val saveSource = remember { MutableInteractionSource() }
+            Button(
+                onClick = { viewModel.save() },
+                enabled = ui.canSave,
+                interactionSource = saveSource,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .pressScale(saveSource, pressedScale = 0.97f),
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = saveContainer,
+                    contentColor = saveContent,
+                    disabledContainerColor = saveContainer,
+                    disabledContentColor = saveContent,
+                ),
+            ) {
+                Text("保存", fontWeight = FontWeight.SemiBold)
             }
             Spacer(Modifier.height(40.dp))
         }
@@ -290,6 +340,41 @@ private fun FieldLabel(text: String) {
 }
 
 @Composable
+private fun editorChipColors() = FilterChipDefaults.filterChipColors(
+    containerColor = Color.Transparent,
+    labelColor = LocalCourseColors.current.textMuted,
+    selectedContainerColor = LocalCourseColors.current.accent.copy(alpha = 0.20f),
+    selectedLabelColor = LocalCourseColors.current.text,
+)
+
+@Composable
+private fun editorChipBorder(selected: Boolean): BorderStroke {
+    val colors = LocalCourseColors.current
+    return BorderStroke(
+        width = if (selected) 2.dp else 1.dp,
+        color = if (selected) colors.accent else colors.border,
+    )
+}
+
+@Composable
+private fun WeekQuickAction(text: String, onClick: () -> Unit) {
+    val colors = LocalCourseColors.current
+    val haptics = LocalHapticFeedback.current
+    val source = remember { MutableInteractionSource() }
+    TextButton(
+        onClick = {
+            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            onClick()
+        },
+        interactionSource = source,
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+        modifier = Modifier.pressScale(source, pressedScale = 0.88f),
+    ) {
+        Text(text, color = colors.accent, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
 private fun SectionDropdown(
     label: String,
     selected: Int,
@@ -297,11 +382,39 @@ private fun SectionDropdown(
     onSelect: (Int) -> Unit,
 ) {
     val colors = LocalCourseColors.current
+    val haptics = LocalHapticFeedback.current
+    val source = remember { MutableInteractionSource() }
     var expanded by remember { mutableStateOf(false) }
+    val arrow by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = Motion.PopSpring,
+        label = "sectionArrow",
+    )
     Box {
-        TextButton(onClick = { expanded = true }) {
-            Text(label, color = colors.text)
-            Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = colors.textMuted)
+        Row(
+            Modifier
+                .pressScale(source, pressedScale = 0.93f)
+                .clip(RoundedCornerShape(12.dp))
+                .background(colors.surfaceVariant)
+                .clickable(
+                    interactionSource = source,
+                    indication = LocalIndication.current,
+                ) {
+                    haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    expanded = true
+                }
+                .padding(start = 12.dp, end = 6.dp, top = 7.dp, bottom = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(label, color = colors.text, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            Icon(
+                Icons.Filled.ArrowDropDown,
+                contentDescription = null,
+                tint = colors.textMuted,
+                modifier = Modifier
+                    .size(20.dp)
+                    .graphicsLayer { rotationZ = arrow },
+            )
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             range.forEach { n ->
@@ -312,7 +425,20 @@ private fun SectionDropdown(
                             color = if (n == selected) colors.accent else colors.text,
                         )
                     },
+                    trailingIcon = if (n == selected) {
+                        {
+                            Icon(
+                                Icons.Filled.Check,
+                                contentDescription = null,
+                                tint = colors.accent,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    } else {
+                        null
+                    },
                     onClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         expanded = false
                         onSelect(n)
                     },

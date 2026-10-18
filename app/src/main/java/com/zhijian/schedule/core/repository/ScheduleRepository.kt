@@ -1,6 +1,7 @@
 package com.zhijian.schedule.core.repository
 
 import androidx.compose.ui.graphics.toArgb
+import androidx.room.withTransaction
 import com.zhijian.schedule.core.data.db.AppDatabase
 import com.zhijian.schedule.core.data.db.CourseEntity
 import com.zhijian.schedule.core.data.db.ImportSnapshotEntity
@@ -15,6 +16,7 @@ import com.zhijian.schedule.core.model.ImportChangeKind
 import com.zhijian.schedule.core.model.ImportPreview
 import com.zhijian.schedule.core.model.ImportSource
 import com.zhijian.schedule.core.theme.ThemePresets
+import com.zhijian.schedule.core.util.AdjacentCourseMerge
 import com.zhijian.schedule.core.util.TimeUtils
 import com.zhijian.schedule.core.util.WeekMask
 import java.time.DayOfWeek
@@ -78,6 +80,8 @@ class ScheduleRepository @Inject constructor(
                 settingsStore.setActiveTable(existing.first().id)
             }
         }
+        // 旧数据里教务连堂课可能被拆成多条，启动时归并一次，之后课表按连续课块渲染
+        db.timetableDao().getAll().forEach { mergeAdjacentCourses(it.id) }
     }
 
     suspend fun createTimetable(
@@ -211,8 +215,8 @@ class ScheduleRepository @Inject constructor(
         val changes = mutableListOf<ImportChange>()
         val matchedIds = mutableSetOf<Long>()
 
-        drafts.forEach { draft ->
-            val normalized = draft.copy(weekMask = WeekMask.normalize(draft.weekMask, totalWeeks))
+        // 教务按大节返回的连堂课先并成一条，预览与落库都不会再拆开
+        AdjacentCourseMerge.drafts(drafts, totalWeeks, sectionsFor(tableId)).forEach { normalized ->
             val exact = existing.firstOrNull {
                 !matchedIds.contains(it.id) &&
                     it.name == normalized.name &&
@@ -299,8 +303,40 @@ class ScheduleRepository @Inject constructor(
                 ImportChangeKind.UNCHANGED -> Unit
             }
         }
+        // 手动导入不会清理旧记录：把新旧数据里残留的连堂课再归并一次
+        mergeAdjacentCourses(tableId)
         val drafts = preview.changes.mapNotNull { it.draft }
         if (drafts.isNotEmpty()) saveSnapshot(preview.source, drafts)
+    }
+
+    private suspend fun sectionsFor(tableId: Long): List<SectionTimeEntity> {
+        val mode = db.timeModeDao().getPrimaryMode(tableId) ?: return emptyList()
+        return db.timeModeDao().getSections(mode.id)
+    }
+
+    /**
+     * 把同一门课被拆开的相邻节次并成一条，保留最早那条并延长它的结束节次。
+     * 只合并节次首尾相接且课间不超过 30 分钟的记录，午休/晚饭不会误并。
+     */
+    private suspend fun mergeAdjacentCourses(tableId: Long) {
+        val totalWeeks = db.timetableDao().getById(tableId)?.totalWeeks ?: return
+        val sections = sectionsFor(tableId)
+        if (sections.isEmpty()) return
+        val before = db.courseDao().getByTable(tableId)
+        if (before.size < 2) return
+        val after = AdjacentCourseMerge.entities(before, totalWeeks, sections)
+        if (after.size == before.size) return
+
+        val beforeById = before.associateBy { it.id }
+        val survivorIds = after.mapTo(HashSet()) { it.id }
+        db.withTransaction {
+            after.forEach { merged ->
+                if (beforeById[merged.id] != merged) db.courseDao().update(merged)
+            }
+            before.forEach { old ->
+                if (old.id !in survivorIds) db.courseDao().deleteById(old.id)
+            }
+        }
     }
 
     suspend fun saveSnapshot(source: ImportSource, drafts: List<CourseDraft>) {

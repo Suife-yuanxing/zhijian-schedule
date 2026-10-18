@@ -25,7 +25,7 @@ data class EditorUiState(
     val room: String = "",
     val teacher: String = "",
     val note: String = "",
-    val dayOfWeek: Int = 1,
+    val dayOfWeek: Int = 0,
     val startSection: Int = 1,
     val endSection: Int = 2,
     val weeks: Set<Int> = emptySet(),
@@ -33,7 +33,10 @@ data class EditorUiState(
     val saved: Boolean = false,
 ) {
     val canSave: Boolean
-        get() = name.isNotBlank() && weeks.isNotEmpty() && startSection <= endSection
+        get() = name.isNotBlank() &&
+            dayOfWeek in 1..7 &&
+            weeks.isNotEmpty() &&
+            startSection <= endSection
 }
 
 @HiltViewModel
@@ -74,7 +77,7 @@ class CourseEditorViewModel @Inject constructor(
                     return@launch
                 }
             }
-            val defaultDay = if (prefillDay in 1..7) prefillDay else 1
+            val defaultDay = if (prefillDay in 1..7) prefillDay else 0
             val start = if (prefillSection in 1..12) prefillSection else 1
             val end = if (prefillSection in 1..12) prefillSection else 2
             uiState = EditorUiState(
@@ -83,7 +86,8 @@ class CourseEditorViewModel @Inject constructor(
                 dayOfWeek = defaultDay,
                 startSection = start,
                 endSection = end,
-                weeks = (1..totalWeeks).toSet(),
+                // 新建课程不预选星期与周次：让用户主动选择，保存前两者都必须有值
+                weeks = emptySet(),
                 color = ThemePresets.paper.coursePalette.first().toArgb(),
             )
         }

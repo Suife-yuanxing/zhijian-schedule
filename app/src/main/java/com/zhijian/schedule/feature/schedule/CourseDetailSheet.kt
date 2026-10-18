@@ -2,9 +2,15 @@ package com.zhijian.schedule.feature.schedule
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,11 +18,20 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Place
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -33,12 +48,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.zhijian.schedule.core.data.db.CourseEntity
+import com.zhijian.schedule.core.theme.CourseTone
 import com.zhijian.schedule.core.theme.LocalCourseColors
+import com.zhijian.schedule.core.theme.LocalIsDark
+import com.zhijian.schedule.core.theme.courseTone
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.StaggerIn
 import com.zhijian.schedule.core.ui.pressScale
@@ -48,7 +69,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun CourseDetailSheet(
     course: CourseEntity,
@@ -66,7 +87,9 @@ fun CourseDetailSheet(
     val haptics = LocalHapticFeedback.current
     val editSource = remember { MutableInteractionSource() }
     val deleteSource = remember { MutableInteractionSource() }
-    val sheetState = rememberModalBottomSheetState()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val isDark = LocalIsDark.current
+    val tone = remember(course.color, isDark) { courseTone(Color(course.color), isDark) }
 
     LaunchedEffect(sheetState) {
         snapshotFlow { sheetState.targetValue != SheetValue.Hidden }
@@ -76,54 +99,109 @@ fun CourseDetailSheet(
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
-            // 色块与标题先弹入，信息行、按钮随后逐级上浮（面板滑入时完成编排）
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 28.dp),
+        ) {
             val chipScale = popIn()
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier
-                        .size(14.dp)
-                        .graphicsLayer {
-                            scaleX = chipScale
-                            scaleY = chipScale
+            val heroShape = RoundedCornerShape(20.dp)
+            // 头卡用课程自己的色调铺底，和课表里的色块一一对应
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(heroShape)
+                    .background(tone.container)
+                    .border(1.dp, tone.line, heroShape)
+                    .padding(16.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier
+                            .size(18.dp)
+                            .graphicsLayer {
+                                scaleX = chipScale
+                                scaleY = chipScale
+                            }
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(course.color)),
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        text = course.name,
+                        style = MaterialTheme.typography.titleLarge,
+                        color = tone.ink,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    HeroPill(
+                        text = "${TimeUtils.dayName(course.dayOfWeek)} · 第 ${course.startSection}-${course.endSection} 节",
+                        tone = tone,
+                    )
+                    HeroPill(text = WeekMask.toExpression(course.weekMask), tone = tone)
+                }
+            }
+
+            val hasDetails = course.room.isNotBlank() ||
+                course.teacher.isNotBlank() ||
+                course.note.isNotBlank()
+            if (hasDetails) {
+                Spacer(Modifier.height(16.dp))
+                StaggerIn(index = 1) {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(colors.surfaceVariant)
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                    ) {
+                        if (course.room.isNotBlank()) {
+                            InfoRow(Icons.Filled.Place, "教室", course.room, tone)
                         }
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color(course.color))
-                )
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    text = course.name,
-                    style = MaterialTheme.typography.titleLarge,
-                    color = colors.text,
-                    fontWeight = FontWeight.SemiBold,
-                )
+                        if (course.teacher.isNotBlank()) {
+                            InfoRow(Icons.Filled.Person, "教师", course.teacher, tone)
+                        }
+                        if (course.note.isNotBlank()) {
+                            InfoRow(Icons.Filled.Info, "备注", course.note, tone)
+                        }
+                    }
+                }
             }
-            Spacer(Modifier.height(14.dp))
-            StaggerIn(index = 1) {
-                DetailRow("时间", "${TimeUtils.dayName(course.dayOfWeek)} · 第 ${course.startSection}-${course.endSection} 节")
-            }
+
+            Spacer(Modifier.height(if (hasDetails) 20.dp else 16.dp))
             StaggerIn(index = 2) {
-                DetailRow("周次", WeekMask.toExpression(course.weekMask))
-            }
-            if (course.room.isNotBlank()) {
-                StaggerIn(index = 3) { DetailRow("教室", course.room) }
-            }
-            if (course.teacher.isNotBlank()) {
-                StaggerIn(index = 4) { DetailRow("教师", course.teacher) }
-            }
-            if (course.note.isNotBlank()) {
-                StaggerIn(index = 5) { DetailRow("备注", course.note) }
-            }
-            Spacer(Modifier.height(18.dp))
-            StaggerIn(index = 6) {
                 Row {
-                    OutlinedButton(
-                        onClick = onEdit,
+                    Button(
+                        onClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onEdit()
+                        },
                         interactionSource = editSource,
                         modifier = Modifier
                             .weight(1f)
                             .pressScale(editSource, pressedScale = 0.96f),
-                    ) { Text("编辑") }
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = colors.accent,
+                            contentColor = colors.onAccent,
+                        ),
+                    ) {
+                        Icon(
+                            Icons.Filled.Edit,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text("编辑", fontWeight = FontWeight.SemiBold)
+                    }
                     Spacer(Modifier.width(12.dp))
                     TextButton(
                         onClick = {
@@ -135,10 +213,68 @@ fun CourseDetailSheet(
                             .weight(1f)
                             .pressScale(deleteSource, pressedScale = 0.96f),
                     ) {
-                        Text("删除", color = Color(0xFFE5484D))
+                        Icon(
+                            Icons.Filled.Delete,
+                            contentDescription = null,
+                            tint = Color(0xFFE5484D),
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text("删除", color = Color(0xFFE5484D), fontWeight = FontWeight.Medium)
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun HeroPill(text: String, tone: CourseTone) {
+    val colors = LocalCourseColors.current
+    val shape = RoundedCornerShape(50)
+    Text(
+        text = text,
+        color = tone.ink,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Medium,
+        maxLines = 1,
+        modifier = Modifier
+            .clip(shape)
+            .background(colors.surface.copy(alpha = 0.72f))
+            .border(1.dp, tone.line.copy(alpha = 0.75f), shape)
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+    )
+}
+
+@Composable
+private fun InfoRow(icon: ImageVector, label: String, value: String, tone: CourseTone) {
+    val colors = LocalCourseColors.current
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(32.dp)
+                .clip(CircleShape)
+                .background(tone.container)
+                .border(1.dp, tone.line.copy(alpha = 0.6f), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = tone.ink, modifier = Modifier.size(17.dp))
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(label, color = colors.textMuted, fontSize = 11.sp)
+            Text(
+                text = value,
+                color = colors.text,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 1.dp),
+            )
         }
     }
 }
@@ -157,22 +293,4 @@ private fun popIn(delayMs: Long = 60): Float {
         label = "chipPopIn",
     )
     return scale
-}
-
-@Composable
-private fun DetailRow(label: String, value: String) {
-    val colors = LocalCourseColors.current
-    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-        Text(
-            text = label,
-            color = colors.textMuted,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.width(56.dp),
-        )
-        Text(
-            text = value,
-            color = colors.text,
-            style = MaterialTheme.typography.bodyMedium,
-        )
-    }
 }
