@@ -38,6 +38,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,6 +51,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -63,6 +65,8 @@ import com.zhijian.schedule.core.ui.pressScale
 import com.zhijian.schedule.core.util.TimeUtils
 import com.zhijian.schedule.feature.schedule.components.WeekGrid
 import com.zhijian.schedule.feature.schedule.components.WeekHeader
+import com.zhijian.schedule.feature.schedule.components.rememberGridDensity
+import com.zhijian.schedule.feature.schedule.components.rememberGridMetrics
 import com.zhijian.schedule.navigation.IslandContentPadding
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -130,43 +134,51 @@ fun ScheduleScreen(
             onOpenSettings = onOpenSettings,
         )
         val emptyState = ui.timetable != null && ui.courses.isEmpty()
-        WeekHeader(
-            ui = ui,
-            week = ui.selectedWeek,
-            visibleDays = visibleDays,
-            today = clock.toLocalDate(),
-            alignToTimeAxis = !emptyState,
-            onDayClick = { day -> dayDetail = ui.dateOf(ui.selectedWeek, day) },
-        )
+        // 网格区是密集数据面：只把 fontScale 压到 1.5 倍上限（dp 不受影响），
+        // 否则 5 列每列 63dp 宽，字体放到 2 倍就成一字一行了
+        val gridDensity = rememberGridDensity()
+        CompositionLocalProvider(LocalDensity provides gridDensity) {
+            // 表头与网格共用同一份 metrics：字体放大后时间轴宽度必须对得上
+            val gridMetrics = rememberGridMetrics()
+            WeekHeader(
+                ui = ui,
+                week = ui.selectedWeek,
+                visibleDays = visibleDays,
+                today = clock.toLocalDate(),
+                alignToTimeAxis = !emptyState,
+                onDayClick = { day -> dayDetail = ui.dateOf(ui.selectedWeek, day) },
+                metrics = gridMetrics,
+            )
 
-        if (emptyState) {
-            StaggerIn(index = 0, modifier = Modifier.fillMaxSize()) {
-                EmptyScheduleCard(
-                    onAdd = { onAddCourse(null, null) },
-                    onImport = onOpenImport,
-                )
-            }
-        } else {
-            Box(Modifier.weight(1f)) {
-                HorizontalPager(
-                    state = pagerState,
-                    modifier = Modifier.fillMaxSize(),
-                    beyondViewportPageCount = 1,
-                ) { page ->
-                    WeekGrid(
-                        ui = ui,
-                        week = page + 1,
-                        visibleDays = visibleDays,
-                        now = clock,
-                        onCourseClick = { course ->
-                            haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-                            selectedCourse = course
-                            detailSheetVisible = true
-                        },
-                        onEmptyTap = { day, section -> onAddCourse(day, section) },
-                        modifier = Modifier.fillMaxSize(),
-                        selectedCourseId = selectedCourse?.id?.takeIf { detailSheetVisible },
+            if (emptyState) {
+                StaggerIn(index = 0, modifier = Modifier.fillMaxSize()) {
+                    EmptyScheduleCard(
+                        onAdd = { onAddCourse(null, null) },
+                        onImport = onOpenImport,
                     )
+                }
+            } else {
+                Box(Modifier.weight(1f)) {
+                    HorizontalPager(
+                        state = pagerState,
+                        modifier = Modifier.fillMaxSize(),
+                        beyondViewportPageCount = 1,
+                    ) { page ->
+                        WeekGrid(
+                            ui = ui,
+                            week = page + 1,
+                            visibleDays = visibleDays,
+                            now = clock,
+                            onCourseClick = { course ->
+                                haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                selectedCourse = course
+                                detailSheetVisible = true
+                            },
+                            onEmptyTap = { day, section -> onAddCourse(day, section) },
+                            modifier = Modifier.fillMaxSize(),
+                            selectedCourseId = selectedCourse?.id?.takeIf { detailSheetVisible },
+                        )
+                    }
                 }
             }
         }
@@ -187,6 +199,7 @@ fun ScheduleScreen(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = 20.dp, bottom = IslandContentPadding)
+                .size(48.dp)
                 .pressScale(fabSource, pressedScale = 0.9f)
                 .graphicsLayer {
                     scaleX = fabScale
@@ -296,7 +309,10 @@ private fun ScheduleTopBar(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = "${start.monthValue}月${start.dayOfMonth}日 - ${end.monthValue}月${end.dayOfMonth}日",
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                // 日期数字用等宽，翻周时宽度不跳
+                                fontFeatureSettings = "tnum",
+                            ),
                             color = colors.text,
                             fontWeight = FontWeight.SemiBold,
                         )

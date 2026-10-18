@@ -50,6 +50,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.zhijian.schedule.BuildConfig
 import com.zhijian.schedule.R
+import com.zhijian.schedule.core.theme.GridStyles
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.theme.ThemePresets
 import com.zhijian.schedule.core.ui.StaggerIn
@@ -216,8 +217,34 @@ fun ProfileScreen(
             }
         }
 
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(8.dp))
         StaggerIn(index = 7) {
+            Column {
+                SectionTitle("网格风格")
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    GridStyles.all.forEach { (id, label) ->
+                        FilterChip(
+                            selected = ui.settings.gridStyle == id,
+                            onClick = { viewModel.setGridStyle(id) },
+                            label = { Text(label, fontSize = 13.sp) },
+                            modifier = Modifier.selectedPop(ui.settings.gridStyle == id),
+                        )
+                    }
+                }
+                Text(
+                    text = when (ui.settings.gridStyle) {
+                        GridStyles.BLOCK -> "去掉全部网格线：只留三段时段底纹与色块自身分层，适合信息密度高的课表"
+                        else -> "上午 / 下午 / 晚上三段标题 + 间距分层，段内只留一条 hairline，课块用同色系容器"
+                    },
+                    fontSize = 11.sp,
+                    color = colors.textMuted,
+                    modifier = Modifier.padding(start = 2.dp, top = 6.dp),
+                )
+            }
+        }
+
+        Spacer(Modifier.height(20.dp))
+        StaggerIn(index = 8) {
             Column {
                 SectionTitle("课表显示")
                 SettingSwitchRow(

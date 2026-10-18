@@ -85,3 +85,16 @@ object ThemeIds {
     const val CANDY = "candy"
     const val GLASS = "glass"
 }
+
+/**
+ * 网格语言（与主题皮肤正交：任何一套风格都能选任意一种网格画法）。
+ *
+ * - [EDITORIAL] 编辑式：上午/下午/晚上三段标题 + 间距分层，段内只留一条 hairline；
+ * - [BLOCK] 色块制：去掉全部网格线，用时段底纹条与色块自身分层。
+ */
+object GridStyles {
+    const val EDITORIAL = "editorial"
+    const val BLOCK = "block"
+
+    val all: List<Pair<String, String>> = listOf(EDITORIAL to "编辑式", BLOCK to "色块制")
+}

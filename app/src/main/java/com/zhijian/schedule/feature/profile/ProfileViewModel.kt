@@ -36,6 +36,10 @@ class ProfileViewModel @Inject constructor(
         viewModelScope.launch { settingsStore.setTheme(id) }
     }
 
+    fun setGridStyle(id: String) {
+        viewModelScope.launch { settingsStore.setGridStyle(id) }
+    }
+
     fun setDarkMode(mode: Int) {
         viewModelScope.launch { settingsStore.setDarkMode(mode) }
     }

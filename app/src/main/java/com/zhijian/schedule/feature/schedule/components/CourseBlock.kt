@@ -9,54 +9,59 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.zhijian.schedule.core.data.db.CourseEntity
-import com.zhijian.schedule.core.theme.CourseColors
 import com.zhijian.schedule.core.theme.ThemePreset
+import com.zhijian.schedule.core.theme.courseTone
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.cascadeIn
-import com.zhijian.schedule.core.util.TimeUtils
+import com.zhijian.schedule.core.util.WeekMask
 
 /**
- * 统一课块渲染：透明填充 + 左色条 + 主题文字色（方案 5.2 ④）。
- * 交互（扁平无阴影）：按压 0.94 回弹；详情打开期间「弹起 + 实色描边 + 填充加深」，
- * 关闭动作一开始即快速回落（见 [Motion.SelectionExit]），与面板滑出并行完成。
- * 入场：随 tab 切页错峰淡入放大（[entranceDelayMs]，见 [cascadeIn]）。
+ * 统一课块渲染：同色系容器（container 铺底 + 1dp 同色线 + 深色调正文），去掉左色条。
+ *
+ * 一条课块的纵向预算（小节高 46dp）：
+ * 标题 12.5sp / 行高 15sp，教室 10sp，块底余量放「周次 · 教师」；
+ * 正在上的课，块底换成「剩 X 分」，让「现在」这件事在色块里也成立。
+ *
+ * 交互（扁平无阴影）：按压 0.94 回弹；详情打开期间「弹起 + 深色描边 + 容器加深」，
+ * 关闭动作一开始即快速回落（见 [Motion.SelectionExit]）与面板滑出并行完成。
+ * 入场：随 tab 切页错峰淡入放大（[entranceDelayMs]，见 cascadeIn）。
  */
 @Composable
 fun CourseBlock(
     course: CourseEntity,
     preset: ThemePreset,
-    colors: CourseColors,
     isDark: Boolean,
-    startTime: String,
     modifier: Modifier = Modifier,
     selected: Boolean = false,
     /** 级联入场延迟（毫秒）；< 0 关闭，用于非课表网格场景 */
     entranceDelayMs: Long = -1L,
+    /** 正在上的课剩余分钟数；null 表示不显示 */
+    remainingMin: Int? = null,
+    /** 网格节奏：系统字体放大时块会一起长高，行数按剩余空间收敛 */
+    metrics: GridMetrics = GridMetrics.Default,
     onClick: () -> Unit,
 ) {
-    val color = Color(course.color)
-    val fillAlpha = if (isDark) preset.blockStyle.fillAlphaDark else preset.blockStyle.fillAlphaLight
+    val tone = remember(course.color, isDark) { courseTone(Color(course.color), isDark) }
     val shape = RoundedCornerShape(preset.radius.blockDp.dp)
-    val compact = (course.endSection - course.startSection) < 1
+    val span = (course.endSection - course.startSection + 1).coerceAtLeast(1)
     val pressSource = remember { MutableInteractionSource() }
     val pressed by pressSource.collectIsPressedAsState()
 
@@ -73,7 +78,14 @@ fun CourseBlock(
     )
     val ring = lift.coerceIn(0f, 1f)
 
-    Row(
+    // 一节的块只放得下标题；两节起给教室，三节起给块底页脚。
+    // 字体放大后行高跟着长，这里按真实可用高度收敛行数，任何倍率下都不裁字。
+    val content = blockContentFor(span, metrics)
+    val maxTitleLines = content.titleLines
+    val showMeta = content.showRoom
+    val showFooter = content.showFooter
+
+    Column(
         modifier = modifier
             .zIndex(if (selected) 1f else 0f)
             .cascadeIn(entranceDelayMs)
@@ -84,55 +96,77 @@ fun CourseBlock(
                 this.shape = shape
                 clip = true
             }
-            .background(color.copy(alpha = fillAlpha + 0.10f * ring))
-            .border(2.dp, color.copy(alpha = ring), shape)
+            .background(lerp(tone.container, tone.line, 0.45f * ring))
+            .border(1.dp, tone.line, shape)
+            .let {
+                if (ring > 0.01f) it.border(2.dp, tone.ink.copy(alpha = ring * 0.85f), shape) else it
+            }
             .clickable(
                 interactionSource = pressSource,
                 indication = LocalIndication.current,
                 onClick = onClick,
-            ),
+            )
+            .padding(start = 6.dp, end = 4.dp, top = 4.dp, bottom = 3.dp),
     ) {
-        Box(
-            Modifier
-                .width(preset.blockStyle.barWidthDp.dp)
-                .fillMaxHeight()
-                .background(color)
+        Text(
+            text = course.name,
+            color = tone.ink,
+            fontSize = 12.sp,
+            lineHeight = 15.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = maxTitleLines,
+            overflow = TextOverflow.Ellipsis,
         )
-        Column(
-            Modifier
-                .fillMaxSize()
-                .padding(horizontal = 5.dp, vertical = 3.dp)
-        ) {
+        if (showMeta && course.room.isNotBlank()) {
             Text(
-                text = course.name,
-                color = colors.text,
-                fontSize = 12.sp,
-                lineHeight = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = if (compact) 2 else 4,
+                text = course.room,
+                color = tone.inkMuted,
+                fontSize = 10.sp,
+                lineHeight = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 1.dp),
+            )
+        }
+        // 三节以上的高块竖着有富余，把教师补上（旧实现里这个字段从来没渲染过）
+        if (content.showTeacher && course.teacher.isNotBlank()) {
+            Text(
+                text = course.teacher,
+                color = tone.inkMuted,
+                fontSize = 10.sp,
+                lineHeight = 12.sp,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (!compact) {
-                if (startTime.isNotBlank()) {
-                    Text(
-                        text = startTime,
-                        color = colors.textMuted,
-                        fontSize = 10.sp,
-                        lineHeight = 12.sp,
-                        maxLines = 1,
-                    )
+        }
+        if (showFooter) {
+            // 页脚压到块底：高块的上端是标题、下端是周次，中间留白才像「留白」而不是「空」
+            Box(
+                Modifier.weight(1f).fillMaxWidth(),
+                contentAlignment = Alignment.BottomStart,
+            ) {
+                // 一行只放得下一件事：正在上的课说剩余时间，其余说周次。
+                // 教师名放不下（58dp 块宽容不下两个 9.5sp 字符串），交给详情面板。
+                val footer = when {
+                    remainingMin != null -> "剩 $remainingMin 分"
+                    course.weekMask.isNotBlank() -> WeekMask.toExpression(course.weekMask)
+                    else -> ""
                 }
-                if (course.room.isNotBlank()) {
+                if (footer.isNotBlank()) {
                     Text(
-                        text = course.room,
-                        color = colors.textMuted,
-                        fontSize = 10.sp,
-                        lineHeight = 12.sp,
-                        maxLines = 2,
+                        text = footer,
+                        color = if (remainingMin != null) tone.ink else tone.inkMuted,
+                        fontSize = 9.5.sp,
+                        lineHeight = 11.sp,
+                        fontWeight = if (remainingMin != null) FontWeight.SemiBold else FontWeight.Normal,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 2.dp),
                     )
                 }
             }
+        } else {
+            Box(Modifier.weight(1f))
         }
     }
 }

@@ -161,7 +161,11 @@ fun AppRoot(openTodayCount: Int = 0, openJwImportCount: Int = 0) {
     val appViewModel: AppViewModel = hiltViewModel()
     val updatePrompt: UpdatePromptViewModel = hiltViewModel()
     val settings by appViewModel.settings.collectAsStateWithLifecycle()
-    CourseTheme(presetId = settings.themeId, darkMode = settings.darkMode) {
+    CourseTheme(
+        presetId = settings.themeId,
+        darkMode = settings.darkMode,
+        gridStyle = settings.gridStyle,
+    ) {
         AppScaffold(openTodayCount = openTodayCount, openJwImportCount = openJwImportCount)
 
         // 进入应用自动检查更新：静默检查，发现新版本才弹更新窗口（失败/已最新不打扰）

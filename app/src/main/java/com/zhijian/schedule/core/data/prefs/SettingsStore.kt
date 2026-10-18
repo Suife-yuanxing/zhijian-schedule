@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.zhijian.schedule.core.theme.GridStyles
 import com.zhijian.schedule.core.theme.ThemeIds
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -17,6 +18,8 @@ import javax.inject.Singleton
 data class AppSettings(
     val activeTableId: Long = 0L,
     val themeId: String = ThemeIds.PAPER,
+    /** 网格语言：editorial / block，与主题皮肤正交 */
+    val gridStyle: String = GridStyles.EDITORIAL,
     val darkMode: Int = 0,
     val showWeekend: Boolean = false,
     val reminderEnabled: Boolean = true,
@@ -42,6 +45,7 @@ class SettingsStore @Inject constructor(
     private object Keys {
         val ACTIVE_TABLE = longPreferencesKey("active_table_id")
         val THEME = stringPreferencesKey("theme_id")
+        val GRID_STYLE = stringPreferencesKey("grid_style")
         val DARK_MODE = intPreferencesKey("dark_mode")
         val SHOW_WEEKEND = booleanPreferencesKey("show_weekend")
         val REMINDER_ENABLED = booleanPreferencesKey("reminder_enabled")
@@ -64,6 +68,7 @@ class SettingsStore @Inject constructor(
         AppSettings(
             activeTableId = p[Keys.ACTIVE_TABLE] ?: 0L,
             themeId = p[Keys.THEME] ?: ThemeIds.PAPER,
+            gridStyle = p[Keys.GRID_STYLE] ?: GridStyles.EDITORIAL,
             darkMode = p[Keys.DARK_MODE] ?: 0,
             showWeekend = p[Keys.SHOW_WEEKEND] ?: false,
             reminderEnabled = p[Keys.REMINDER_ENABLED] ?: true,
@@ -83,6 +88,7 @@ class SettingsStore @Inject constructor(
 
     suspend fun setActiveTable(id: Long) = dataStore.edit { it[Keys.ACTIVE_TABLE] = id }
     suspend fun setTheme(id: String) = dataStore.edit { it[Keys.THEME] = id }
+    suspend fun setGridStyle(id: String) = dataStore.edit { it[Keys.GRID_STYLE] = id }
     suspend fun setDarkMode(mode: Int) = dataStore.edit { it[Keys.DARK_MODE] = mode }
     suspend fun setShowWeekend(show: Boolean) = dataStore.edit { it[Keys.SHOW_WEEKEND] = show }
     suspend fun setReminder(enabled: Boolean, minutes: Int) = dataStore.edit {

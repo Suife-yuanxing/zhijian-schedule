@@ -26,12 +26,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 val LocalCourseColors = staticCompositionLocalOf { ThemePresets.paper.light }
 val LocalCoursePreset = staticCompositionLocalOf { ThemePresets.paper }
 val LocalIsDark = staticCompositionLocalOf { false }
+val LocalGridStyle = staticCompositionLocalOf { GridStyles.EDITORIAL }
 
 /** 0=跟随系统 1=亮 2=暗 */
 @Composable
 fun CourseTheme(
     presetId: String,
     darkMode: Int,
+    gridStyle: String = GridStyles.EDITORIAL,
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
@@ -76,6 +78,7 @@ fun CourseTheme(
         LocalCourseColors provides colors,
         LocalCoursePreset provides effectivePreset,
         LocalIsDark provides isDark,
+        LocalGridStyle provides gridStyle,
     ) {
         MaterialTheme(
             colorScheme = scheme,
