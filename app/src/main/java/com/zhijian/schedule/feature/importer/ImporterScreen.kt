@@ -78,7 +78,6 @@ import com.zhijian.schedule.core.ui.StaggerIn
 import com.zhijian.schedule.core.ui.TapButton
 import com.zhijian.schedule.core.ui.TapTextButton
 import com.zhijian.schedule.core.ui.buttonFeedback
-import androidx.compose.ui.platform.LocalHapticFeedback
 import com.zhijian.schedule.feature.importer.qr.QrScanContent
 import com.zhijian.schedule.feature.importer.qr.QrShareContent
 
@@ -232,7 +231,6 @@ fun ImporterScreen(
                         viewModel.importFromText(text)
                     },
                     enabled = text.isNotBlank(),
-                    hapticType = HapticFeedbackType.Confirm,
                 ) { Text("解析") }
             },
             dismissButton = {
@@ -359,7 +357,6 @@ private fun PreviewContent(
     onCancel: () -> Unit,
 ) {
     val colors = LocalCourseColors.current
-    val haptics = LocalHapticFeedback.current
     Column(Modifier.fillMaxSize()) {
         Row(
             Modifier
@@ -402,7 +399,6 @@ private fun PreviewContent(
                 Switch(
                     checked = applyConflicts,
                     onCheckedChange = {
-                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         onToggleConflicts(it)
                     },
                 )
@@ -415,7 +411,7 @@ private fun PreviewContent(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(20.dp)
-                .buttonFeedback(confirmSource, pressedScale = 0.97f, hapticType = HapticFeedbackType.Confirm),
+                .buttonFeedback(confirmSource, pressedScale = 0.97f),
         ) { Text("确认导入") }
     }
 }
@@ -509,7 +505,7 @@ private fun DoneContent(summary: String, onDone: () -> Unit) {
         Button(
             onClick = onDone,
             interactionSource = doneSource,
-            modifier = Modifier.buttonFeedback(doneSource, pressedScale = 0.96f, hapticType = HapticFeedbackType.Confirm),
+            modifier = Modifier.buttonFeedback(doneSource, pressedScale = 0.96f),
         ) { Text("返回课表") }
     }
 }

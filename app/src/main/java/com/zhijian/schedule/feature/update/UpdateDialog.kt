@@ -47,7 +47,6 @@ import com.zhijian.schedule.core.ui.TapIconButton
 import com.zhijian.schedule.core.ui.TapTextButton
 import com.zhijian.schedule.core.ui.buttonFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -611,7 +610,6 @@ private fun DownloadOptions(
     onConfirmClear: () -> Unit,
 ) {
     val colors = LocalCourseColors.current
-    val haptics = LocalHapticFeedback.current
     val download = ui.download
     val info = ui.updateInfo
     Column {
@@ -630,7 +628,6 @@ private fun DownloadOptions(
             Switch(
                 checked = ui.mirrorsEnabled,
                 onCheckedChange = {
-                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     viewModel.setMirrorsEnabled(it)
                 },
                 colors = SwitchDefaults.colors(

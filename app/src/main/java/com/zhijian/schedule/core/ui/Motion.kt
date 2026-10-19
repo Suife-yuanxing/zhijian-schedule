@@ -95,8 +95,14 @@ fun Modifier.pressScale(
 }
 
 /**
- * 按钮统一反馈：按下回弹 + 松手轻触觉。
- * 主操作传 [HapticFeedbackType.Confirm]，次操作/图标用默认 TextHandleMove；
+ * 按钮统一反馈：按下回弹；触觉默认关闭。
+ *
+ * 只有「完成态 / 破坏性操作 / 长按」才显式传 [HapticFeedbackType]：
+ * - 完成态：保存成功、导入完成、扫码识别成功；
+ * - 破坏性操作：删除；
+ * - 长按：长按菜单、拖拽起点。
+ *
+ * 普通导航、开关、选项、打开弹窗不要传 hapticType——全局每个按钮都震会让触感失去信息量。
  * 与 clickable 共用同一个 [interactionSource]，不改变水波纹。
  */
 @Composable
@@ -104,14 +110,15 @@ fun Modifier.buttonFeedback(
     interactionSource: InteractionSource,
     pressedScale: Float = 0.96f,
     enabled: Boolean = true,
-    hapticType: HapticFeedbackType = HapticFeedbackType.TextHandleMove,
+    hapticType: HapticFeedbackType? = null,
 ): Modifier {
     val haptics = LocalHapticFeedback.current
     LaunchedEffect(interactionSource, hapticType, enabled) {
-        if (!enabled) return@LaunchedEffect
+        val type = hapticType
+        if (!enabled || type == null) return@LaunchedEffect
         interactionSource.interactions.collect { interaction ->
             if (interaction is PressInteraction.Release) {
-                haptics.performHapticFeedback(hapticType)
+                haptics.performHapticFeedback(type)
             }
         }
     }

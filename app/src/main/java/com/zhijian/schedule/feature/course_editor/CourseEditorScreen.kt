@@ -78,7 +78,6 @@ fun CourseEditorScreen(
     val colors = LocalCourseColors.current
     val preset = LocalCoursePreset.current
     val haptics = LocalHapticFeedback.current
-    val tick = { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove) }
 
     LaunchedEffect(ui.saved) {
         if (ui.saved) {
@@ -161,7 +160,6 @@ fun CourseEditorScreen(
                     FilterChip(
                         selected = selected,
                         onClick = {
-                            tick()
                             viewModel.setField(dayOfWeek = day)
                         },
                         label = {
@@ -230,7 +228,6 @@ fun CourseEditorScreen(
                     FilterChip(
                         selected = selected,
                         onClick = {
-                            tick()
                             viewModel.toggleWeek(w)
                         },
                         label = {
@@ -281,7 +278,6 @@ fun CourseEditorScreen(
                                 interactionSource = pressSource,
                                 indication = LocalIndication.current,
                             ) {
-                                tick()
                                 viewModel.setField(color = paletteColor.toArgbInt())
                             },
                     )
@@ -318,7 +314,6 @@ fun CourseEditorScreen(
                         saveSource,
                         pressedScale = 0.97f,
                         enabled = ui.canSave,
-                        hapticType = HapticFeedbackType.Confirm,
                     ),
                 colors = androidx.compose.material3.ButtonDefaults.buttonColors(
                     containerColor = saveContainer,
@@ -366,13 +361,9 @@ private fun editorChipBorder(selected: Boolean): BorderStroke {
 @Composable
 private fun WeekQuickAction(text: String, onClick: () -> Unit) {
     val colors = LocalCourseColors.current
-    val haptics = LocalHapticFeedback.current
     val source = remember { MutableInteractionSource() }
     TextButton(
-        onClick = {
-            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-            onClick()
-        },
+        onClick = onClick,
         interactionSource = source,
         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
         modifier = Modifier.pressScale(source, pressedScale = 0.88f),
@@ -389,7 +380,6 @@ private fun SectionDropdown(
     onSelect: (Int) -> Unit,
 ) {
     val colors = LocalCourseColors.current
-    val haptics = LocalHapticFeedback.current
     val source = remember { MutableInteractionSource() }
     var expanded by remember { mutableStateOf(false) }
     val arrow by animateFloatAsState(
@@ -407,7 +397,6 @@ private fun SectionDropdown(
                     interactionSource = source,
                     indication = LocalIndication.current,
                 ) {
-                    haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
                     expanded = true
                 }
                 .padding(start = 12.dp, end = 6.dp, top = 7.dp, bottom = 7.dp),
@@ -445,7 +434,6 @@ private fun SectionDropdown(
                         null
                     },
                     onClick = {
-                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         expanded = false
                         onSelect(n)
                     },

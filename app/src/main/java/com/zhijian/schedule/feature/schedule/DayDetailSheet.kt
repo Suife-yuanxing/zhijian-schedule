@@ -47,8 +47,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -69,7 +67,7 @@ import java.time.LocalDateTime
  * 或经该星期几的 1~totalWeeks 周日期速选条直达过去/未来任意一周。
  *
  * 翻日动效：标题与课程列表随方向横滑切换（翻页感），日期速选条保持稳定，
- * 方便连续快速点选；翻日伴随轻触觉反馈。
+ * 方便连续快速点选；翻日只保留位移动效，不再额外震动。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -84,10 +82,8 @@ fun DayDetailSheet(
     val startDate = ui.startDate
     val endDate = startDate.plusDays(ui.totalWeeks * 7L - 1)
     val today = now.toLocalDate()
-    val haptics = LocalHapticFeedback.current
 
     val flipTo: (LocalDate) -> Unit = { d ->
-        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         onDateChange(d)
     }
 

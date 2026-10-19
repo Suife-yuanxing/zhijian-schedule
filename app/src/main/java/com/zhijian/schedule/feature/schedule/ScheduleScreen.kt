@@ -49,9 +49,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -86,7 +84,6 @@ fun ScheduleScreen(
 ) {
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val colors = LocalCourseColors.current
-    val haptics = LocalHapticFeedback.current
     var selectedCourse by remember { mutableStateOf<CourseEntity?>(null) }
     // 面板目标可见性：关闭动作一开始即置回 false，让课块高亮与面板滑出并行恢复
     var detailSheetVisible by remember { mutableStateOf(false) }
@@ -150,7 +147,6 @@ fun ScheduleScreen(
                 today = clock.toLocalDate(),
                 alignToTimeAxis = !emptyState,
                 onDayClick = { day ->
-                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     dayDetail = ui.dateOf(ui.selectedWeek, day)
                 },
                 metrics = gridMetrics,
@@ -176,12 +172,10 @@ fun ScheduleScreen(
                             visibleDays = visibleDays,
                             now = clock,
                             onCourseClick = { course ->
-                                haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
                                 selectedCourse = course
                                 detailSheetVisible = true
                             },
                             onEmptyTap = { day, section ->
-                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 onAddCourse(day, section)
                             },
                             modifier = Modifier.fillMaxSize(),

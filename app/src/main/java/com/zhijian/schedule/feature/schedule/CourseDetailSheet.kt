@@ -182,7 +182,6 @@ fun CourseDetailSheet(
                 Row {
                     Button(
                         onClick = {
-                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             onEdit()
                         },
                         interactionSource = editSource,

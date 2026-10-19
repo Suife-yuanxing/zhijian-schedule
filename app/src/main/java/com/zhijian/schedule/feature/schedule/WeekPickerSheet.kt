@@ -39,8 +39,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -70,7 +68,6 @@ fun WeekPickerSheet(
     onTargetVisibilityChange: (Boolean) -> Unit = {},
 ) {
     val colors = LocalCourseColors.current
-    val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -85,10 +82,9 @@ fun WeekPickerSheet(
     // 避免面板滑出期间出现「高亮追逐滚动页」的扫动与半途配色
     var pinnedWeek by remember { mutableStateOf<Int?>(null) }
 
-    // 点周即选：先给触觉反馈，页面切换与面板滑出并行，不互相等
+    // 点周即选：页面切换与面板滑出并行，不互相等
     val pick: (Int) -> Unit = { week ->
         pinnedWeek = week
-        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         onSelect(week)
         scope.launch { sheetState.hide() }.invokeOnCompletion { onDismiss() }
     }

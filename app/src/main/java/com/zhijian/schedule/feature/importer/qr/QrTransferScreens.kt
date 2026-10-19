@@ -368,7 +368,7 @@ fun QrShareContent(state: QrShareState?, onSwitchToScan: () -> Unit) {
                         },
                         enabled = !sharing,
                         interactionSource = shareSource,
-                        modifier = Modifier.buttonFeedback(shareSource, pressedScale = 0.97f, hapticType = HapticFeedbackType.Confirm),
+                        modifier = Modifier.buttonFeedback(shareSource, pressedScale = 0.97f),
                     ) {
                         Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))

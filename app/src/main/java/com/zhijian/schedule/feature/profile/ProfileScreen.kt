@@ -52,7 +52,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -469,7 +468,6 @@ private fun SemesterOverviewCard(
 @Composable
 private fun GpaTile(weightedGpa: Double?, totalCredits: Double, onClick: () -> Unit) {
     val colors = LocalCourseColors.current
-    val haptics = LocalHapticFeedback.current
     val source = remember { MutableInteractionSource() }
     Column(
         Modifier
@@ -480,7 +478,6 @@ private fun GpaTile(weightedGpa: Double?, totalCredits: Double, onClick: () -> U
                 interactionSource = source,
                 indication = LocalIndication.current,
                 onClick = {
-                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     onClick()
                 },
             )
@@ -508,19 +505,17 @@ private fun GpaTile(weightedGpa: Double?, totalCredits: Double, onClick: () -> U
     }
 }
 
-/** 偏好选项：选中=强调色描边 + 浅色底 + 加粗；按压回弹 + 轻触觉 */
+/** 偏好选项：选中=强调色描边 + 浅色底 + 加粗；只保留按压回弹，选中不额外震动 */
 @Composable
 private fun ProfileChip(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
 ) {
-    val haptics = LocalHapticFeedback.current
     val source = remember { MutableInteractionSource() }
     FilterChip(
         selected = selected,
         onClick = {
-            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
             onClick()
         },
         label = {
@@ -615,7 +610,6 @@ private fun SettingSwitchRow(
     onCheckedChange: (Boolean) -> Unit,
 ) {
     val colors = LocalCourseColors.current
-    val haptics = LocalHapticFeedback.current
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(title, color = colors.text, fontSize = 15.sp)
@@ -624,7 +618,6 @@ private fun SettingSwitchRow(
         Switch(
             checked = checked,
             onCheckedChange = {
-                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                 onCheckedChange(it)
             },
         )

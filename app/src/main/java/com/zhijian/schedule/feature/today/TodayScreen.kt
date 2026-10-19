@@ -42,8 +42,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -70,7 +68,6 @@ fun TodayScreen(
 ) {
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val colors = LocalCourseColors.current
-    val haptics = LocalHapticFeedback.current
     var clock by remember { mutableStateOf(LocalDateTime.now()) }
     var selectedCourse by remember { mutableStateOf<CourseEntity?>(null) }
     // 面板目标可见性：关闭动作一开始即置回 false，让行高亮与面板滑出并行恢复
@@ -204,7 +201,6 @@ fun TodayScreen(
                                 isCurrent = item == current,
                                 selected = detailSheetVisible && item.course.id == selectedCourse?.id,
                                 onClick = {
-                                    haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
                                     selectedCourse = item.course
                                     detailSheetVisible = true
                                 },

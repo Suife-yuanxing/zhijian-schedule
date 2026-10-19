@@ -50,6 +50,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -66,8 +67,6 @@ import com.zhijian.schedule.core.ui.StaggerIn
 import com.zhijian.schedule.core.ui.TapTextButton
 import com.zhijian.schedule.core.ui.buttonFeedback
 import com.zhijian.schedule.core.theme.LocalCourseColors
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -380,7 +379,6 @@ fun SettingsScreen(
                             modifier = Modifier.buttonFeedback(
                                 exportSource,
                                 pressedScale = 0.96f,
-                                hapticType = HapticFeedbackType.Confirm,
                             ),
                         ) {
                             Text("导出备份")
@@ -476,7 +474,6 @@ private fun TimetableEditDialog(
     var semester by remember { mutableStateOf(initialSemester) }
     var startDate by remember { mutableStateOf(initialStartDate) }
     var weeks by remember { mutableStateOf(initialWeeks) }
-    val haptics = LocalHapticFeedback.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -510,7 +507,6 @@ private fun TimetableEditDialog(
                         FilterChip(
                             selected = weeks == w,
                             onClick = {
-                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 weeks = w
                             },
                             label = { Text("$w", fontSize = 12.sp) },
@@ -573,12 +569,10 @@ private fun SettingsSwitch(
     onCheckedChange: (Boolean) -> Unit,
     enabled: Boolean = true,
 ) {
-    val haptics = LocalHapticFeedback.current
     Switch(
         checked = checked,
         enabled = enabled,
         onCheckedChange = {
-            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
             onCheckedChange(it)
         },
     )

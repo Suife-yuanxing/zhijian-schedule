@@ -45,7 +45,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -56,7 +55,6 @@ import com.zhijian.schedule.core.ui.TapButton
 import com.zhijian.schedule.core.ui.TapOutlinedButton
 import com.zhijian.schedule.core.ui.TapTextButton
 import com.zhijian.schedule.core.ui.buttonFeedback
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import com.zhijian.schedule.core.ui.selectedPop
 import com.zhijian.schedule.core.util.TimeUtils
 import com.zhijian.schedule.core.util.WeekMask
@@ -199,7 +197,6 @@ private fun DraftEditSheet(
     onDelete: () -> Unit,
 ) {
     val colors = LocalCourseColors.current
-    val haptics = LocalHapticFeedback.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var name by remember(draft) { mutableStateOf(draft.name) }
     var room by remember(draft) { mutableStateOf(draft.room) }
@@ -257,7 +254,6 @@ private fun DraftEditSheet(
                     FilterChip(
                         selected = day == d,
                         onClick = {
-                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             day = d
                         },
                         label = { Text(TimeUtils.dayName(d).removePrefix("周")) },
@@ -304,7 +300,6 @@ private fun DraftEditSheet(
                     FilterChip(
                         selected = selected,
                         onClick = {
-                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             weeks = weeks.toMutableSet().also { set ->
                                 if (w in set) set.remove(w) else set.add(w)
                             }
@@ -357,7 +352,6 @@ private fun SheetLabel(text: String) {
 @Composable
 private fun SectionPicker(label: String, onSelect: (Int) -> Unit) {
     var open by remember { mutableStateOf(false) }
-    val haptics = LocalHapticFeedback.current
     Box {
         TapTextButton(onClick = { open = true }) { Text(label) }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
@@ -365,7 +359,6 @@ private fun SectionPicker(label: String, onSelect: (Int) -> Unit) {
                 DropdownMenuItem(
                     text = { Text("第 $s 节") },
                     onClick = {
-                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         open = false
                         onSelect(s)
                     },

@@ -58,8 +58,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -228,7 +226,6 @@ internal fun RowScope.IslandTabItem(
     onClick: () -> Unit,
 ) {
     val colors = LocalCourseColors.current
-    val haptics = LocalHapticFeedback.current
     // 玻璃主题下选中项落在饱和水色液滴上：图标文字取 onAccent（亮=白 / 暗=深蓝），与液滴底色形成高对比
     val selectedColor = if (LocalCoursePreset.current.glass != null) colors.onAccent else colors.text
     val pressSource = remember { MutableInteractionSource() }
@@ -245,11 +242,10 @@ internal fun RowScope.IslandTabItem(
             .selectable(
                 selected = selected,
                 interactionSource = pressSource,
-                // 白色浮岛上涟漪会变成一块浅灰矩形"虚影"，触感反馈交给图标按压+弹跳
+                // 白色浮岛上涟漪会变成一块浅灰矩形"虚影"，因此只保留图标按压+弹跳，不加水波纹
                 indication = null,
                 role = Role.Tab,
                 onClick = {
-                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     onClick()
                 },
             ),

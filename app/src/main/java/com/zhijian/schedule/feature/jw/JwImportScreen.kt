@@ -205,7 +205,7 @@ fun JwImportScreen(
                 Button(
                     onClick = viewModel::reload,
                     interactionSource = openSource,
-                    modifier = Modifier.buttonFeedback(openSource, pressedScale = 0.96f, hapticType = HapticFeedbackType.Confirm),
+                    modifier = Modifier.buttonFeedback(openSource, pressedScale = 0.96f),
                 ) { Text("打开", fontSize = 14.sp) }
             }
 
@@ -301,7 +301,6 @@ fun JwImportScreen(
                 Switch(
                     checked = viewModel.autoSyncEnabled,
                     onCheckedChange = {
-                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         viewModel.setAutoSync(it)
                     },
                 )
@@ -311,7 +310,7 @@ fun JwImportScreen(
                     onClick = viewModel::fetchNow,
                     enabled = !viewModel.loading,
                     interactionSource = fetchSource,
-                    modifier = Modifier.buttonFeedback(fetchSource, pressedScale = 0.96f, enabled = !viewModel.loading, hapticType = HapticFeedbackType.Confirm),
+                    modifier = Modifier.buttonFeedback(fetchSource, pressedScale = 0.96f, enabled = !viewModel.loading),
                 ) {
                     Text("抓取课表", fontSize = 14.sp)
                 }
@@ -382,7 +381,7 @@ fun JwImportScreen(
                         interactionSource = applySource,
                         modifier = Modifier
                             .weight(1f)
-                            .buttonFeedback(applySource, pressedScale = 0.97f, hapticType = HapticFeedbackType.Confirm),
+                            .buttonFeedback(applySource, pressedScale = 0.97f),
                     ) {
                         Text("应用变更")
                     }

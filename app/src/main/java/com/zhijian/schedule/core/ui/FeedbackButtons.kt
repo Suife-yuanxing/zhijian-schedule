@@ -17,15 +17,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 
 /**
- * 按钮交互的统一入口：按压回弹 + 松手触觉。
- * 主按钮默认 Confirm，次要按钮/图标默认 TextHandleMove。
+ * 按钮交互的统一入口：按压回弹；触觉默认关闭。
+ * 只有完成态 / 破坏性操作 / 长按才显式传 hapticType，普通按钮不要再震。
  */
 @Composable
 fun TapButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    hapticType: HapticFeedbackType = HapticFeedbackType.Confirm,
+    hapticType: HapticFeedbackType? = null,
     colors: ButtonColors = ButtonDefaults.buttonColors(),
     contentPadding: PaddingValues = ButtonDefaults.ContentPadding,
     content: @Composable RowScope.() -> Unit,
@@ -52,7 +52,7 @@ fun TapTextButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    hapticType: HapticFeedbackType = HapticFeedbackType.TextHandleMove,
+    hapticType: HapticFeedbackType? = null,
     colors: ButtonColors = ButtonDefaults.textButtonColors(),
     contentPadding: PaddingValues = ButtonDefaults.TextButtonContentPadding,
     content: @Composable RowScope.() -> Unit,
@@ -79,7 +79,7 @@ fun TapOutlinedButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    hapticType: HapticFeedbackType = HapticFeedbackType.TextHandleMove,
+    hapticType: HapticFeedbackType? = null,
     colors: ButtonColors = ButtonDefaults.outlinedButtonColors(),
     contentPadding: PaddingValues = ButtonDefaults.ContentPadding,
     content: @Composable RowScope.() -> Unit,
@@ -106,7 +106,7 @@ fun TapIconButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    hapticType: HapticFeedbackType = HapticFeedbackType.TextHandleMove,
+    hapticType: HapticFeedbackType? = null,
     colors: IconButtonColors = IconButtonDefaults.iconButtonColors(),
     content: @Composable () -> Unit,
 ) {
