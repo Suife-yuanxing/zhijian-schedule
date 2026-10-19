@@ -146,13 +146,13 @@ object Notifications {
         )
     }
 
-    fun showSyncFailed(context: Context, needsLogin: Boolean) {
+    fun showSyncFailed(context: Context, needsLogin: Boolean, reason: String? = null) {
         show(
             context = context,
             id = ID_SYNC_FAILED,
             channel = CH_SYNC,
             title = "课表刷新失败",
-            text = if (needsLogin) "登录会话已过期，点击打开 App 重新登录教务" else "点击打开 App 手动刷新",
+            text = reason ?: if (needsLogin) "登录会话已过期，点击打开 App 重新登录教务" else "点击打开 App 手动刷新",
             // 点按直达教务导入页（WebView 打开时会自动走 SSO 恢复/登录）；独立 requestCode 防止 extras 串扰
             contentIntent = activityIntent(context, requestCode = ID_SYNC_FAILED) {
                 putExtra(MainActivity.EXTRA_OPEN_JW_IMPORT, true)

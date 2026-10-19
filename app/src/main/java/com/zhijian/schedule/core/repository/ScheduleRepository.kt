@@ -211,6 +211,8 @@ class ScheduleRepository @Inject constructor(
     ): ImportPreview {
         val tableId = currentTableId() ?: return ImportPreview(source, emptyList())
         val totalWeeks = db.timetableDao().getById(tableId)?.totalWeeks ?: 20
+        // 首次教务同步只建立基线、不删除任何旧课；lastSyncTime 在抓取成功后才会写入
+        val firstJwSync = settingsStore.settings.first().lastSyncTime == 0L
         val existing = db.courseDao().getByTable(tableId)
         val changes = mutableListOf<ImportChange>()
         val matchedIds = mutableSetOf<Long>()
@@ -263,7 +265,7 @@ class ScheduleRepository @Inject constructor(
             }
         }
 
-        if (syncMode) {
+        if (syncMode && !firstJwSync) {
             existing.filter { !matchedIds.contains(it.id) && !it.manuallyEdited }.forEach { old ->
                 changes += ImportChange(
                     kind = ImportChangeKind.REMOVED,
@@ -273,7 +275,17 @@ class ScheduleRepository @Inject constructor(
                 )
             }
         }
-        return ImportPreview(source, changes)
+        val warning = if (syncMode && source == ImportSource.JW) {
+            ImportGuard.evaluate(
+                existingCount = existing.size,
+                addedCount = changes.count { it.kind == ImportChangeKind.ADDED },
+                removedCount = changes.count { it.kind == ImportChangeKind.REMOVED },
+                firstSync = firstJwSync,
+            )
+        } else {
+            null
+        }
+        return ImportPreview(source, changes, warning)
     }
 
     /** 应用导入：新增/变更（手动编辑冲突跳过）/取消 */

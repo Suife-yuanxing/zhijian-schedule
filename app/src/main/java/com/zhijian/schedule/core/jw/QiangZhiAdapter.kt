@@ -4,29 +4,48 @@ import com.zhijian.schedule.core.model.CourseDraft
 import com.zhijian.schedule.core.util.WeekMask
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 
 /**
- * 教务课表适配器。首个目标：东莞职院 强智 jsxsd（xskb_list.do）。
+ * 强智科技 jsxsd 教务适配器（`/jsxsd/`、`xskb_list.do`、`#kbtable`、`div.kbcontent`）。
+ *
+ * 说明：本类原名 ZhengFangAdapter，但实现与正方无关；2026-10-19 调研确认
+ * jsxsd 是强智科技的产品线，正方新版是 `/jwglxt/` + `kbList` JSON（见 [ZhengFangNewAdapter]）。
+ *
  * 兼容两代页面结构：
  * - 新版（强智）：行首节次列为 th「第一大节 08:20-09:55」，课程在 td 内 div.kbcontent；
  *   周次行形如 "12(周)[01-02-03-04节]"（方括号内为权威节次区间）；
  *   div.kbcontent1 是隐藏的重复渲染（无老师），不参与解析。
- * - 旧版/正方：行首为「1-2节」td，课程直接铺在单元格文本里，多课以分隔线或相邻 div 分隔。
+ * - 旧版：行首为「1-2节」td，课程直接铺在单元格文本里，多课以分隔线或相邻 div 分隔。
  */
-object ZhengFangAdapter : JwAdapter {
+object QiangZhiAdapter : JwAdapter {
 
-    override val id = "zhengfang"
-    override val name = "正方教务"
-
-    override fun supports(url: String): Boolean = true
+    override val id = "qiangzhi"
+    override val name = "强智 jsxsd"
 
     private const val UA =
         "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36"
+
+    override fun match(url: String): Int {
+        val parsed = parseUrl(url) ?: return 0
+        val path = parsed.encodedPath.lowercase()
+        return when {
+            path.contains("/jsxsd/") || path == "/jsxsd" -> 100
+            path.contains("xskb_list.do") -> 90
+            path.contains("logon.do") || path.contains("logintoxk") -> 90
+            path.contains("/jxd/") -> 70
+            SchoolCatalog.byHost(parsed.host) != null -> 80
+            else -> 0
+        }
+    }
+
+    override fun ssoEntry(baseUrl: String): String? =
+        runCatching { "${normalizeBase(baseUrl)}sso.jsp" }.getOrNull()
 
     override suspend fun fetch(
         client: OkHttpClient,
@@ -37,7 +56,7 @@ object ZhengFangAdapter : JwAdapter {
             fetchCourses(client, baseUrl, totalWeeks)
         } catch (e: JwException.NeedsLogin) {
             // 会话过期：先尝试统一认证静默重登（后台自动同步与手动抓取共用），再重试一次
-            if (!JwSessionRecovery.trySilentRecover(client, baseUrl)) throw e
+            if (!JwSessionRecovery.trySilentRecover(client, this@QiangZhiAdapter, baseUrl)) throw e
             fetchCourses(client, baseUrl, totalWeeks)
         }
     }
@@ -51,8 +70,7 @@ object ZhengFangAdapter : JwAdapter {
         val referer = "${base}framework/xsMain.jsp"
         val candidates = listOf(
             "${base}xskb/xskb_list.do",
-            "${base}xskb/xskbList.do",
-            "${base}kbcx/xskbcx_cxXsKb.html",
+            "${base}xskb/xskb_list.do?Ves632DSdyV=NEW_XSD_PYGL",
         )
         var lastError: String? = null
         for (url in candidates) {
@@ -90,25 +108,40 @@ object ZhengFangAdapter : JwAdapter {
     }
 
     /**
-     * 归一化：保留 scheme://host[/jsxsd/]，去掉多余路径与参数；
-     * http 统一升级为 https（实测该校 http 入口 404）；
-     * 非 jsxsd 链接（如统一认证登录入口 authserver…sso.jsp）回落到教务基地址——
-     * 校外流程里「登录入口」与「抓取地址」往往不是同一个 URL。
+     * 归一化：保留 scheme://host[/jsxsd/]（含 WebVPN 的 /https/xxx/jsxsd/ 前缀），
+     * 去掉多余路径与参数。不再把 http 强制升级 https——大量高职院校只有 http 入口。
+     *
+     * 非 jsxsd 链接只在「已实证学校档案」里补全真实子路径；
+     * 未知学校直接报错，绝不回落到东莞职院（旧实现的安全隐患）。
      */
     fun normalizeBase(url: String): String {
-        var raw = url.trim()
-        if (raw.isEmpty()) throw JwException.NetworkFailed("教务地址为空")
-        if (!raw.startsWith("http", ignoreCase = true)) raw = "https://$raw"
-        if (raw.startsWith("http://", ignoreCase = true)) raw = "https://" + raw.substring(7)
-        val parsed = raw.toHttpUrlOrNull() ?: throw JwException.NetworkFailed("教务地址无效")
+        val parsed = parseUrl(url) ?: throw JwException.NetworkFailed("教务地址无效")
         val path = parsed.encodedPath
         val idx = path.indexOf("/jsxsd/")
-        if (idx < 0) return DEFAULT_BASE
-        val basePath = path.substring(0, idx + "/jsxsd/".length)
-        return parsed.newBuilder().encodedPath(basePath).query(null).fragment(null).build().toString()
+        val basePath = when {
+            idx >= 0 -> path.substring(0, idx + "/jsxsd/".length)
+            path == "/jsxsd" -> "/jsxsd/"
+            else -> SchoolCatalog.knownBasePath(parsed.host)
+                ?: throw JwException.NetworkFailed("请在教务地址中包含 /jsxsd/ 路径")
+        }
+        return parsed.newBuilder()
+            .encodedPath(basePath)
+            .query(null)
+            .fragment(null)
+            .build()
+            .toString()
     }
 
-    private const val DEFAULT_BASE = "https://jw.dgpt.edu.cn/jsxsd/"
+    private fun parseUrl(raw: String): HttpUrl? {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return null
+        val withScheme = if (trimmed.startsWith("http", ignoreCase = true)) {
+            trimmed
+        } else {
+            "https://$trimmed"
+        }
+        return withScheme.toHttpUrlOrNull()
+    }
 
     // ---------- 解析 ----------
 

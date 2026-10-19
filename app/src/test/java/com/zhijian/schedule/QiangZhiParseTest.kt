@@ -1,11 +1,13 @@
 package com.zhijian.schedule
 
-import com.zhijian.schedule.core.jw.ZhengFangAdapter
+import com.zhijian.schedule.core.jw.JwException
+import com.zhijian.schedule.core.jw.QiangZhiAdapter
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class ZhengFangParseTest {
+class QiangZhiParseTest {
 
     /** 旧版布局：大节行 + 表头星期 + 单元格多课程分隔线（保留兼容） */
     private val html = """
@@ -39,7 +41,7 @@ class ZhengFangParseTest {
 
     @Test
     fun `parse zhengfang kbtable`() {
-        val drafts = ZhengFangAdapter.parse(html, 20)
+        val drafts = QiangZhiAdapter.parse(html, 20)
         assertEquals(5, drafts.size)
 
         val packaging = drafts.first { it.name == "包装材料与检验" }
@@ -59,7 +61,7 @@ class ZhengFangParseTest {
 
     @Test
     fun `parse multiple courses in one cell`() {
-        val drafts = ZhengFangAdapter.parse(html, 20)
+        val drafts = QiangZhiAdapter.parse(html, 20)
         val math = drafts.first { it.name == "高等数学" }
         val linear = drafts.first { it.name == "线性代数" }
         assertEquals(2, math.dayOfWeek)
@@ -74,25 +76,26 @@ class ZhengFangParseTest {
     fun `normalize base url keeps jsxsd path`() {
         assertEquals(
             "https://jw.dgpt.edu.cn/jsxsd/",
-            ZhengFangAdapter.normalizeBase("https://jw.dgpt.edu.cn/jsxsd/xskb/xskbList.do?xnxqh=1"),
+            QiangZhiAdapter.normalizeBase("https://jw.dgpt.edu.cn/jsxsd/xskb/xskbList.do?xnxqh=1"),
         )
-        // 无 /jsxsd/ 路径的链接（裸域名、统一认证登录入口）统一回落到教务基地址
+        // 已实证学校：裸域名补全真实子路径
         assertEquals(
             "https://jw.dgpt.edu.cn/jsxsd/",
-            ZhengFangAdapter.normalizeBase("jw.dgpt.edu.cn"),
+            QiangZhiAdapter.normalizeBase("jw.dgpt.edu.cn"),
         )
+        // 不再把 http 强制升级为 https：大量高职院校只有 http 入口
         assertEquals(
-            "https://jw.dgpt.edu.cn/jsxsd/",
-            ZhengFangAdapter.normalizeBase("http://jw.dgpt.edu.cn/jsxsd/sso.jsp"),
+            "http://jw.dgpt.edu.cn/jsxsd/",
+            QiangZhiAdapter.normalizeBase("http://jw.dgpt.edu.cn/jsxsd/sso.jsp"),
         )
-        assertEquals(
-            "https://jw.dgpt.edu.cn/jsxsd/",
-            ZhengFangAdapter.normalizeBase("https://authserver.dgpt.edu.cn/authserver/login?service=x"),
-        )
+        // 未知学校的非 jsxsd 地址直接报错，绝不回落到东莞职院
+        assertThrows(JwException.NetworkFailed::class.java) {
+            QiangZhiAdapter.normalizeBase("https://authserver.dgpt.edu.cn/authserver/login?service=x")
+        }
         // WebVPN 包装地址保留包装前缀，抓取路径拼在其后
         assertEquals(
             "https://webvpn.dgpt.edu.cn/https/abc123/jsxsd/",
-            ZhengFangAdapter.normalizeBase("https://webvpn.dgpt.edu.cn/https/abc123/jsxsd/xskb/xskb_list.do"),
+            QiangZhiAdapter.normalizeBase("https://webvpn.dgpt.edu.cn/https/abc123/jsxsd/xskb/xskb_list.do"),
         )
     }
 
@@ -161,7 +164,7 @@ class ZhengFangParseTest {
 
     @Test
     fun `parse rowspan layout aligns cells to weekday columns`() {
-        val drafts = ZhengFangAdapter.parse(rowspanHtml, 20)
+        val drafts = QiangZhiAdapter.parse(rowspanHtml, 20)
         assertEquals(2, drafts.size)
 
         val packaging = drafts.first { it.name == "包装材料与检验" }
@@ -179,7 +182,7 @@ class ZhengFangParseTest {
 
     @Test
     fun `nbsp empty cells produce no drafts`() {
-        val drafts = ZhengFangAdapter.parse(rowspanHtml, 20)
+        val drafts = QiangZhiAdapter.parse(rowspanHtml, 20)
         assertTrue(drafts.none { it.name.isBlank() })
         assertTrue(drafts.none { it.name == "\u00A0" })
     }
@@ -205,7 +208,7 @@ class ZhengFangParseTest {
 
     @Test
     fun `visible kbcontent parsed, hidden kbcontent1 ignored`() {
-        val drafts = ZhengFangAdapter.parse(divCellHtml, 20)
+        val drafts = QiangZhiAdapter.parse(divCellHtml, 20)
         // kbcontent1 不参与解析，否则每门课会多出无老师的重复副本
         assertEquals(2, drafts.size)
         val math = drafts.first { it.name == "高等数学" }
@@ -244,7 +247,7 @@ class ZhengFangParseTest {
 
     @Test
     fun `parse qiangzhi kbtable with th section column and bracket sections`() {
-        val drafts = ZhengFangAdapter.parse(qiangzhiHtml, 20)
+        val drafts = QiangZhiAdapter.parse(qiangzhiHtml, 20)
         assertEquals(3, drafts.size)
 
         val pkg = drafts.first { it.name == "包装材料与检测" }

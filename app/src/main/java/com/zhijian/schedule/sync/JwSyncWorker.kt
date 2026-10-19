@@ -28,11 +28,16 @@ class JwSyncWorker @AssistedInject constructor(
         return when (val result = syncManager.syncNow(notify = false)) {
             is JwSyncManager.FetchResult.Success -> Result.success()
             is JwSyncManager.FetchResult.Failed -> {
-                if (runAttemptCount < MAX_ATTEMPTS) {
+                if (result.retryable && runAttemptCount < MAX_ATTEMPTS) {
                     Result.retry()
                 } else {
-                    Notifications.showSyncFailed(applicationContext, result.needsLogin)
-                    Result.failure()
+                    Notifications.showSyncFailed(
+                        applicationContext,
+                        result.needsLogin,
+                        result.message,
+                    )
+                    // 未识别/护栏暂停重试也不会好，直接结束；网络类失败保留 WorkManager 的失败态
+                    if (result.retryable) Result.failure() else Result.success()
                 }
             }
             JwSyncManager.FetchResult.NoConfig -> Result.success()

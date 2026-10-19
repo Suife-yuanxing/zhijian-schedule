@@ -22,14 +22,19 @@ object JwSessionRecovery {
 
     private const val MAX_HOPS = 8
 
-    /** 按教务地址尝试恢复；地址非法 / 无 SSO 入口 / 无 CAS 会话 / 网络异常均返回 false */
-    suspend fun trySilentRecover(client: OkHttpClient, baseUrl: String): Boolean =
-        try {
-            val base = ZhengFangAdapter.normalizeBase(baseUrl)
-            recoverFrom(client, "${base}sso.jsp")
+    /** 按适配器给出的 SSO 入口尝试恢复；无入口 / 无 CAS 会话 / 网络异常均返回 false */
+    suspend fun trySilentRecover(
+        client: OkHttpClient,
+        adapter: JwAdapter,
+        baseUrl: String,
+    ): Boolean {
+        return try {
+            val entry = adapter.ssoEntry(baseUrl) ?: return false
+            recoverFrom(client, entry)
         } catch (e: Exception) {
             false
         }
+    }
 
     internal suspend fun recoverFrom(client: OkHttpClient, entryUrl: String): Boolean =
         withContext(Dispatchers.IO) {

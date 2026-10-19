@@ -7,6 +7,7 @@ import com.zhijian.schedule.core.data.prefs.SettingsStore
 import com.zhijian.schedule.core.jw.GradeFetcher
 import com.zhijian.schedule.core.jw.JwAdapterRegistry
 import com.zhijian.schedule.core.jw.JwException
+import com.zhijian.schedule.core.jw.QiangZhiAdapter
 import com.zhijian.schedule.core.jw.toEntity
 import com.zhijian.schedule.core.model.ImportPreview
 import com.zhijian.schedule.core.model.ImportSource
@@ -21,7 +22,7 @@ import okhttp3.OkHttpClient
 /**
  * 教务抓取 → Diff → 自动应用 → 变更通知（方案 4.10）。
  * 手动导入与自动同步共用同一套适配器，保证解析结果一致。
- * 课表抓取成功后顺带刷新成绩缓存；课程/成绩的登录会话均由适配器侧静默恢复（JwSessionRecovery）。
+ * 课表抓取成功后顺带刷新成绩缓存（仅强智 jsxsd）；会话过期由适配器侧按能力静默恢复。
  */
 @Singleton
 class JwSyncManager @Inject constructor(
@@ -34,7 +35,12 @@ class JwSyncManager @Inject constructor(
 
     sealed interface FetchResult {
         data class Success(val preview: ImportPreview) : FetchResult
-        data class Failed(val message: String, val needsLogin: Boolean = false) : FetchResult
+        data class Failed(
+            val message: String,
+            val needsLogin: Boolean = false,
+            /** false = 重试也不会好（未识别系统 / 护栏暂停），交给用户处理 */
+            val retryable: Boolean = true,
+        ) : FetchResult
         data object NoConfig : FetchResult
     }
 
@@ -45,11 +51,15 @@ class JwSyncManager @Inject constructor(
         val totalWeeks = repository.activeTimetable.first()?.totalWeeks ?: 20
         return try {
             val adapter = JwAdapterRegistry.forUrl(url)
+                ?: return FetchResult.Failed(
+                    "暂未识别该教务系统（当前支持：强智 jsxsd、正方新版）。可先用 Excel / CSV 导入",
+                    retryable = false,
+                )
             val drafts = adapter.fetch(client, url, totalWeeks)
             if (drafts.isEmpty()) {
                 FetchResult.Failed("未解析到课程数据，请确认已进入课表页面")
             } else {
-                syncGradesBestEffort(url)
+                if (adapter.id == QiangZhiAdapter.id) syncGradesBestEffort(url)
                 val preview = repository.buildPreview(drafts, ImportSource.JW, syncMode = syncMode)
                 settingsStore.setLastSyncTime(System.currentTimeMillis())
                 Notifications.cancelSyncFailed(context)
@@ -82,19 +92,25 @@ class JwSyncManager @Inject constructor(
     /** 手动抓取：返回预览，由用户确认后应用 */
     suspend fun fetchForPreview(): FetchResult = fetchPreview(syncMode = false)
 
-    /** 自动同步：抓取 → 直接应用 → 通知变更 */
+    /** 自动同步：抓取 → 护栏检查 → 直接应用 → 通知变更 */
     suspend fun syncNow(notify: Boolean = true): FetchResult {
         return when (val result = fetchPreview(syncMode = true)) {
             is FetchResult.Success -> {
-                repository.applyImport(result.preview, applyConflicts = false)
-                val changes = result.preview.addedCount + result.preview.changedCount + result.preview.removedCount
-                if (notify && changes > 0) {
-                    Notifications.showSyncChanged(context, result.preview.summary())
+                val warning = result.preview.warning
+                if (warning != null) {
+                    if (notify) Notifications.showSyncFailed(context, needsLogin = false, reason = warning)
+                    FetchResult.Failed(warning, retryable = false)
+                } else {
+                    repository.applyImport(result.preview, applyConflicts = false)
+                    val changes = result.preview.addedCount + result.preview.changedCount + result.preview.removedCount
+                    if (notify && changes > 0) {
+                        Notifications.showSyncChanged(context, result.preview.summary())
+                    }
+                    result
                 }
-                result
             }
             is FetchResult.Failed -> {
-                if (notify) Notifications.showSyncFailed(context, result.needsLogin)
+                if (notify) Notifications.showSyncFailed(context, result.needsLogin, result.message)
                 result
             }
             FetchResult.NoConfig -> result

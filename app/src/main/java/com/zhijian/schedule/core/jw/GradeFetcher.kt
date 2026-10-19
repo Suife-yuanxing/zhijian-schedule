@@ -19,14 +19,14 @@ object GradeFetcher {
             try {
                 fetchRecords(client, baseUrl)
             } catch (e: JwException.NeedsLogin) {
-                if (!JwSessionRecovery.trySilentRecover(client, baseUrl)) throw e
+                if (!JwSessionRecovery.trySilentRecover(client, QiangZhiAdapter, baseUrl)) throw e
                 fetchRecords(client, baseUrl)
             }
         }
 
     private suspend fun fetchRecords(client: OkHttpClient, baseUrl: String): List<GradeRecord> =
         withContext(Dispatchers.IO) {
-            val base = ZhengFangAdapter.normalizeBase(baseUrl)
+            val base = QiangZhiAdapter.normalizeBase(baseUrl)
             val request = Request.Builder()
                 .url("${base}kscj/cjcx_list?kksj=")
                 .header("User-Agent", UA)

@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.zhijian.schedule.core.jw.JwAdapterRegistry
 import com.zhijian.schedule.core.model.ImportChangeKind
 import com.zhijian.schedule.core.theme.CourseColors
 import com.zhijian.schedule.core.theme.LocalCourseColors
@@ -70,6 +71,7 @@ import com.zhijian.schedule.core.ui.buttonFeedback
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import org.json.JSONObject
 
 private const val WEB_UA =
     "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36"
@@ -101,27 +103,37 @@ private const val FIT_VIEWPORT_JS = """
 })()
 """
 
-/** SSO 入口：无 CAS 会话时页面自身会跳去统一身份认证登录，有会话则免密直达教务 */
-private const val SSO_ENTRY_URL = "https://jw.dgpt.edu.cn/jsxsd/sso.jsp"
-
 /**
  * 强智本地登录表单（Ldap 密码与统一认证不同，本地登录走不通）和裸 JSON 错误页
- * （如会话过期后的 {"flag1":3,"msgContent":…}）都是死路，检测到就改跳 SSO 入口。
+ * （如会话过期后的 {"flag1":3,"msgContent":…}）都是死路，检测到就改跳适配器给出的 SSO 入口。
+ * 入口地址按当前 URL 动态推导，不再写死某所学校。
  */
-private val SSO_RECOVER_JS = """
-(function () {
-  try {
-    var host = (location.hostname || '').toLowerCase();
-    if (host.slice(-11) !== 'dgpt.edu.cn') return;
-    if (location.href.indexOf('/sso.jsp') !== -1) return;
-    var form = document.querySelector('form[action*="LoginToXkLdap"]');
-    var ct = (document.contentType || '').toLowerCase();
-    var text = ((document.body && document.body.innerText) || '').trim();
-    var json = ct.indexOf('json') !== -1 || (text.charAt(0) === '{' && text.indexOf('msgContent') !== -1);
-    if (form || json) location.href = '$SSO_ENTRY_URL';
-  } catch (e) {}
-})()
-"""
+private fun ssoRecoverJs(entryUrl: String?): String {
+    if (entryUrl.isNullOrBlank()) return ""
+    val host = runCatching { java.net.URI(entryUrl).host }.getOrNull() ?: return ""
+    if (host.isBlank()) return ""
+    val entry = JSONObject.quote(entryUrl)
+    val hostJs = JSONObject.quote(host.lowercase())
+    return """
+        (function () {
+          try {
+            var host = (location.hostname || '').toLowerCase();
+            if (host !== $hostJs) return;
+            if (location.href.indexOf('/sso.jsp') !== -1) return;
+            var form = document.querySelector('form[action*="LoginToXkLdap"]');
+            var ct = (document.contentType || '').toLowerCase();
+            var text = ((document.body && document.body.innerText) || '').trim();
+            var json = ct.indexOf('json') !== -1 || (text.charAt(0) === '{' && text.indexOf('msgContent') !== -1);
+            if (form || json) {
+              var last = Number(sessionStorage.getItem('zj_sso_at') || 0);
+              if (Date.now() - last < 10000) return;
+              sessionStorage.setItem('zj_sso_at', String(Date.now()));
+              location.href = $entry;
+            }
+          } catch (e) {}
+        })()
+    """.trimIndent()
+}
 
 /**
  * 学校 xsMain.jsp 外壳页自身的 bug：初始「个人中心」iframe（#Frame0）用 CSS height:86% 撑高，
@@ -183,6 +195,7 @@ fun JwImportScreen(
                     value = viewModel.url,
                     onValueChange = viewModel::onUrlChange,
                     label = { Text("教务地址", fontSize = 12.sp) },
+                    placeholder = { Text("含 /jsxsd/ 或 /jwglxt/ 的完整地址", fontSize = 11.sp) },
                     textStyle = LocalTextStyle.current.copy(fontSize = 13.sp),
                     singleLine = true,
                     modifier = Modifier.weight(1f),
@@ -194,6 +207,23 @@ fun JwImportScreen(
                     interactionSource = openSource,
                     modifier = Modifier.buttonFeedback(openSource, pressedScale = 0.96f, hapticType = HapticFeedbackType.Confirm),
                 ) { Text("打开", fontSize = 14.sp) }
+            }
+
+            val adapterName = viewModel.detectedAdapterName
+            Text(
+                text = adapterName?.let { "识别为：$it" }
+                    ?: "未识别教务类型（当前支持：强智 jsxsd、正方新版）",
+                color = if (adapterName != null) colors.accent else colors.textMuted,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+            )
+            if (viewModel.url.trim().startsWith("http://", ignoreCase = true)) {
+                Text(
+                    text = "该地址使用 HTTP 明文传输，登录凭据可能被同一网络中的他人看到；学校支持 HTTPS 时请改用 HTTPS",
+                    color = colors.textMuted,
+                    fontSize = 10.sp,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                )
             }
 
             GuideBar(
@@ -492,7 +522,7 @@ private fun HttpErrorBanner(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "学校服务器返回 $code：校外网络直连教务会被学校安全防护拦截。请连接校园 WiFi，或改用 WebVPN（webvpn.dgpt.edu.cn）",
+                text = "学校服务器返回 $code：校外网络直连教务会被学校安全防护拦截。请连接校园 WiFi，或改用学校 WebVPN",
                 color = colors.text,
                 fontSize = 12.sp,
                 modifier = Modifier.weight(1f),
@@ -513,6 +543,10 @@ private fun WebViewBox(
     modifier: Modifier = Modifier,
 ) {
     val lastLoaded = remember { mutableStateOf<WebLoadRequest?>(null) }
+    val ssoEntry = remember(request.url) {
+        runCatching { JwAdapterRegistry.forUrl(request.url)?.ssoEntry(request.url) }.getOrNull()
+    }
+    val ssoJs = remember(ssoEntry) { ssoRecoverJs(ssoEntry) }
     AndroidView(
         modifier = modifier,
         factory = { context ->
@@ -559,7 +593,7 @@ private fun WebViewBox(
                     override fun onPageFinished(view: WebView?, url: String?) {
                         url?.takeIf { it.isNotBlank() }?.let(onPageUrl)
                         view?.evaluateJavascript(FIT_VIEWPORT_JS, null)
-                        view?.evaluateJavascript(SSO_RECOVER_JS, null)
+                        if (ssoJs.isNotEmpty()) view?.evaluateJavascript(ssoJs, null)
                         view?.evaluateJavascript(JW_SHELL_FIX_JS, null)
                     }
 

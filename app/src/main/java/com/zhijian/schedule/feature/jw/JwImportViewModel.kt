@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.zhijian.schedule.core.data.prefs.SettingsStore
+import com.zhijian.schedule.core.jw.JwAdapterRegistry
 import com.zhijian.schedule.core.model.ImportPreview
 import com.zhijian.schedule.core.repository.ScheduleRepository
 import com.zhijian.schedule.sync.JwSyncManager
@@ -27,9 +28,9 @@ class JwImportViewModel @Inject constructor(
     private val scheduler: SyncScheduler,
 ) : ViewModel() {
 
-    var url by mutableStateOf(DEFAULT_URL)
+    var url by mutableStateOf("")
         private set
-    var loadRequest by mutableStateOf(WebLoadRequest(DEFAULT_URL))
+    var loadRequest by mutableStateOf(WebLoadRequest(BLANK_PAGE))
         private set
     var loadProgress by mutableIntStateOf(0)
         private set
@@ -60,27 +61,46 @@ class JwImportViewModel @Inject constructor(
             val u = pageUrl
             if (u.isBlank()) return false
             return u.contains("LoginToXk", true) ||
+                u.contains("login_slogin", true) ||
                 u.trimEnd('/').endsWith("/jsxsd") ||
                 u.contains("login", true)
         }
 
     /** 登录后进入主框架 / 课表页（动态引导文案用） */
     val onLoggedInPage: Boolean
-        get() = pageUrl.contains("xsMain", true) || pageUrl.contains("xskb", true)
+        get() = pageUrl.contains("xsMain", true) ||
+            pageUrl.contains("xskb", true) ||
+            pageUrl.contains("index_initMenu", true)
 
     /** 停在统一身份认证登录页（sso.jsp 自动跳转而来） */
     val onAuthserverPage: Boolean
         get() = pageUrl.contains("authserver", true)
 
+    /** 地址栏当前识别出的教务类型；未识别为 null */
+    val detectedAdapterName: String?
+        get() = JwAdapterRegistry.forUrl(url)?.name
+
     init {
         viewModelScope.launch {
             val s = settingsStore.settings.first()
             if (s.jwUrl.isNotBlank()) {
-                url = s.jwUrl
-                loadRequest = WebLoadRequest(s.jwUrl, loadRequest.nonce + 1)
+                val saved = withScheme(s.jwUrl)
+                url = saved
+                loadRequest = WebLoadRequest(saved, loadRequest.nonce + 1)
             }
             autoSyncEnabled = s.autoSyncEnabled
             lastSyncTime = s.lastSyncTime
+        }
+    }
+
+    /** 用户可能只输入裸域名；WebView 需要完整 scheme 才能当网址加载 */
+    private fun withScheme(value: String): String {
+        val trimmed = value.trim()
+        return when {
+            trimmed.isEmpty() -> ""
+            trimmed.startsWith("http", ignoreCase = true) -> trimmed
+            trimmed == BLANK_PAGE -> trimmed
+            else -> "https://$trimmed"
         }
     }
 
@@ -90,10 +110,11 @@ class JwImportViewModel @Inject constructor(
 
     /** 「打开」：总是重新加载（含同 URL 重试） */
     fun reload() {
-        val trimmed = url.trim()
-        if (trimmed.isBlank()) return
+        val target = withScheme(url)
+        if (target.isBlank()) return
+        url = target
         pageError = null
-        loadRequest = WebLoadRequest(trimmed, loadRequest.nonce + 1)
+        loadRequest = WebLoadRequest(target, loadRequest.nonce + 1)
     }
 
     fun onPageUrl(value: String) {
@@ -121,7 +142,9 @@ class JwImportViewModel @Inject constructor(
             loading = true
             errorMessage = null
             needsLogin = false
-            settingsStore.setJw(url.trim(), "")
+            val trimmed = withScheme(url)
+            if (trimmed.isNotBlank()) url = trimmed
+            settingsStore.setJw(trimmed, JwAdapterRegistry.forUrl(trimmed)?.name.orEmpty())
             when (val result = syncManager.fetchForPreview()) {
                 is JwSyncManager.FetchResult.Success -> preview = result.preview
                 is JwSyncManager.FetchResult.Failed -> {
@@ -156,7 +179,7 @@ class JwImportViewModel @Inject constructor(
     }
 
     companion object {
-        /** 首个适配目标：东莞职业技术学院正方教务（方案 4.6） */
-        const val DEFAULT_URL = "https://jw.dgpt.edu.cn/jsxsd/"
+        /** 未配置时的空白页；不再默认东莞职院，避免新用户被带到错误学校 */
+        const val BLANK_PAGE = "about:blank"
     }
 }

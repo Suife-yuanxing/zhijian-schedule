@@ -46,6 +46,8 @@ data class ImportChange(
 data class ImportPreview(
     val source: ImportSource,
     val changes: List<ImportChange>,
+    /** 自动同步护栏触发时的说明；手动预览恒为 null */
+    val warning: String? = null,
 ) {
     val addedCount get() = changes.count { it.kind == ImportChangeKind.ADDED }
     val changedCount get() = changes.count { it.kind == ImportChangeKind.CHANGED }

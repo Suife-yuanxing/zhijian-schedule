@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.zhijian.schedule.core.data.db.GradeDao
 import com.zhijian.schedule.core.data.prefs.SettingsStore
 import com.zhijian.schedule.core.jw.GradeFetcher
+import com.zhijian.schedule.core.jw.JwAdapterRegistry
+import com.zhijian.schedule.core.jw.QiangZhiAdapter
 import com.zhijian.schedule.core.jw.GradeRecord
 import com.zhijian.schedule.core.jw.JwException
 import com.zhijian.schedule.core.jw.toEntity
@@ -68,6 +70,12 @@ class GradesViewModel @Inject constructor(
             val url = settingsStore.settings.first().jwUrl
             if (url.isBlank()) {
                 _state.update { it.copy(loading = false, needsLogin = true) }
+                return@launch
+            }
+            if (JwAdapterRegistry.forUrl(url)?.id != QiangZhiAdapter.id) {
+                _state.update {
+                    it.copy(loading = false, error = "当前教务系统暂不支持成绩抓取")
+                }
                 return@launch
             }
             runCatching { GradeFetcher.fetch(client, url) }

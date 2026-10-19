@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!--
+      大量高职/民办院校的教务系统仍只提供 http:// 入口；targetSdk 36 默认禁止明文，
+      不放行会导致「地址能打开但登录/抓取全部失败」。这里统一放行，并在导入页
+      对 http:// 地址显示风险提示；学校支持 HTTPS 时用户仍应改用 HTTPS。
+    -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
