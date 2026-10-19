@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.interaction.InteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -18,6 +19,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -91,6 +94,30 @@ fun Modifier.pressScale(
     }
 }
 
+/**
+ * 按钮统一反馈：按下回弹 + 松手轻触觉。
+ * 主操作传 [HapticFeedbackType.Confirm]，次操作/图标用默认 TextHandleMove；
+ * 与 clickable 共用同一个 [interactionSource]，不改变水波纹。
+ */
+@Composable
+fun Modifier.buttonFeedback(
+    interactionSource: InteractionSource,
+    pressedScale: Float = 0.96f,
+    enabled: Boolean = true,
+    hapticType: HapticFeedbackType = HapticFeedbackType.TextHandleMove,
+): Modifier {
+    val haptics = LocalHapticFeedback.current
+    LaunchedEffect(interactionSource, hapticType, enabled) {
+        if (!enabled) return@LaunchedEffect
+        interactionSource.interactions.collect { interaction ->
+            if (interaction is PressInteraction.Release) {
+                haptics.performHapticFeedback(hapticType)
+            }
+        }
+    }
+    return pressScale(interactionSource, pressedScale, enabled)
+}
+
 /** 选中弹跳：选中项放大少许并带弹性落点（FilterChip / 日期条 / 色板圆点）。 */
 @Composable
 fun Modifier.selectedPop(selected: Boolean, popScale: Float = 1.06f): Modifier {
@@ -113,6 +140,9 @@ fun Modifier.selectedPop(selected: Boolean, popScale: Float = 1.06f): Modifier {
  * [contentPadding]：在 alpha 图层内为内容垫一圈空间。alpha<1 的离屏层以自身 bounds 为界，
  * 子项的越界绘制（选中弹跳、投影溢出）会被裁掉；需要溢出时用它撑大图层，
  * 外层布局间距自行补偿。
+ * [durationMs]：单段淡入上浮的时长；切页级联可缩短以压住整体节奏。
+ * [skip]：首次组合时直接落位。用于「我的」页返回时避免入口卡重播入场，
+ * 保证共享元素锚点从第一帧起就可见。
  */
 @Composable
 fun StaggerIn(
@@ -120,17 +150,21 @@ fun StaggerIn(
     modifier: Modifier = Modifier,
     stepMs: Long = 36,
     maxIndex: Int = 8,
+    durationMs: Int = Motion.DurSlow,
     contentPadding: PaddingValues = PaddingValues(),
+    skip: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    var arrived by remember { mutableFloatStateOf(0f) }
+    var arrived by remember { mutableFloatStateOf(if (skip) 1f else 0f) }
     LaunchedEffect(Unit) {
-        delay(index.coerceAtMost(maxIndex) * stepMs)
-        arrived = 1f
+        if (!skip) {
+            delay(index.coerceAtMost(maxIndex) * stepMs)
+            arrived = 1f
+        }
     }
     val progress by animateFloatAsState(
         targetValue = arrived,
-        animationSpec = tween(durationMillis = Motion.DurSlow, easing = Motion.EaseOut),
+        animationSpec = tween(durationMillis = durationMs, easing = Motion.EaseOut),
         label = "staggerIn",
     )
     Box(

@@ -36,7 +36,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -61,6 +60,10 @@ import com.zhijian.schedule.core.data.db.CourseEntity
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.StaggerIn
+import com.zhijian.schedule.core.ui.TapButton
+import com.zhijian.schedule.core.ui.TapIconButton
+import com.zhijian.schedule.core.ui.TapTextButton
+import com.zhijian.schedule.core.ui.buttonFeedback
 import com.zhijian.schedule.core.ui.pressScale
 import com.zhijian.schedule.core.util.TimeUtils
 import com.zhijian.schedule.feature.schedule.components.WeekGrid
@@ -146,7 +149,10 @@ fun ScheduleScreen(
                 visibleDays = visibleDays,
                 today = clock.toLocalDate(),
                 alignToTimeAxis = !emptyState,
-                onDayClick = { day -> dayDetail = ui.dateOf(ui.selectedWeek, day) },
+                onDayClick = { day ->
+                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    dayDetail = ui.dateOf(ui.selectedWeek, day)
+                },
                 metrics = gridMetrics,
             )
 
@@ -174,7 +180,10 @@ fun ScheduleScreen(
                                 selectedCourse = course
                                 detailSheetVisible = true
                             },
-                            onEmptyTap = { day, section -> onAddCourse(day, section) },
+                            onEmptyTap = { day, section ->
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onAddCourse(day, section)
+                            },
                             modifier = Modifier.fillMaxSize(),
                             selectedCourseId = selectedCourse?.id?.takeIf { detailSheetVisible },
                         )
@@ -200,7 +209,7 @@ fun ScheduleScreen(
                 .align(Alignment.BottomEnd)
                 .padding(end = 20.dp, bottom = IslandContentPadding)
                 .size(48.dp)
-                .pressScale(fabSource, pressedScale = 0.9f)
+                .buttonFeedback(fabSource, pressedScale = 0.9f)
                 .graphicsLayer {
                     scaleX = fabScale
                     scaleY = fabScale
@@ -276,7 +285,7 @@ private fun ScheduleTopBar(
             Modifier
                 .weight(1f)
                 .clip(RoundedCornerShape(12.dp))
-                .pressScale(titleSource, pressedScale = 0.98f)
+                .buttonFeedback(titleSource, pressedScale = 0.98f)
                 .clickable(
                     interactionSource = titleSource,
                     indication = LocalIndication.current,
@@ -334,7 +343,7 @@ private fun ScheduleTopBar(
                 }
             }
         }
-        IconButton(onClick = onOpenSettings) {
+        TapIconButton(onClick = onOpenSettings) {
             Icon(Icons.Filled.Settings, contentDescription = "设置", tint = colors.textMuted)
         }
     }
@@ -367,14 +376,9 @@ private fun EmptyScheduleCard(onAdd: () -> Unit, onImport: () -> Unit) {
             )
             Spacer(Modifier.height(18.dp))
             Row {
-                val addSource = remember { MutableInteractionSource() }
-                Button(
-                    onClick = onAdd,
-                    interactionSource = addSource,
-                    modifier = Modifier.pressScale(addSource, pressedScale = 0.96f),
-                ) { Text("添加课程") }
+                TapButton(onClick = onAdd) { Text("添加课程") }
                 Spacer(Modifier.width(12.dp))
-                TextButton(onClick = onImport) { Text("导入课表") }
+                TapTextButton(onClick = onImport) { Text("导入课表") }
             }
         }
     }

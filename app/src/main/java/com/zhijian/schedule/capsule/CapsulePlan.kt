@@ -93,16 +93,9 @@ data class CapsuleCourse(
     val color: Int,
     val start: LocalTime,
     val end: LocalTime,
-    /** 起始/结束小节（1..12），流体云进度条按小节分段 */
-    val startSection: Int = 0,
-    val endSection: Int = 0,
-    /** 各小节时长（分钟）；缺失时进度条退回单段 */
-    val sectionMinutes: List<Long> = emptyList(),
     /** 节次描述（如「第7-8节」），通知副标题用 */
     val sectionText: String? = null,
-) {
-    val sectionCount: Int get() = (endSection - startSection + 1).coerceAtLeast(0)
-}
+)
 
 /**
  * 上课中的提醒节点（剩余分钟，降序）。
@@ -235,14 +228,6 @@ private fun courseOf(entity: CourseEntity, sections: List<SectionTimeEntity>): C
         color = entity.color,
         start = start,
         end = end,
-        startSection = entity.startSection,
-        endSection = entity.endSection,
-        sectionMinutes = (entity.startSection..entity.endSection).mapNotNull { sectionNo ->
-            val section = sections.getOrNull(sectionNo - 1) ?: return@mapNotNull null
-            val sectionStart = TimeUtils.parseTime(section.startTime) ?: return@mapNotNull null
-            val sectionEnd = TimeUtils.parseTime(section.endTime) ?: return@mapNotNull null
-            Duration.between(sectionStart, sectionEnd).toMinutes().coerceAtLeast(1)
-        },
         sectionText = if (entity.startSection == entity.endSection) {
             "第${entity.startSection}节"
         } else {

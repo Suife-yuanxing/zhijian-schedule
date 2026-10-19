@@ -81,7 +81,8 @@ class SettingsViewModel @Inject constructor(
                         timetable = timetable,
                         sections = sections,
                         exactAlarmOk = alarmScheduler.canScheduleExact(),
-                        calendarAvailable = calendarAvailable(),
+                        // 不在主数据流里同步查询 Provider：系统日历查询偶发阻塞时，
+                        // 会把课表/作息等首屏数据一起卡在初始态。可用性由 init 与权限回调单独刷新。
                         calendarPermissionGranted = calendarSyncManager.hasPermission(),
                         capsulePromoteAllowed = CapsuleNotifier.canPromote(context),
                         batteryOptimizationIgnored = CapsuleReliability.isBatteryOptimizationIgnored(context),
@@ -104,12 +105,18 @@ class SettingsViewModel @Inject constructor(
     fun refreshRuntimeState() {
         viewModelScope.launch {
             val granted = calendarSyncManager.hasPermission()
+            // 先把会挂起的查询做完再读取 uiState：Provider 探测期间 combine 可能已写入
+            // 课表/作息，若先拷贝旧状态、挂起回来再赋值，会把首屏数据回滚成空初始态
+            val available = calendarAvailable()
+            val promoteAllowed = CapsuleNotifier.canPromote(context)
+            val batteryIgnored = CapsuleReliability.isBatteryOptimizationIgnored(context)
+            val exactAlarmOk = alarmScheduler.canScheduleExact()
             uiState = uiState.copy(
-                capsulePromoteAllowed = CapsuleNotifier.canPromote(context),
-                batteryOptimizationIgnored = CapsuleReliability.isBatteryOptimizationIgnored(context),
-                exactAlarmOk = alarmScheduler.canScheduleExact(),
+                capsulePromoteAllowed = promoteAllowed,
+                batteryOptimizationIgnored = batteryIgnored,
+                exactAlarmOk = exactAlarmOk,
                 calendarPermissionGranted = granted,
-                calendarAvailable = calendarAvailable(),
+                calendarAvailable = available,
                 calendarPermissionPermanentlyDenied =
                     if (granted) false else uiState.calendarPermissionPermanentlyDenied,
             )
@@ -262,11 +269,12 @@ class SettingsViewModel @Inject constructor(
             onSuccess = { n -> if (enabled) "已写入 $n 个课程事件" else "已清除日历中的课程" },
             onFailure = { "日历同步失败：${it.message}" },
         )
+        val available = calendarAvailable()
         uiState = uiState.copy(
             busy = false,
             message = message,
             calendarPermissionGranted = calendarSyncManager.hasPermission(),
-            calendarAvailable = calendarAvailable(),
+            calendarAvailable = available,
         )
     }
 

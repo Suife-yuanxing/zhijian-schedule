@@ -36,7 +36,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -44,7 +43,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import com.zhijian.schedule.core.ui.TapIconButton
+import com.zhijian.schedule.core.ui.TapTextButton
+import com.zhijian.schedule.core.ui.buttonFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -66,7 +69,6 @@ import com.zhijian.schedule.BuildConfig
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.theme.LocalIsDark
 import com.zhijian.schedule.core.ui.Motion
-import com.zhijian.schedule.core.ui.pressScale
 import com.zhijian.schedule.update.DownloadSourceSet
 import com.zhijian.schedule.update.DownloadState
 import com.zhijian.schedule.update.ResumableDownload
@@ -181,7 +183,7 @@ private fun DialogHeader(onDismiss: () -> Unit) {
             Spacer(Modifier.height(2.dp))
             Text("当前版本 v${BuildConfig.VERSION_NAME}", color = colors.textMuted, fontSize = 12.sp)
         }
-        IconButton(onClick = onDismiss) {
+        TapIconButton(onClick = onDismiss) {
             Icon(
                 Icons.Filled.Close,
                 contentDescription = "关闭",
@@ -583,7 +585,7 @@ private fun DialogFooter(ui: UpdateUiState, onDismiss: () -> Unit, context: Cont
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (!pageUrl.isNullOrBlank()) {
-            TextButton(onClick = {
+            TapTextButton(onClick = {
                 runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(pageUrl))) }
             }) {
                 Text("打开发布页", color = colors.accent, fontSize = 12.5.sp)
@@ -591,7 +593,7 @@ private fun DialogFooter(ui: UpdateUiState, onDismiss: () -> Unit, context: Cont
         } else {
             Spacer(Modifier.width(1.dp))
         }
-        TextButton(onClick = onDismiss) {
+        TapTextButton(onClick = onDismiss) {
             Text("关闭", color = colors.textMuted, fontSize = 12.5.sp)
         }
     }
@@ -609,6 +611,7 @@ private fun DownloadOptions(
     onConfirmClear: () -> Unit,
 ) {
     val colors = LocalCourseColors.current
+    val haptics = LocalHapticFeedback.current
     val download = ui.download
     val info = ui.updateInfo
     Column {
@@ -626,7 +629,10 @@ private fun DownloadOptions(
             Spacer(Modifier.width(10.dp))
             Switch(
                 checked = ui.mirrorsEnabled,
-                onCheckedChange = { viewModel.setMirrorsEnabled(it) },
+                onCheckedChange = {
+                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    viewModel.setMirrorsEnabled(it)
+                },
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = colors.onAccent,
                     checkedTrackColor = colors.accent,
@@ -638,13 +644,13 @@ private fun DownloadOptions(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (info?.apkUrl != null) {
-                TextButton(onClick = { openInBrowser(context, info) }) {
+                TapTextButton(onClick = { openInBrowser(context, info) }) {
                     Text("用浏览器下载", color = colors.accent, fontSize = 12.5.sp)
                 }
             }
             Spacer(Modifier.weight(1f))
             if (ui.updateCacheBytes > 0L && download !is DownloadState.Running) {
-                TextButton(onClick = onConfirmClear) {
+                TapTextButton(onClick = onConfirmClear) {
                     Text(
                         "清理缓存 ${ResumableDownload.formatBytes(ui.updateCacheBytes)}",
                         color = colors.textMuted,
@@ -706,7 +712,7 @@ private fun FilledAction(
         modifier = modifier
             .fillMaxWidth()
             .height(48.dp)
-            .pressScale(source, pressedScale = 0.97f, enabled = enabled),
+            .buttonFeedback(source, pressedScale = 0.97f, enabled = enabled, hapticType = HapticFeedbackType.Confirm),
         shape = RoundedCornerShape(15.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = colors.accent,
@@ -733,7 +739,7 @@ private fun OutlinedAction(
         modifier = modifier
             .fillMaxWidth()
             .height(48.dp)
-            .pressScale(source, pressedScale = 0.97f),
+            .buttonFeedback(source, pressedScale = 0.97f),
         shape = RoundedCornerShape(15.dp),
         border = BorderStroke(1.dp, colors.border),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.textMuted),

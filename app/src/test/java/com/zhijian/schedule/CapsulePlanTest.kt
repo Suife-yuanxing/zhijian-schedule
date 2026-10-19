@@ -73,8 +73,6 @@ class CapsulePlanTest {
         assertEquals("剩 75 分", ongoing.chip)
         assertEquals("第3-4节", ongoing.course.sectionText)
         assertEquals("张老师", ongoing.course.teacher)
-        assertEquals(2, ongoing.course.sectionCount)
-        assertEquals(listOf(45L, 45L), ongoing.course.sectionMinutes)
     }
 
     @Test

@@ -207,7 +207,6 @@ fun WeekGrid(
                             ui = ui,
                             week = week,
                             visibleDays = visibleDays,
-                            today = today,
                             style = style,
                             metrics = metrics,
                             onEmptyTap = onEmptyTap,
@@ -323,7 +322,6 @@ private fun BandBody(
     ui: ScheduleUiState,
     week: Int,
     visibleDays: List<Int>,
-    today: java.time.LocalDate,
     style: String,
     metrics: GridMetrics,
     onEmptyTap: (day: Int, section: Int) -> Unit,
@@ -339,9 +337,11 @@ private fun BandBody(
     val boundaries = remember(band.startIndex, band.count) { layout.periodBoundaries(band) }
 
     Row(Modifier.fillMaxWidth().height(metrics.sectionHeight * band.count)) {
-        // 时间轴：只留大节序号与开始时间（结束时间已由时段标题给出）
+        // 时间轴：大节序号 + 起止时间（时段标题只给整段范围，单节结束时间必须在这里补齐）
         Column(Modifier.width(metrics.timeAxisWidth).fillMaxHeight()) {
             bandSections.groupBy { it.periodNo }.forEach { (periodNo, secs) ->
+                val start = secs.firstOrNull()?.startTime.orEmpty()
+                val end = secs.lastOrNull()?.endTime.orEmpty()
                 Column(
                     Modifier
                         .fillMaxWidth()
@@ -358,7 +358,7 @@ private fun BandBody(
                         style = TabularFigure,
                     )
                     Text(
-                        text = secs.firstOrNull()?.startTime ?: "",
+                        text = if (end.isNotEmpty()) "$start–$end" else start,
                         color = microText(colors),
                         fontSize = 9.sp,
                         style = TabularFigure,
@@ -369,17 +369,10 @@ private fun BandBody(
         }
 
         visibleDays.forEach { day ->
-            val isToday = ui.dateOf(week, day) == today
-            val tint = when {
-                !isToday -> Color.Transparent
-                style == GridStyles.BLOCK -> colors.accent.copy(alpha = 0.07f)
-                else -> colors.accent.copy(alpha = 0.05f)
-            }
             Box(
                 Modifier
                     .weight(1f)
                     .fillMaxHeight()
-                    .background(tint)
                     .drawBehind {
                         // 列分隔：旧实现用的是 1.23:1 的 border，等于没画
                         drawLine(

@@ -25,7 +25,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -48,6 +47,7 @@ import androidx.compose.ui.unit.sp
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.StaggerIn
+import com.zhijian.schedule.core.ui.TapTextButton
 import com.zhijian.schedule.core.ui.pressScale
 import java.time.LocalDate
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -118,7 +118,7 @@ fun WeekPickerSheet(
                 Spacer(Modifier.weight(1f))
                 ui.currentWeek?.takeIf { it != ui.selectedWeek }?.let { cw ->
                     StaggerIn(index = 1) {
-                        TextButton(onClick = { pick(cw) }) {
+                        TapTextButton(onClick = { pick(cw) }) {
                             Text("回到本周", color = colors.accent)
                         }
                     }

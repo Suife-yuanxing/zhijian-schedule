@@ -10,7 +10,6 @@ import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.Bundle
 import androidx.annotation.RequiresApi
-import androidx.core.graphics.ColorUtils
 import com.zhijian.schedule.MainActivity
 import com.zhijian.schedule.R
 import com.zhijian.schedule.core.util.TimeUtils
@@ -318,36 +317,13 @@ object CapsuleNotifier {
 
     @RequiresApi(36)
     private fun applyProgressStyle(builder: Notification.Builder, plan: CapsulePlan, progress: Int) {
-        val color = courseColorOf(plan)
-        val course = when (plan) {
-            is CapsulePlan.Ongoing -> plan.course
-            is CapsulePlan.AboutToStart -> plan.course
-            else -> null
-        }
-        val sectionCount = course?.sectionCount ?: 0
-        val style = Notification.ProgressStyle().setProgress(progress.coerceIn(0, 100))
-        if (course != null && sectionCount > 1) {
-            // 与今日页「课节轨道」一致：一个大节里的每个小节各占一段，颜色交替提亮
-            val weights = if (course.sectionMinutes.size == sectionCount) {
-                course.sectionMinutes
-            } else {
-                List(sectionCount) { 1L }
-            }
-            weights.forEachIndexed { index, minutes ->
-                style.addProgressSegment(
-                    Notification.ProgressStyle.Segment(minutes.toInt().coerceAtLeast(1))
-                        .setColor(segmentColor(color, index))
-                )
-            }
-        } else {
-            style.addProgressSegment(Notification.ProgressStyle.Segment(100).setColor(color))
-        }
+        val style = Notification.ProgressStyle()
+            .setProgress(progress.coerceIn(0, 100))
+            .addProgressSegment(
+                Notification.ProgressStyle.Segment(100).setColor(courseColorOf(plan))
+            )
         builder.setStyle(style)
     }
-
-    /** 小节分段交替提亮 16%，让卡面能一眼看出「第几小节」 */
-    private fun segmentColor(base: Int, index: Int): Int =
-        if (index % 2 == 0) base else ColorUtils.blendARGB(base, 0xFFFFFFFF.toInt(), 0.16f)
 
     private fun contentIntent(context: Context): PendingIntent =
         PendingIntent.getActivity(

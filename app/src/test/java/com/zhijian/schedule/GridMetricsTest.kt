@@ -43,7 +43,7 @@ class GridMetricsTest {
     fun `fontScale 1 keeps the baseline pixel sizes`() {
         val m = GridMetrics.of(1f)
         assertEquals(1f, m.fontScale, 1e-4f)
-        assertEquals(40f, m.timeAxisWidth.value, 1e-3f)
+        assertEquals(60f, m.timeAxisWidth.value, 1e-3f)
         assertEquals(56f, m.headerHeight.value, 1e-3f)
         assertEquals(46f, m.sectionHeight.value, 1e-3f)
         assertEquals(24f, m.bandHeadHeight.value, 1e-3f)
@@ -56,7 +56,7 @@ class GridMetricsTest {
         val m = GridMetrics.of(1.3f)
         assertEquals(1.3f, m.fontScale, 1e-4f)
         assertEquals(46f * 1.3f, m.sectionHeight.value, 1e-3f)
-        assertEquals(40f * 1.3f, m.timeAxisWidth.value, 1e-3f)
+        assertEquals(60f * 1.3f, m.timeAxisWidth.value, 1e-3f)
         assertEquals(1.3f, m.boxScale, 1e-4f)
     }
 
@@ -66,7 +66,7 @@ class GridMetricsTest {
         assertEquals(1.5f, m.fontScale, 1e-4f)
         assertEquals(46f * 1.5f, m.sectionHeight.value, 1e-3f)
         // 时间轴另有 1.4 倍上限，否则天列会被挤窄
-        assertEquals(40f * 1.4f, m.timeAxisWidth.value, 1e-3f)
+        assertEquals(60f * 1.4f, m.timeAxisWidth.value, 1e-3f)
     }
 
     @Test

@@ -46,7 +46,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -82,6 +81,8 @@ import com.google.zxing.qrcode.QRCodeWriter
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import com.zhijian.schedule.R
 import com.zhijian.schedule.core.theme.LocalCourseColors
+import com.zhijian.schedule.core.ui.TapTextButton
+import com.zhijian.schedule.core.ui.buttonFeedback
 import com.zhijian.schedule.core.ui.pressScale
 import java.io.File
 import java.io.FileOutputStream
@@ -205,10 +206,10 @@ fun QrScanContent(onDecoded: (ByteArray) -> Unit, onSwitchToShare: () -> Unit) {
                     fontSize = 12.sp,
                 )
                 Spacer(Modifier.height(16.dp))
-                TextButton(onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) }) {
+                TapTextButton(onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) }) {
                     Text("授予相机权限", color = Color.White)
                 }
-                TextButton(onClick = pickFromGallery) {
+                TapTextButton(onClick = pickFromGallery) {
                     Text("或从相册选二维码图片", color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp)
                 }
             }
@@ -367,7 +368,7 @@ fun QrShareContent(state: QrShareState?, onSwitchToScan: () -> Unit) {
                         },
                         enabled = !sharing,
                         interactionSource = shareSource,
-                        modifier = Modifier.pressScale(shareSource, pressedScale = 0.97f),
+                        modifier = Modifier.buttonFeedback(shareSource, pressedScale = 0.97f, hapticType = HapticFeedbackType.Confirm),
                     ) {
                         Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
@@ -377,7 +378,7 @@ fun QrShareContent(state: QrShareState?, onSwitchToScan: () -> Unit) {
             }
         }
         Spacer(Modifier.weight(1f))
-        TextButton(onClick = onSwitchToScan) { Text("去扫别人的码") }
+        TapTextButton(onClick = onSwitchToScan) { Text("去扫别人的码") }
     }
 }
 
@@ -435,7 +436,12 @@ private fun CameraPreview(onDecoded: (ByteArray) -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val previewView = remember {
-        PreviewView(context).apply { scaleType = PreviewView.ScaleType.FILL_CENTER }
+        PreviewView(context).apply {
+            scaleType = PreviewView.ScaleType.FILL_CENTER
+            // SurfaceView 独立于窗口图层，退出时无法随 Compose 一起淡出/位移，会留下残影；
+            // TextureView 参与窗口合成，转场和窗口动画都能正常跟随。
+            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+        }
     }
     val executor = remember { Executors.newSingleThreadExecutor() }
     val decodedOnce = remember { AtomicBoolean(false) }
@@ -444,7 +450,11 @@ private fun CameraPreview(onDecoded: (ByteArray) -> Unit) {
         val providerFuture = ProcessCameraProvider.getInstance(context)
         var provider: ProcessCameraProvider? = null
         var analyzer: QrAnalyzer? = null
+        var disposed = false
         providerFuture.addListener({
+            // 相机初始化是异步的：若页面在回调前已退出，不能再绑相机，否则相机会
+            // 一直挂到 Activity 结束，且预览视图已销毁无法再释放。
+            if (disposed) return@addListener
             runCatching {
                 val cameraProvider = providerFuture.get()
                 provider = cameraProvider
@@ -480,6 +490,7 @@ private fun CameraPreview(onDecoded: (ByteArray) -> Unit) {
         }, ContextCompat.getMainExecutor(context))
 
         onDispose {
+            disposed = true
             provider?.unbindAll()
             analyzer?.close()
             executor.shutdown()

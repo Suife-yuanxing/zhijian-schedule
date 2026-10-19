@@ -42,7 +42,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -64,8 +63,11 @@ import com.zhijian.schedule.core.data.db.SectionTimeEntity
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.SecondaryTopBar
 import com.zhijian.schedule.core.ui.StaggerIn
-import com.zhijian.schedule.core.ui.pressScale
+import com.zhijian.schedule.core.ui.TapTextButton
+import com.zhijian.schedule.core.ui.buttonFeedback
 import com.zhijian.schedule.core.theme.LocalCourseColors
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -150,7 +152,7 @@ fun SettingsScreen(
                                 fontWeight = FontWeight.SemiBold,
                                 modifier = Modifier.weight(1f),
                             )
-                            TextButton(onClick = { editTimetable = true }) { Text("编辑") }
+                            TapTextButton(onClick = { editTimetable = true }) { Text("编辑") }
                         }
                         InfoRow("名称", t.name)
                         InfoRow("学期", t.semester.ifBlank { "未设置" })
@@ -170,7 +172,7 @@ fun SettingsScreen(
                         Row(
                             Modifier
                                 .fillMaxWidth()
-                                .pressScale(pressSource, pressedScale = 0.98f)
+                                .buttonFeedback(pressSource, pressedScale = 0.98f)
                                 .clickable(
                                     interactionSource = pressSource,
                                     indication = LocalIndication.current,
@@ -207,7 +209,7 @@ fun SettingsScreen(
                                 fontSize = 12.sp,
                                 modifier = Modifier.weight(1f),
                             )
-                            TextButton(onClick = {
+                            TapTextButton(onClick = {
                                 viewModel.refreshAlarmPermission()
                                 val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
                                     data = Uri.fromParts("package", context.packageName, null)
@@ -233,7 +235,7 @@ fun SettingsScreen(
                                 fontSize = 12.sp,
                             )
                         }
-                        Switch(
+                        SettingsSwitch(
                             checked = ui.settings.capsuleEnabled,
                             onCheckedChange = { viewModel.setCapsule(it) },
                         )
@@ -248,7 +250,7 @@ fun SettingsScreen(
                                     fontSize = 12.sp,
                                     modifier = Modifier.weight(1f),
                                 )
-                                TextButton(onClick = { openCapsuleSystemSettings(context) }) { Text("去开启") }
+                                TapTextButton(onClick = { openCapsuleSystemSettings(context) }) { Text("去开启") }
                             }
 
                             true -> Text(
@@ -268,7 +270,7 @@ fun SettingsScreen(
                                     fontSize = 12.sp,
                                     modifier = Modifier.weight(1f),
                                 )
-                                TextButton(onClick = {
+                                TapTextButton(onClick = {
                                     CapsuleReliability.requestIgnoreBatteryOptimization(context)
                                 }) { Text("去允许") }
                             }
@@ -288,12 +290,12 @@ fun SettingsScreen(
                                     fontSize = 12.sp,
                                 )
                             }
-                            Switch(
+                            SettingsSwitch(
                                 checked = ui.settings.capsuleAlarmFallbackEnabled,
                                 onCheckedChange = { viewModel.setCapsuleAlarmFallback(it) },
                             )
                         }
-                        TextButton(onClick = { CapsuleReliability.openAppDetails(context) }) {
+                        TapTextButton(onClick = { CapsuleReliability.openAppDetails(context) }) {
                             Text("自启动 / 耗电管理", fontSize = 12.sp)
                         }
                     }
@@ -317,7 +319,7 @@ fun SettingsScreen(
                                 fontSize = 12.sp,
                             )
                         }
-                        Switch(
+                        SettingsSwitch(
                             checked = ui.settings.calendarSyncEnabled && ui.calendarPermissionGranted,
                             enabled = ui.calendarAvailable,
                             onCheckedChange = { checked ->
@@ -345,7 +347,7 @@ fun SettingsScreen(
                                 fontSize = 12.sp,
                                 modifier = Modifier.weight(1f),
                             )
-                            TextButton(onClick = {
+                            TapTextButton(onClick = {
                                 if (ui.calendarPermissionPermanentlyDenied) {
                                     viewModel.onCalendarPermissionSettingsOpened()
                                     openCalendarPermissionSettings(context)
@@ -375,11 +377,15 @@ fun SettingsScreen(
                         Button(
                             onClick = { exportLauncher.launch("zhijian-backup.json") },
                             interactionSource = exportSource,
-                            modifier = Modifier.pressScale(exportSource, pressedScale = 0.96f),
+                            modifier = Modifier.buttonFeedback(
+                                exportSource,
+                                pressedScale = 0.96f,
+                                hapticType = HapticFeedbackType.Confirm,
+                            ),
                         ) {
                             Text("导出备份")
                         }
-                        TextButton(onClick = { importLauncher.launch(arrayOf("application/json", "*/*")) }) {
+                        TapTextButton(onClick = { importLauncher.launch(arrayOf("application/json", "*/*")) }) {
                             Text("导入恢复")
                         }
                     }
@@ -470,6 +476,7 @@ private fun TimetableEditDialog(
     var semester by remember { mutableStateOf(initialSemester) }
     var startDate by remember { mutableStateOf(initialStartDate) }
     var weeks by remember { mutableStateOf(initialWeeks) }
+    val haptics = LocalHapticFeedback.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -502,15 +509,23 @@ private fun TimetableEditDialog(
                     listOf(16, 18, 20, 22).forEach { w ->
                         FilterChip(
                             selected = weeks == w,
-                            onClick = { weeks = w },
+                            onClick = {
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                weeks = w
+                            },
                             label = { Text("$w", fontSize = 12.sp) },
                         )
                     }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(name, semester, startDate, weeks) }) { Text("保存") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        confirmButton = {
+            TapTextButton(
+                hapticType = HapticFeedbackType.Confirm,
+                onClick = { onSave(name, semester, startDate, weeks) },
+            ) { Text("保存") }
+        },
+        dismissButton = { TapTextButton(onClick = onDismiss) { Text("取消") } },
     )
 }
 
@@ -542,8 +557,30 @@ private fun SectionEditDialog(
                 )
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(start, end) }) { Text("保存") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        confirmButton = {
+            TapTextButton(
+                hapticType = HapticFeedbackType.Confirm,
+                onClick = { onSave(start, end) },
+            ) { Text("保存") }
+        },
+        dismissButton = { TapTextButton(onClick = onDismiss) { Text("取消") } },
+    )
+}
+
+@Composable
+private fun SettingsSwitch(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    enabled: Boolean = true,
+) {
+    val haptics = LocalHapticFeedback.current
+    Switch(
+        checked = checked,
+        enabled = enabled,
+        onCheckedChange = {
+            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            onCheckedChange(it)
+        },
     )
 }
 

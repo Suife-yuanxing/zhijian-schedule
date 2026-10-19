@@ -13,8 +13,8 @@ import java.time.LocalTime
 
 /** fontScale = 1.0 时的基准尺寸；实际渲染用 [GridMetrics] */
 object GridDims {
-    /** 时间轴：只放「第几大节 + 开始时间」，40dp 是能容下 4 位时间的最窄宽度 */
-    val TIME_AXIS_WIDTH: Dp = 40.dp
+    /** 时间轴：放「第几大节 + 起止时间」，60dp 是能容下 08:20–10:00 的最窄宽度 */
+    val TIME_AXIS_WIDTH: Dp = 60.dp
     val HEADER_HEIGHT: Dp = 56.dp
     val SECTION_HEIGHT: Dp = 46.dp
     /** 时段标题（上午 / 下午 / 晚上）行高 */

@@ -1,6 +1,7 @@
 package com.zhijian.schedule.feature.grades
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,13 +24,13 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -43,6 +44,9 @@ import com.zhijian.schedule.core.jw.GradeRecord
 import com.zhijian.schedule.core.jw.GradeStats
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.ui.SecondaryTopBar
+import com.zhijian.schedule.core.ui.TapIconButton
+import com.zhijian.schedule.core.ui.TapTextButton
+import com.zhijian.schedule.core.ui.buttonFeedback
 import com.zhijian.schedule.core.ui.selectedPop
 import java.time.Instant
 import java.time.ZoneId
@@ -79,7 +83,7 @@ fun GradesScreen(
             title = "成绩查询",
             onBack = onBack,
             actions = {
-                IconButton(onClick = viewModel::refresh) {
+                TapIconButton(onClick = viewModel::refresh) {
                     if (state.loading) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(18.dp),
@@ -120,19 +124,13 @@ fun GradesScreen(
                 }
                 item(key = "chips") {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(
-                            selected = term == null,
-                            onClick = { viewModel.selectTerm(null) },
-                            label = { Text("全部", fontSize = 12.sp) },
-                            modifier = Modifier.selectedPop(term == null),
-                        )
+                        TermChip(label = "全部", selected = term == null) {
+                            viewModel.selectTerm(null)
+                        }
                         state.terms.forEach { t ->
-                            FilterChip(
-                                selected = term == t,
-                                onClick = { viewModel.selectTerm(t) },
-                                label = { Text(t, fontSize = 12.sp) },
-                                modifier = Modifier.selectedPop(term == t),
-                            )
+                            TermChip(label = t, selected = term == t) {
+                                viewModel.selectTerm(t)
+                            }
                         }
                     }
                 }
@@ -258,6 +256,24 @@ private fun GradeRow(record: GradeRecord) {
 }
 
 @Composable
+private fun TermChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    val haptics = LocalHapticFeedback.current
+    val source = remember { MutableInteractionSource() }
+    FilterChip(
+        selected = selected,
+        onClick = {
+            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            onClick()
+        },
+        label = { Text(label, fontSize = 12.sp) },
+        interactionSource = source,
+        modifier = Modifier
+            .buttonFeedback(source, pressedScale = 0.94f)
+            .selectedPop(selected),
+    )
+}
+
+@Composable
 private fun EmptyState(
     needsLogin: Boolean,
     error: String?,
@@ -285,9 +301,9 @@ private fun EmptyState(
             Spacer(Modifier.height(14.dp))
             Row {
                 if (needsLogin) {
-                    TextButton(onClick = onOpenJwImport) { Text("去教务导入", color = colors.accent) }
+                    TapTextButton(onClick = onOpenJwImport) { Text("去教务导入", color = colors.accent) }
                 }
-                TextButton(onClick = onRetry) { Text("刷新", color = colors.accent) }
+                TapTextButton(onClick = onRetry) { Text("刷新", color = colors.accent) }
             }
         }
     }

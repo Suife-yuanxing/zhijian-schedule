@@ -44,7 +44,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
@@ -65,7 +64,9 @@ import com.zhijian.schedule.core.theme.CourseColors
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.SecondaryTopBar
-import com.zhijian.schedule.core.ui.pressScale
+import com.zhijian.schedule.core.ui.TapButton
+import com.zhijian.schedule.core.ui.TapTextButton
+import com.zhijian.schedule.core.ui.buttonFeedback
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -191,7 +192,7 @@ fun JwImportScreen(
                 Button(
                     onClick = viewModel::reload,
                     interactionSource = openSource,
-                    modifier = Modifier.pressScale(openSource, pressedScale = 0.96f),
+                    modifier = Modifier.buttonFeedback(openSource, pressedScale = 0.96f, hapticType = HapticFeedbackType.Confirm),
                 ) { Text("打开", fontSize = 14.sp) }
             }
 
@@ -269,7 +270,10 @@ fun JwImportScreen(
                 }
                 Switch(
                     checked = viewModel.autoSyncEnabled,
-                    onCheckedChange = viewModel::setAutoSync,
+                    onCheckedChange = {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        viewModel.setAutoSync(it)
+                    },
                 )
                 Spacer(Modifier.width(10.dp))
                 val fetchSource = remember { MutableInteractionSource() }
@@ -277,7 +281,7 @@ fun JwImportScreen(
                     onClick = viewModel::fetchNow,
                     enabled = !viewModel.loading,
                     interactionSource = fetchSource,
-                    modifier = Modifier.pressScale(fetchSource, pressedScale = 0.96f, enabled = !viewModel.loading),
+                    modifier = Modifier.buttonFeedback(fetchSource, pressedScale = 0.96f, enabled = !viewModel.loading, hapticType = HapticFeedbackType.Confirm),
                 ) {
                     Text("抓取课表", fontSize = 14.sp)
                 }
@@ -290,7 +294,7 @@ fun JwImportScreen(
             onDismissRequest = onBack,
             title = { Text("导入完成") },
             text = { Text("课表已更新，可在周视图查看。") },
-            confirmButton = { TextButton(onClick = onBack) { Text("好的") } },
+            confirmButton = { TapTextButton(onClick = onBack) { Text("好的") } },
         )
     }
 
@@ -339,7 +343,7 @@ fun JwImportScreen(
                     Modifier.padding(vertical = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    TextButton(onClick = viewModel::dismissPreview, modifier = Modifier.weight(1f)) {
+                    TapTextButton(onClick = viewModel::dismissPreview, modifier = Modifier.weight(1f)) {
                         Text("取消")
                     }
                     val applySource = remember { MutableInteractionSource() }
@@ -348,7 +352,7 @@ fun JwImportScreen(
                         interactionSource = applySource,
                         modifier = Modifier
                             .weight(1f)
-                            .pressScale(applySource, pressedScale = 0.97f),
+                            .buttonFeedback(applySource, pressedScale = 0.97f, hapticType = HapticFeedbackType.Confirm),
                     ) {
                         Text("应用变更")
                     }
@@ -438,7 +442,7 @@ private fun PageErrorOverlay(
                     textAlign = TextAlign.Center,
                 )
                 Spacer(Modifier.height(14.dp))
-                Button(onClick = onReload) { Text("重新加载") }
+                TapButton(onClick = onReload) { Text("重新加载") }
             }
         }
     }
@@ -493,7 +497,7 @@ private fun HttpErrorBanner(
                 fontSize = 12.sp,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = onDismiss) { Text("知道了") }
+            TapTextButton(onClick = onDismiss) { Text("知道了") }
         }
     }
 }

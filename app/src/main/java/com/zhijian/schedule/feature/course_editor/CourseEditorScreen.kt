@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.SecondaryTopBar
+import com.zhijian.schedule.core.ui.buttonFeedback
 import com.zhijian.schedule.core.ui.pressScale
 import com.zhijian.schedule.core.ui.selectedPop
 import com.zhijian.schedule.core.theme.LocalCourseColors
@@ -95,12 +96,13 @@ fun CourseEditorScreen(
                 if (ui.isEdit) {
                     val deleteSource = remember { MutableInteractionSource() }
                     TextButton(
-                        onClick = {
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            viewModel.delete()
-                        },
+                        onClick = { viewModel.delete() },
                         interactionSource = deleteSource,
-                        modifier = Modifier.pressScale(deleteSource, pressedScale = 0.92f),
+                        modifier = Modifier.buttonFeedback(
+                            deleteSource,
+                            pressedScale = 0.92f,
+                            hapticType = HapticFeedbackType.LongPress,
+                        ),
                     ) {
                         Text(
                             text = "删除",
@@ -312,7 +314,12 @@ fun CourseEditorScreen(
                 interactionSource = saveSource,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .pressScale(saveSource, pressedScale = 0.97f),
+                    .buttonFeedback(
+                        saveSource,
+                        pressedScale = 0.97f,
+                        enabled = ui.canSave,
+                        hapticType = HapticFeedbackType.Confirm,
+                    ),
                 colors = androidx.compose.material3.ButtonDefaults.buttonColors(
                     containerColor = saveContainer,
                     contentColor = saveContent,

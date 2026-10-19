@@ -36,7 +36,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -59,6 +58,7 @@ import com.zhijian.schedule.core.data.db.SectionTimeEntity
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.ui.HolidayColors
 import com.zhijian.schedule.core.ui.Motion
+import com.zhijian.schedule.core.ui.TapTextButton
 import com.zhijian.schedule.core.ui.pressScale
 import com.zhijian.schedule.core.util.TimeUtils
 import java.time.LocalDate
@@ -166,12 +166,12 @@ fun DayDetailSheet(
 
             Spacer(Modifier.height(4.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(
+                TapTextButton(
                     onClick = { flipTo(date.minusDays(1)) },
                     enabled = date.isAfter(startDate),
                 ) { Text("‹ 前一天") }
                 Spacer(Modifier.weight(1f))
-                TextButton(
+                TapTextButton(
                     onClick = { flipTo(date.plusDays(1)) },
                     enabled = date.isBefore(endDate),
                 ) { Text("后一天 ›") }

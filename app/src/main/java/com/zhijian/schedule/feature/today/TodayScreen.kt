@@ -7,7 +7,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -28,6 +27,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,13 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.RoundRect
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -127,15 +121,29 @@ fun TodayScreen(
                 )
             }
         }
-        Text(
-            text = buildString {
-                append("${ui.today.monthValue}月${ui.today.dayOfMonth}日")
-                ui.week?.let { append(" · 第 $it 周") }
-                if (ui.timetableName.isNotBlank()) append(" · ${ui.timetableName}")
-            },
-            style = MaterialTheme.typography.bodyMedium,
-            color = colors.textMuted,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = buildString {
+                    append("${ui.today.monthValue}月${ui.today.dayOfMonth}日")
+                    if (ui.timetableName.isNotBlank()) append(" · ${ui.timetableName}")
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.textMuted,
+                modifier = Modifier.weight(1f),
+            )
+            ui.week?.let { week ->
+                Text(
+                    text = "第 $week 周",
+                    color = colors.accent,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(colors.accent.copy(alpha = 0.12f))
+                        .padding(horizontal = 8.dp, vertical = 3.dp),
+                )
+            }
+        }
 
         Spacer(Modifier.height(18.dp))
 
@@ -161,29 +169,47 @@ fun TodayScreen(
                     }
                     Spacer(Modifier.height(18.dp))
                 }
-                StaggerIn(index = 2) {
-                    Text(
-                        text = if (current != null) "今日课程" else "今日课程（${ui.courses.size} 节）",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = colors.textMuted,
-                        fontWeight = FontWeight.Medium,
-                    )
+                val groups = DayPart.entries.mapNotNull { part ->
+                    val entries = ui.courses.withIndex()
+                        .filter { dayPartOf(it.value.startTime) == part }
+                    if (entries.isEmpty()) null else part to entries
                 }
-                // 间距一律放在 StaggerIn 外层：其内部是 Box，写在里面会与内容叠放而失效
-                Spacer(Modifier.height(8.dp))
-                ui.courses.forEachIndexed { i, item ->
-                    StaggerIn(index = 3 + i) {
-                        CourseRow(
-                            item = item,
-                            now = now,
-                            isCurrent = item == current,
-                            selected = detailSheetVisible && item.course.id == selectedCourse?.id,
-                            onClick = {
-                                haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                selectedCourse = item.course
-                                detailSheetVisible = true
-                            },
+                var staggerIndex = 2
+                StaggerIn(index = staggerIndex++) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "今日课程",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = colors.textMuted,
+                            fontWeight = FontWeight.Medium,
                         )
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            text = "${ui.courses.size} 节",
+                            fontSize = 11.sp,
+                            color = colors.textMuted.copy(alpha = 0.8f),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(2.dp))
+                groups.forEach { (part, entries) ->
+                    StaggerIn(index = staggerIndex++) {
+                        DayPartHeader(part, entries.size)
+                    }
+                    entries.forEach { (_, item) ->
+                        StaggerIn(index = staggerIndex++) {
+                            CourseRow(
+                                item = item,
+                                now = now,
+                                isCurrent = item == current,
+                                selected = detailSheetVisible && item.course.id == selectedCourse?.id,
+                                onClick = {
+                                    haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                    selectedCourse = item.course
+                                    detailSheetVisible = true
+                                },
+                            )
+                        }
                     }
                 }
             }
@@ -278,6 +304,13 @@ private fun CurrentClassCard(item: TodayCourseItem, now: LocalTime) {
     val passed = Duration.between(start, now).seconds.coerceIn(0, total)
     val remaining = 1f - passed.toFloat() / total
     val remainMin = (total - passed) / 60
+    val courseColor = Color(item.course.color)
+    val shape = RoundedCornerShape(18.dp)
+    val sectionText = when {
+        item.course.startSection <= 0 -> null
+        item.course.startSection == item.course.endSection -> "第${item.course.startSection}节"
+        else -> "第${item.course.startSection}-${item.course.endSection}节"
+    }
 
     // 全亮起步、从右端往左被吃掉；此后每 15s 时钟刷新时平滑推进
     val progressAnim = remember { Animatable(1f) }
@@ -300,101 +333,95 @@ private fun CurrentClassCard(item: TodayCourseItem, now: LocalTime) {
     Column(
         Modifier
             .fillMaxWidth()
-            .background(colors.surface, RoundedCornerShape(16.dp))
-            .border(1.dp, colors.accent.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
-            .padding(16.dp),
+            .background(lerp(colors.surface, courseColor, 0.07f), shape)
+            .border(1.dp, courseColor.copy(alpha = 0.28f), shape)
+            .padding(horizontal = 18.dp, vertical = 16.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier
                     .size(10.dp)
                     .clip(RoundedCornerShape(3.dp))
-                    .background(Color(item.course.color).copy(alpha = dotPulse))
+                    .background(courseColor.copy(alpha = dotPulse))
             )
             Spacer(Modifier.width(8.dp))
             Text(
                 text = "正在上课",
-                color = colors.accent,
+                color = courseColor,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
             )
+            Spacer(Modifier.weight(1f))
+            sectionText?.let {
+                Text(
+                    text = it,
+                    color = courseColor,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(courseColor.copy(alpha = 0.12f))
+                        .padding(horizontal = 8.dp, vertical = 3.dp),
+                )
+            }
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(10.dp))
         Text(
             text = item.course.name,
             style = MaterialTheme.typography.titleLarge,
             color = colors.text,
             fontWeight = FontWeight.SemiBold,
         )
-        Spacer(Modifier.height(4.dp))
-        Row {
-            if (item.course.room.isNotBlank()) {
-                Text(
-                    text = item.course.room,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = colors.textMuted,
-                )
-                Spacer(Modifier.width(12.dp))
-            }
+        val info = listOf(item.course.room, item.course.teacher)
+            .filter { it.isNotBlank() }
+            .joinToString(" · ")
+        if (info.isNotBlank()) {
+            Spacer(Modifier.height(4.dp))
             Text(
-                text = "还剩 ${remainMin} 分钟",
+                text = info,
                 style = MaterialTheme.typography.bodyMedium,
                 color = colors.textMuted,
             )
         }
-        Spacer(Modifier.height(12.dp))
-        SectionTrack(
-            sections = item.sections.ifEmpty { listOf(TodaySection(start, end)) },
-            remainingFraction = progressAnim.value,
-            color = Color(item.course.color),
-            breakColor = colors.border.copy(alpha = 0.4f),
-        )
-    }
-}
-
-/**
- * 课节轨道：按小节拆成等宽色块（课间以细线相连），整条轨道全亮起步，
- * 随课程推进从右端往左消耗——剩余部分保持课程色（锚定左端），
- * 已消耗的部分退成淡色，方向与流体云的「剩余倒着消耗」一致。
- */
-@Composable
-private fun SectionTrack(
-    sections: List<TodaySection>,
-    remainingFraction: Float,
-    color: Color,
-    breakColor: Color,
-) {
-    val drainedColor = color.copy(alpha = 0.20f)
-    Canvas(
-        Modifier
-            .fillMaxWidth()
-            .height(8.dp),
-    ) {
-        val n = sections.size
-        if (n == 0) return@Canvas
-        val gap = 6.dp.toPx()
-        val h = size.height
-        val radius = h / 2f
-        val blockW = (size.width - gap * (n - 1)) / n
-        val frontX = remainingFraction.coerceIn(0f, 1f) * size.width // 剩余前沿：从右往左推进
-        sections.forEachIndexed { i, _ ->
-            val x0 = i * (blockW + gap)
-            clipPath(Path().apply { addRoundRect(RoundRect(x0, 0f, x0 + blockW, h, radius, radius)) }) {
-                drawRect(drainedColor)
-                val litW = (frontX - x0).coerceIn(0f, blockW)
-                if (litW > 0.5f) {
-                    drawRect(color, topLeft = Offset(x0, 0f), size = Size(litW, h))
-                }
-            }
+        Spacer(Modifier.height(14.dp))
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(
+                text = remainMin.toString(),
+                color = courseColor,
+                fontSize = 40.sp,
+                lineHeight = 40.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.width(5.dp))
+            Text(
+                text = "分钟后下课",
+                fontSize = 13.sp,
+                color = colors.textMuted,
+                modifier = Modifier.padding(bottom = 5.dp),
+            )
         }
-        // 课间连接线
-        for (i in 0 until n - 1) {
-            val cx0 = i * (blockW + gap) + blockW
-            drawRoundRect(
-                color = breakColor,
-                topLeft = Offset(cx0 + 1.dp.toPx(), h / 2f - 1.dp.toPx()),
-                size = Size(gap - 2.dp.toPx(), 2.dp.toPx()),
-                cornerRadius = CornerRadius(1.dp.toPx()),
+        Spacer(Modifier.height(12.dp))
+        LinearProgressIndicator(
+            progress = { progressAnim.value },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(4.dp)
+                .clip(RoundedCornerShape(2.dp)),
+            color = courseColor,
+            trackColor = colors.border.copy(alpha = 0.4f),
+        )
+        Spacer(Modifier.height(6.dp))
+        Row {
+            Text(
+                text = "${TimeUtils.formatTime(start)} 开始",
+                fontSize = 11.sp,
+                color = colors.textMuted,
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = "${TimeUtils.formatTime(end)} 下课",
+                fontSize = 11.sp,
+                color = colors.textMuted,
             )
         }
     }
@@ -404,56 +431,125 @@ private fun SectionTrack(
 private fun NextClassCard(item: TodayCourseItem, now: LocalTime) {
     val colors = LocalCourseColors.current
     val start = item.startTime ?: return
+    val end = item.endTime
     val minutes = Duration.between(now, start).toMinutes()
+    val courseColor = Color(item.course.color)
+    val shape = RoundedCornerShape(14.dp)
 
     Row(
         Modifier
             .fillMaxWidth()
-            .background(colors.surface, RoundedCornerShape(16.dp))
-            .border(1.dp, colors.border, RoundedCornerShape(16.dp))
-            .padding(16.dp),
+            .background(colors.surface, shape)
+            .border(1.dp, colors.border, shape)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.width(64.dp)) {
-            Text(
-                text = TimeUtils.formatTime(start),
-                style = MaterialTheme.typography.titleMedium,
-                color = colors.text,
-                fontWeight = FontWeight.SemiBold,
-            )
-            item.endTime?.let {
-                Text(
-                    text = TimeUtils.formatTime(it),
-                    fontSize = 11.sp,
-                    color = colors.textMuted,
-                )
-            }
-        }
+        Box(
+            Modifier
+                .width(3.dp)
+                .height(34.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(courseColor)
+        )
+        Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
                 text = "下一节 · ${item.course.name}",
                 style = MaterialTheme.typography.titleSmall,
                 color = colors.text,
                 fontWeight = FontWeight.Medium,
+                maxLines = 1,
             )
             Text(
                 text = buildString {
                     if (item.course.room.isNotBlank()) append(item.course.room)
-                    if (minutes > 0) {
-                        if (isNotEmpty()) append(" · ")
-                        append("${TimeUtils.minutesText(minutes)}后开始")
-                    } else if (isNotEmpty()) {
-                        append(" · ")
-                        append("即将开始")
-                    } else {
-                        append("即将开始")
+                    val range = buildString {
+                        append(TimeUtils.formatTime(start))
+                        end?.let { append("–").append(TimeUtils.formatTime(it)) }
                     }
+                    if (isNotEmpty()) append(" · ")
+                    append(range)
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = colors.textMuted,
+                maxLines = 1,
             )
         }
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = if (minutes > 0) "${TimeUtils.minutesText(minutes)}后" else "即将开始",
+            color = colors.accent,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            modifier = Modifier
+                .clip(RoundedCornerShape(9.dp))
+                .background(colors.accent.copy(alpha = 0.12f))
+                .padding(horizontal = 9.dp, vertical = 5.dp),
+        )
     }
+}
+
+private enum class DayPart(val label: String) {
+    MORNING("上午"),
+    AFTERNOON("下午"),
+    EVENING("晚上"),
+}
+
+private fun dayPartOf(time: LocalTime?): DayPart = when {
+    time != null && time.hour < 12 -> DayPart.MORNING
+    time != null && time.hour >= 18 -> DayPart.EVENING
+    else -> DayPart.AFTERNOON
+}
+
+/** 上午 / 下午 / 晚上分隔：小标题 + 细线，让长列表有呼吸和节奏 */
+@Composable
+private fun DayPartHeader(part: DayPart, count: Int) {
+    val colors = LocalCourseColors.current
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp, bottom = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = part.label,
+            color = colors.textMuted,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Spacer(Modifier.width(9.dp))
+        Box(
+            Modifier
+                .weight(1f)
+                .height(1.dp)
+                .background(colors.border.copy(alpha = 0.55f))
+        )
+        Spacer(Modifier.width(9.dp))
+        Text(
+            text = "$count 节",
+            color = colors.textMuted.copy(alpha = 0.8f),
+            fontSize = 11.sp,
+        )
+    }
+}
+
+@Composable
+private fun StatusPill(
+    text: String,
+    color: Color,
+    background: Color,
+) {
+    Text(
+        text = text,
+        color = color,
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Medium,
+        modifier = Modifier
+            .clip(RoundedCornerShape(7.dp))
+            .background(background)
+            .padding(horizontal = 7.dp, vertical = 3.dp),
+    )
 }
 
 @Composable
@@ -467,6 +563,7 @@ private fun CourseRow(
     val colors = LocalCourseColors.current
     val finished = item.endTime != null && now.isAfter(item.endTime)
     val alpha = if (finished) 0.45f else 1f
+    val courseColor = Color(item.course.color)
     val pressSource = remember { MutableInteractionSource() }
     val pressed by pressSource.collectIsPressedAsState()
     val shape = RoundedCornerShape(12.dp)
@@ -487,7 +584,7 @@ private fun CourseRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(vertical = 5.dp)
+            .padding(vertical = 4.dp)
             .graphicsLayer {
                 val scale = press * (1f + 0.02f * lift)
                 scaleX = scale
@@ -503,23 +600,24 @@ private fun CourseRow(
                 ),
                 shape,
             )
-            .border(2.dp, Color(item.course.color).copy(alpha = 0.9f * ring), shape)
+            .border(1.dp, colors.border.copy(alpha = 0.5f), shape)
+            .border(2.dp, courseColor.copy(alpha = 0.9f * ring), shape)
             .clickable(
                 interactionSource = pressSource,
                 indication = LocalIndication.current,
                 onClick = onClick,
             )
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(horizontal = 13.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             Modifier
                 .size(10.dp)
                 .clip(RoundedCornerShape(3.dp))
-                .background(Color(item.course.color).copy(alpha = alpha))
+                .background(courseColor.copy(alpha = alpha))
         )
         Spacer(Modifier.width(10.dp))
-        Column(Modifier.width(86.dp)) {
+        Column(Modifier.width(80.dp)) {
             Text(
                 text = item.startTime?.let { TimeUtils.formatTime(it) } ?: "—",
                 fontSize = 12.sp,
@@ -555,9 +653,17 @@ private fun CourseRow(
             }
         }
         if (finished) {
-            Text("已结束", fontSize = 11.sp, color = colors.textMuted)
+            StatusPill(
+                text = "已结束",
+                color = colors.textMuted,
+                background = colors.border.copy(alpha = 0.18f),
+            )
         } else if (isCurrent) {
-            Text("进行中", fontSize = 11.sp, color = colors.accent)
+            StatusPill(
+                text = "进行中",
+                color = courseColor,
+                background = courseColor.copy(alpha = 0.12f),
+            )
         }
     }
 }

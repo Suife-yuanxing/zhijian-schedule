@@ -5,6 +5,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -48,7 +50,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -74,7 +75,10 @@ import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.SecondaryTopBar
 import com.zhijian.schedule.core.ui.StaggerIn
-import com.zhijian.schedule.core.ui.pressScale
+import com.zhijian.schedule.core.ui.TapButton
+import com.zhijian.schedule.core.ui.TapTextButton
+import com.zhijian.schedule.core.ui.buttonFeedback
+import androidx.compose.ui.platform.LocalHapticFeedback
 import com.zhijian.schedule.feature.importer.qr.QrScanContent
 import com.zhijian.schedule.feature.importer.qr.QrShareContent
 
@@ -126,12 +130,20 @@ fun ImporterScreen(
             AnimatedContent(
                 targetState = state,
                 transitionSpec = {
-                    val forward = importStateOrder(targetState) >= importStateOrder(initialState)
-                    val dir = if (forward) 1 else -1
-                    (slideInHorizontally(animationSpec = Motion.SlideSpring) { dir * it / 4 } +
-                        fadeIn(tween(durationMillis = Motion.DurMedium, easing = Motion.EaseOut))) togetherWith
-                        (slideOutHorizontally(animationSpec = Motion.SlideSpring) { -dir * it / 4 } +
-                            fadeOut(tween(durationMillis = Motion.DurFast)))
+                    // 二维码互传的扫码/分享页硬切：相机预览是独立合成层，无法像普通
+                    // Compose 内容一样滑出/淡出；大尺寸二维码原地淡出也会叠成残影。
+                    if (initialState is ImportUiState.QrScan || targetState is ImportUiState.QrScan ||
+                        initialState is ImportUiState.QrShare || targetState is ImportUiState.QrShare
+                    ) {
+                        EnterTransition.None togetherWith ExitTransition.None
+                    } else {
+                        val forward = importStateOrder(targetState) >= importStateOrder(initialState)
+                        val dir = if (forward) 1 else -1
+                        (slideInHorizontally(animationSpec = Motion.SlideSpring) { dir * it / 4 } +
+                            fadeIn(tween(durationMillis = Motion.DurMedium, easing = Motion.EaseOut))) togetherWith
+                            (slideOutHorizontally(animationSpec = Motion.SlideSpring) { -dir * it / 4 } +
+                                fadeOut(tween(durationMillis = Motion.DurFast)))
+                    }
                 },
                 label = "importFlow",
             ) { s ->
@@ -214,16 +226,17 @@ fun ImporterScreen(
                 )
             },
             confirmButton = {
-                TextButton(
+                TapTextButton(
                     onClick = {
                         showPasteDialog = false
                         viewModel.importFromText(text)
                     },
                     enabled = text.isNotBlank(),
+                    hapticType = HapticFeedbackType.Confirm,
                 ) { Text("解析") }
             },
             dismissButton = {
-                TextButton(onClick = { showPasteDialog = false }) { Text("取消") }
+                TapTextButton(onClick = { showPasteDialog = false }) { Text("取消") }
             },
         )
     }
@@ -298,7 +311,7 @@ private fun MethodCard(
     Row(
         Modifier
             .fillMaxWidth()
-            .pressScale(pressSource, pressedScale = 0.97f)
+            .buttonFeedback(pressSource, pressedScale = 0.97f)
             .clip(RoundedCornerShape(14.dp))
             .background(colors.surface, RoundedCornerShape(14.dp))
             .clickable(
@@ -346,6 +359,7 @@ private fun PreviewContent(
     onCancel: () -> Unit,
 ) {
     val colors = LocalCourseColors.current
+    val haptics = LocalHapticFeedback.current
     Column(Modifier.fillMaxSize()) {
         Row(
             Modifier
@@ -360,7 +374,7 @@ private fun PreviewContent(
                 fontWeight = FontWeight.SemiBold,
             )
             Spacer(Modifier.weight(1f))
-            TextButton(onClick = onCancel) { Text("重新选择") }
+            TapTextButton(onClick = onCancel) { Text("重新选择") }
         }
         HorizontalDivider(color = colors.border)
         LazyColumn(Modifier.weight(1f)) {
@@ -385,7 +399,13 @@ private fun PreviewContent(
                         fontSize = 11.sp,
                     )
                 }
-                Switch(checked = applyConflicts, onCheckedChange = onToggleConflicts)
+                Switch(
+                    checked = applyConflicts,
+                    onCheckedChange = {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onToggleConflicts(it)
+                    },
+                )
             }
         }
         val confirmSource = remember { MutableInteractionSource() }
@@ -395,7 +415,7 @@ private fun PreviewContent(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(20.dp)
-                .pressScale(confirmSource, pressedScale = 0.97f),
+                .buttonFeedback(confirmSource, pressedScale = 0.97f, hapticType = HapticFeedbackType.Confirm),
         ) { Text("确认导入") }
     }
 }
@@ -489,7 +509,7 @@ private fun DoneContent(summary: String, onDone: () -> Unit) {
         Button(
             onClick = onDone,
             interactionSource = doneSource,
-            modifier = Modifier.pressScale(doneSource, pressedScale = 0.96f),
+            modifier = Modifier.buttonFeedback(doneSource, pressedScale = 0.96f, hapticType = HapticFeedbackType.Confirm),
         ) { Text("返回课表") }
     }
 }
@@ -508,7 +528,7 @@ private fun ErrorContent(message: String, onRetry: () -> Unit) {
             style = MaterialTheme.typography.bodyLarge,
         )
         Spacer(Modifier.height(20.dp))
-        Button(onClick = onRetry) { Text("重新选择") }
+        TapButton(onClick = onRetry) { Text("重新选择") }
     }
 }
 

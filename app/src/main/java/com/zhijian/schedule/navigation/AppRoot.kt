@@ -1,5 +1,7 @@
 package com.zhijian.schedule.navigation
 
+
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -12,6 +14,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -33,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -60,6 +64,11 @@ import com.zhijian.schedule.feature.course_editor.CourseEditorScreen
 import com.zhijian.schedule.feature.grades.GradesScreen
 import com.zhijian.schedule.feature.importer.ImporterScreen
 import com.zhijian.schedule.feature.jw.JwImportScreen
+import com.zhijian.schedule.feature.profile.PROFILE_ENTRY_HOLD_MS
+import com.zhijian.schedule.feature.profile.ProfileEntryExitOverlay
+import com.zhijian.schedule.feature.profile.ProfileEntryKeys
+import com.zhijian.schedule.feature.profile.ProfileEntryPage
+import com.zhijian.schedule.feature.profile.ProfileEntryTransitions
 import com.zhijian.schedule.feature.profile.ProfileScreen
 import com.zhijian.schedule.feature.schedule.ScheduleScreen
 import com.zhijian.schedule.feature.settings.SettingsScreen
@@ -91,7 +100,10 @@ object Routes {
     const val PROFILE_IMPORTER = "profile_importer"
     const val PROFILE_JW_IMPORT = "profile_jw_import"
     const val PROFILE_SETTINGS = "profile_settings"
-    const val PROFILE_GRADES = "profile_grades"
+    const val PROFILE_GRADES = "profile_grades?entryKey={entryKey}"
+
+    fun profileGrades(entryKey: String = ProfileEntryKeys.GRADES): String =
+        "profile_grades?entryKey=$entryKey"
 
     fun scheduleEditor(courseId: Long? = null, day: Int? = null, section: Int? = null): String =
         "schedule_editor?courseId=${courseId ?: -1L}&day=${day ?: -1}&section=${section ?: -1}"
@@ -138,6 +150,76 @@ private val tabPopExit: ExitTransition =
     fadeOut(tween(durationMillis = Motion.DurFast)) +
         scaleOut(tween(durationMillis = Motion.DurFast), targetScale = 0.98f)
 
+/**
+ * 根 tab 按底栏顺序做方向性切换：往右切，新页从右整页滑入、旧页向左退 1/4；
+ * 往左切反向。页根都铺了不透明底色，滑动时不会透出旧页卡片。
+ */
+private fun NavBackStackEntry.tabIndex(): Int? = when {
+    destination.hierarchy.any { it.route == Routes.TODAY_TAB } -> 0
+    destination.hierarchy.any { it.route == Routes.SCHEDULE_TAB } -> 1
+    destination.hierarchy.any { it.route == Routes.PROFILE_TAB } -> 2
+    else -> null
+}
+
+private fun NavBackStackEntry.isRootTab(): Boolean =
+    destination.route == Routes.TODAY ||
+        destination.route == Routes.SCHEDULE ||
+        destination.route == Routes.PROFILE
+
+private fun tabSwitchForward(
+    initialState: NavBackStackEntry,
+    targetState: NavBackStackEntry,
+): Boolean {
+    val from = initialState.tabIndex()
+    val to = targetState.tabIndex()
+    return from != null && to != null && to > from
+}
+
+private fun tabSlideEnter(
+    initialState: NavBackStackEntry,
+    targetState: NavBackStackEntry,
+): EnterTransition {
+    val fromRight = tabSwitchForward(initialState, targetState)
+    return slideInHorizontally(
+        animationSpec = Motion.SlideSpring,
+        initialOffsetX = { if (fromRight) it else -it },
+    )
+}
+
+private fun tabSlideExit(
+    initialState: NavBackStackEntry,
+    targetState: NavBackStackEntry,
+): ExitTransition {
+    val toLeft = tabSwitchForward(initialState, targetState)
+    return slideOutHorizontally(
+        animationSpec = Motion.SlideSpring,
+        targetOffsetX = { if (toLeft) -it / 4 else it / 4 },
+    ) + fadeOut(tween(durationMillis = Motion.DurFast, easing = Motion.EaseOut))
+}
+
+// ---------- 「我的」入口卡 ↔ 二级页：共享容器变换 ----------
+
+private val profileEntryRoutes = setOf(
+    Routes.PROFILE_IMPORTER,
+    Routes.PROFILE_GRADES,
+    Routes.PROFILE_SETTINGS,
+)
+
+/**
+ * 进入二级页时「我的」页保持原位，并延后销毁，给实时展开当背景。
+ * 用位移始终为 0 的滑出占位，只占用时长，不产生视觉位移。
+ */
+private val profileEntryHoldEnter: EnterTransition =
+    slideInHorizontally(
+        animationSpec = tween(PROFILE_ENTRY_HOLD_MS, easing = Motion.EaseOut),
+        initialOffsetX = { 0 },
+    )
+private val profileEntryHoldExit: ExitTransition =
+    slideOutHorizontally(
+        animationSpec = tween(PROFILE_ENTRY_HOLD_MS, easing = Motion.EaseOut),
+        targetOffsetX = { 0 },
+    )
+
 private val tabRoutes = setOf(Routes.TODAY_TAB, Routes.SCHEDULE_TAB, Routes.PROFILE_TAB)
 
 /** 目标/起始页是否属于某个 tab 根图：用于区分「tab 切换」与「进入/退出二级页」 */
@@ -177,8 +259,16 @@ fun AppRoot(openTodayCount: Int = 0, openJwImportCount: Int = 0) {
 }
 
 @Composable
-private fun AppScaffold(openTodayCount: Int, openJwImportCount: Int) {
+private fun AppScaffold(
+    openTodayCount: Int,
+    openJwImportCount: Int,
+) {
     val navController = rememberNavController()
+    val entryTransitions = remember { ProfileEntryTransitions() }
+    // 每次从其他 tab 进入「我的」自增，触发该页重播分段级联；二级页返回不自增
+    var profileEntranceEpoch by remember { mutableIntStateOf(0) }
+    // 二级页持续录进这个图层，返回时浮层直接重绘它（无位图读回）
+    val entryLayer = rememberGraphicsLayer()
     val colors = LocalCourseColors.current
     val tabs = listOf(
         TabItem(Routes.TODAY_TAB, Routes.TODAY, "今日", Icons.Filled.Star, Icons.Outlined.Star),
@@ -200,7 +290,13 @@ private fun AppScaffold(openTodayCount: Int, openJwImportCount: Int) {
     Scaffold { padding ->
         // 外层已按系统栏 inset 偏移内容，声明为已消费，
         // 避免二级页 Scaffold/TopAppBar 再次叠加状态栏高度把标题压低
-        Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .consumeWindowInsets(padding)
+                .onGloballyPositioned { entryTransitions.updateContentBounds(it.boundsInWindow()) }
+        ) {
             NavHost(
                 navController = navController,
                 startDestination = Routes.SCHEDULE_TAB,
@@ -216,15 +312,49 @@ private fun AppScaffold(openTodayCount: Int, openJwImportCount: Int) {
                 navigation(
                     startDestination = Routes.TODAY,
                     route = Routes.TODAY_TAB,
-                    enterTransition = { tabEnter },
-                    exitTransition = { if (targetState.isInTabGraph()) tabExit else pushExit },
+                    enterTransition = {
+                        if (targetState.isRootTab() && initialState.isInTabGraph()) {
+                            tabSlideEnter(initialState, targetState)
+                        } else {
+                            tabEnter
+                        }
+                    },
+                    exitTransition = {
+                        when {
+                            targetState.isRootTab() -> tabSlideExit(initialState, targetState)
+                            targetState.isInTabGraph() -> tabExit
+                            else -> pushExit
+                        }
+                    },
                     popEnterTransition = { if (initialState.isInTabGraph()) tabPopEnter else popEnter },
                     popExitTransition = { tabPopExit },
                 ) {
-                    composable(Routes.TODAY) {
-                        TodayScreen(
-                            onEditCourse = { id -> navController.navigate(Routes.todayEditor(courseId = id)) },
-                        )
+                    composable(
+                        route = Routes.TODAY,
+                        enterTransition = {
+                            if (initialState.isInTabGraph()) {
+                                tabSlideEnter(initialState, targetState)
+                            } else {
+                                tabEnter
+                            }
+                        },
+                        exitTransition = {
+                            when {
+                                targetState.isRootTab() -> tabSlideExit(initialState, targetState)
+                                targetState.isInTabGraph() -> tabExit
+                                else -> pushExit
+                            }
+                        },
+                    ) {
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .background(colors.bg),
+                        ) {
+                            TodayScreen(
+                                onEditCourse = { id -> navController.navigate(Routes.todayEditor(courseId = id)) },
+                            )
+                        }
                     }
                     composable(
                         route = Routes.TODAY_EDITOR,
@@ -241,20 +371,57 @@ private fun AppScaffold(openTodayCount: Int, openJwImportCount: Int) {
                 navigation(
                     startDestination = Routes.SCHEDULE,
                     route = Routes.SCHEDULE_TAB,
-                    enterTransition = { tabEnter },
-                    exitTransition = { if (targetState.isInTabGraph()) tabExit else pushExit },
+                    enterTransition = {
+                        if (targetState.isRootTab() && initialState.isInTabGraph()) {
+                            tabSlideEnter(initialState, targetState)
+                        } else {
+                            tabEnter
+                        }
+                    },
+                    exitTransition = {
+                        when {
+                            targetState.isRootTab() -> tabSlideExit(initialState, targetState)
+                            targetState.isInTabGraph() -> tabExit
+                            else -> pushExit
+                        }
+                    },
                     popEnterTransition = { if (initialState.isInTabGraph()) tabPopEnter else popEnter },
                     popExitTransition = { tabPopExit },
                 ) {
-                    composable(Routes.SCHEDULE) {
-                        ScheduleScreen(
-                            onAddCourse = { day, section ->
-                                navController.navigate(Routes.scheduleEditor(day = day, section = section))
-                            },
-                            onEditCourse = { id -> navController.navigate(Routes.scheduleEditor(courseId = id)) },
-                            onOpenSettings = { navController.navigateToTab(Routes.PROFILE_TAB) },
-                            onOpenImport = { navController.navigate(Routes.SCHEDULE_IMPORTER) },
-                        )
+                    composable(
+                        route = Routes.SCHEDULE,
+                        enterTransition = {
+                            if (initialState.isInTabGraph()) {
+                                tabSlideEnter(initialState, targetState)
+                            } else {
+                                tabEnter
+                            }
+                        },
+                        exitTransition = {
+                            when {
+                                targetState.isRootTab() -> tabSlideExit(initialState, targetState)
+                                targetState.isInTabGraph() -> tabExit
+                                else -> pushExit
+                            }
+                        },
+                    ) {
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .background(colors.bg),
+                        ) {
+                            ScheduleScreen(
+                                onAddCourse = { day, section ->
+                                    navController.navigate(Routes.scheduleEditor(day = day, section = section))
+                                },
+                                onEditCourse = { id -> navController.navigate(Routes.scheduleEditor(courseId = id)) },
+                                onOpenSettings = {
+                                    profileEntranceEpoch++
+                                    navController.navigateToTab(Routes.PROFILE_TAB)
+                                },
+                                onOpenImport = { navController.navigate(Routes.SCHEDULE_IMPORTER) },
+                            )
+                        }
                     }
                     composable(
                         route = Routes.SCHEDULE_IMPORTER,
@@ -294,29 +461,117 @@ private fun AppScaffold(openTodayCount: Int, openJwImportCount: Int) {
                 navigation(
                     startDestination = Routes.PROFILE,
                     route = Routes.PROFILE_TAB,
-                    enterTransition = { tabEnter },
-                    exitTransition = { if (targetState.isInTabGraph()) tabExit else pushExit },
-                    popEnterTransition = { if (initialState.isInTabGraph()) tabPopEnter else popEnter },
-                    popExitTransition = { tabPopExit },
+                    // 入口卡二级页：图上这一层也不能淡入淡出，否则包裹层会盖掉
+                    // 实时展开卡片所需的「我的」页背景
+                    enterTransition = {
+                        when {
+                            targetState.destination.route in profileEntryRoutes -> profileEntryHoldEnter
+                            targetState.isRootTab() && initialState.isInTabGraph() ->
+                                tabSlideEnter(initialState, targetState)
+                            else -> tabEnter
+                        }
+                    },
+                    exitTransition = {
+                        when {
+                            targetState.destination.route in profileEntryRoutes -> profileEntryHoldExit
+                            targetState.isRootTab() -> tabSlideExit(initialState, targetState)
+                            targetState.isInTabGraph() -> tabExit
+                            else -> pushExit
+                        }
+                    },
+                    popEnterTransition = {
+                        if (initialState.destination.route in profileEntryRoutes) {
+                            EnterTransition.None
+                        } else if (initialState.isInTabGraph()) {
+                            tabPopEnter
+                        } else {
+                            popEnter
+                        }
+                    },
+                    popExitTransition = {
+                        if (initialState.destination.route in profileEntryRoutes) {
+                            ExitTransition.None
+                        } else {
+                            tabPopExit
+                        }
+                    },
                 ) {
-                    composable(Routes.PROFILE) {
-                        ProfileScreen(
-                            onOpenImport = { navController.navigate(Routes.PROFILE_IMPORTER) },
-                            onOpenSettings = { navController.navigate(Routes.PROFILE_SETTINGS) },
-                            onOpenGrades = { navController.navigate(Routes.PROFILE_GRADES) },
-                        )
+                    composable(
+                        route = Routes.PROFILE,
+                        enterTransition = {
+                            if (initialState.isInTabGraph()) {
+                                tabSlideEnter(initialState, targetState)
+                            } else {
+                                tabEnter
+                            }
+                        },
+                        // 进出入口卡对应的二级页时，我的页保持原位：卡片是共享元素锚点，
+                        // 若整页横滑会让收回落点跟着漂移。
+                        exitTransition = {
+                            when {
+                                targetState.destination.route in profileEntryRoutes ->
+                                    profileEntryHoldExit
+                                targetState.isRootTab() -> tabSlideExit(initialState, targetState)
+                                targetState.isInTabGraph() -> tabExit
+                                else -> pushExit
+                            }
+                        },
+                        popEnterTransition = {
+                            if (initialState.destination.route in profileEntryRoutes) {
+                                EnterTransition.None
+                            } else if (initialState.isInTabGraph()) {
+                                tabPopEnter
+                            } else {
+                                popEnter
+                            }
+                        },
+                        popExitTransition = { tabPopExit },
+                    ) {
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .background(colors.bg),
+                        ) {
+                            ProfileScreen(
+                                entryTransitions = entryTransitions,
+                                entranceEpoch = profileEntranceEpoch,
+                                onOpenImport = {
+                                    navController.navigate(Routes.PROFILE_IMPORTER) { launchSingleTop = true }
+                                },
+                                onOpenSettings = {
+                                    navController.navigate(Routes.PROFILE_SETTINGS) { launchSingleTop = true }
+                                },
+                                onOpenGrades = {
+                                    navController.navigate(Routes.profileGrades(ProfileEntryKeys.GRADES)) {
+                                        launchSingleTop = true
+                                    }
+                                },
+                                onOpenGradesFromSummary = {
+                                    navController.navigate(Routes.profileGrades(ProfileEntryKeys.GRADES_GPA)) {
+                                        launchSingleTop = true
+                                    }
+                                },
+                            )
+                        }
                     }
                     composable(
                         route = Routes.PROFILE_IMPORTER,
-                        enterTransition = { pushEnter },
-                        exitTransition = { pushExit },
-                        popEnterTransition = { popEnter },
-                        popExitTransition = { popExit },
+                        enterTransition = { profileEntryHoldEnter },
+                        exitTransition = { ExitTransition.None },
+                        popEnterTransition = { EnterTransition.None },
+                        popExitTransition = { ExitTransition.None },
                     ) {
-                        ImporterScreen(
-                            onBack = { navController.popBackStack() },
-                            onJwImport = { navController.navigate(Routes.PROFILE_JW_IMPORT) },
-                        )
+                        ProfileEntryPage(
+                            entryKey = ProfileEntryKeys.IMPORT,
+                            transitions = entryTransitions,
+                            captureLayer = entryLayer,
+                            onPop = { navController.popBackStack() },
+                        ) { handleBack ->
+                            ImporterScreen(
+                                onBack = handleBack,
+                                onJwImport = { navController.navigate(Routes.PROFILE_JW_IMPORT) },
+                            )
+                        }
                     }
                     composable(
                         route = Routes.PROFILE_JW_IMPORT,
@@ -329,24 +584,50 @@ private fun AppScaffold(openTodayCount: Int, openJwImportCount: Int) {
                     }
                     composable(
                         route = Routes.PROFILE_SETTINGS,
-                        enterTransition = { pushEnter },
-                        exitTransition = { pushExit },
-                        popEnterTransition = { popEnter },
-                        popExitTransition = { popExit },
+                        enterTransition = { profileEntryHoldEnter },
+                        exitTransition = { ExitTransition.None },
+                        popEnterTransition = { EnterTransition.None },
+                        popExitTransition = { ExitTransition.None },
                     ) {
-                        SettingsScreen(onBack = { navController.popBackStack() })
+                        ProfileEntryPage(
+                            entryKey = ProfileEntryKeys.SETTINGS,
+                            transitions = entryTransitions,
+                            captureLayer = entryLayer,
+                            onPop = { navController.popBackStack() },
+                        ) { handleBack ->
+                            SettingsScreen(onBack = handleBack)
+                        }
                     }
                     composable(
                         route = Routes.PROFILE_GRADES,
-                        enterTransition = { pushEnter },
-                        exitTransition = { pushExit },
-                        popEnterTransition = { popEnter },
-                        popExitTransition = { popExit },
-                    ) {
-                        GradesScreen(
-                            onBack = { navController.popBackStack() },
-                            onOpenJwImport = { navController.navigate(Routes.PROFILE_JW_IMPORT) },
-                        )
+                        arguments = listOf(
+                            navArgument("entryKey") {
+                                type = NavType.StringType
+                                defaultValue = ProfileEntryKeys.GRADES
+                            },
+                        ),
+                        enterTransition = { profileEntryHoldEnter },
+                        exitTransition = { ExitTransition.None },
+                        popEnterTransition = { EnterTransition.None },
+                        popExitTransition = { ExitTransition.None },
+                    ) { backStackEntry ->
+                        val entryKey = backStackEntry.arguments?.getString("entryKey")
+                            ?.takeIf {
+                                it == ProfileEntryKeys.GRADES ||
+                                    it == ProfileEntryKeys.GRADES_GPA
+                            }
+                            ?: ProfileEntryKeys.GRADES
+                        ProfileEntryPage(
+                            entryKey = entryKey,
+                            transitions = entryTransitions,
+                            captureLayer = entryLayer,
+                            onPop = { navController.popBackStack() },
+                        ) { handleBack ->
+                            GradesScreen(
+                                onBack = handleBack,
+                                onOpenJwImport = { navController.navigate(Routes.PROFILE_JW_IMPORT) },
+                            )
+                        }
                     }
                 }
             }
@@ -397,12 +678,25 @@ private fun AppScaffold(openTodayCount: Int, openJwImportCount: Int) {
                             onClick = {
                                 // 当前 tab：复点也弹跳一次；其他 tab：切换（切页本身也触发弹跳）
                                 bounceTrigger++
-                                if (tab.rootRoute != currentDestination?.route) navController.navigateToTab(tab.route)
+                                if (tab.rootRoute != currentDestination?.route) {
+                                    if (tab.rootRoute == Routes.PROFILE_TAB) profileEntranceEpoch++
+                                    navController.navigateToTab(tab.route)
+                                }
                             },
                         )
                     }
                 }
             }
+
+            // 返回回收浮层：盖在页面与底栏之上，把快照直接收进点按的入口卡
+            if (entryTransitions.exitKey != null) {
+                // 回收期间吞掉返回键，避免落到「我的」页的上一级
+                BackHandler { }
+            }
+            ProfileEntryExitOverlay(
+                transitions = entryTransitions,
+                captureLayer = entryLayer,
+            )
         }
     }
 }

@@ -24,7 +24,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -34,10 +33,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -48,13 +45,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhijian.schedule.core.model.CourseDraft
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.ui.StaggerIn
-import com.zhijian.schedule.core.ui.pressScale
+import com.zhijian.schedule.core.ui.TapButton
+import com.zhijian.schedule.core.ui.TapOutlinedButton
+import com.zhijian.schedule.core.ui.TapTextButton
+import com.zhijian.schedule.core.ui.buttonFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import com.zhijian.schedule.core.ui.selectedPop
 import com.zhijian.schedule.core.util.TimeUtils
 import com.zhijian.schedule.core.util.WeekMask
@@ -87,7 +89,7 @@ fun OcrReviewContent(
                 )
                 Text("点按条目校对，识别结果可能有误", fontSize = 12.sp, color = colors.textMuted)
             }
-            TextButton(onClick = onBack) { Text("重新选择") }
+            TapTextButton(onClick = onBack) { Text("重新选择") }
         }
         if (review.warnings.isNotEmpty()) {
             Column(
@@ -113,15 +115,12 @@ fun OcrReviewContent(
                 }
             }
         }
-        val confirmSource = remember { MutableInteractionSource() }
-        Button(
+        TapButton(
             onClick = onConfirm,
             enabled = review.drafts.isNotEmpty(),
-            interactionSource = confirmSource,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp)
-                .pressScale(confirmSource, pressedScale = 0.97f),
+                .padding(20.dp),
         ) { Text("下一步（${review.drafts.size} 门）") }
     }
 
@@ -150,7 +149,7 @@ private fun DraftRow(draft: CourseDraft, onClick: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
-            .pressScale(pressSource, pressedScale = 0.98f)
+            .buttonFeedback(pressSource, pressedScale = 0.98f)
             .clickable(
                 interactionSource = pressSource,
                 indication = LocalIndication.current,
@@ -200,6 +199,7 @@ private fun DraftEditSheet(
     onDelete: () -> Unit,
 ) {
     val colors = LocalCourseColors.current
+    val haptics = LocalHapticFeedback.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var name by remember(draft) { mutableStateOf(draft.name) }
     var room by remember(draft) { mutableStateOf(draft.room) }
@@ -256,7 +256,10 @@ private fun DraftEditSheet(
                 (1..7).forEach { d ->
                     FilterChip(
                         selected = day == d,
-                        onClick = { day = d },
+                        onClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            day = d
+                        },
                         label = { Text(TimeUtils.dayName(d).removePrefix("周")) },
                         modifier = Modifier.selectedPop(day == d),
                     )
@@ -290,10 +293,10 @@ private fun DraftEditSheet(
                 Text("${weeks.size}/$totalWeeks 周", color = colors.textMuted, fontSize = 12.sp)
             }
             Row {
-                TextButton(onClick = { weeks = (1..totalWeeks).toSet() }) { Text("全选") }
-                TextButton(onClick = { weeks = (1..totalWeeks).filter { it % 2 == 1 }.toSet() }) { Text("单周") }
-                TextButton(onClick = { weeks = (1..totalWeeks).filter { it % 2 == 0 }.toSet() }) { Text("双周") }
-                TextButton(onClick = { weeks = emptySet() }) { Text("清空") }
+                TapTextButton(onClick = { weeks = (1..totalWeeks).toSet() }) { Text("全选") }
+                TapTextButton(onClick = { weeks = (1..totalWeeks).filter { it % 2 == 1 }.toSet() }) { Text("单周") }
+                TapTextButton(onClick = { weeks = (1..totalWeeks).filter { it % 2 == 0 }.toSet() }) { Text("双周") }
+                TapTextButton(onClick = { weeks = emptySet() }) { Text("清空") }
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 (1..totalWeeks).forEach { w ->
@@ -301,6 +304,7 @@ private fun DraftEditSheet(
                     FilterChip(
                         selected = selected,
                         onClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             weeks = weeks.toMutableSet().also { set ->
                                 if (w in set) set.remove(w) else set.add(w)
                             }
@@ -313,12 +317,12 @@ private fun DraftEditSheet(
 
             Spacer(Modifier.height(20.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedButton(
+                TapOutlinedButton(
                     onClick = onDelete,
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEF4444)),
                 ) { Text("删除这条") }
                 Spacer(Modifier.weight(1f))
-                Button(
+                TapButton(
                     enabled = name.isNotBlank(),
                     onClick = {
                         onSave(
@@ -353,13 +357,15 @@ private fun SheetLabel(text: String) {
 @Composable
 private fun SectionPicker(label: String, onSelect: (Int) -> Unit) {
     var open by remember { mutableStateOf(false) }
+    val haptics = LocalHapticFeedback.current
     Box {
-        TextButton(onClick = { open = true }) { Text(label) }
+        TapTextButton(onClick = { open = true }) { Text(label) }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             (1..12).forEach { s ->
                 DropdownMenuItem(
                     text = { Text("第 $s 节") },
                     onClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         open = false
                         onSelect(s)
                     },
