@@ -103,6 +103,7 @@ fun Modifier.pressScale(
  * - 长按：长按菜单、拖拽起点。
  *
  * 普通导航、开关、选项、打开弹窗不要传 hapticType——全局每个按钮都震会让触感失去信息量。
+ * 页面主体的卡片（课块、今日课程行）不用这个入口，改用 [rememberTapHaptic]。
  * 与 clickable 共用同一个 [interactionSource]，不改变水波纹。
  */
 @Composable
@@ -123,6 +124,22 @@ fun Modifier.buttonFeedback(
         }
     }
     return pressScale(interactionSource, pressedScale, enabled)
+}
+
+/**
+ * 卡片轻点反馈：点「整块卡片本身」时的一下轻响（课表课块、今日课程行）。
+ *
+ * 这类卡片是页面主体，一次点击就换出一屏详情，值得给一次触觉；但它不是「完成态」，
+ * 所以用 [HapticFeedbackType.ContextClick]（轻、短）而不是 Confirm——两者混用就分不出轻重了。
+ *
+ * 只在 click 回调里调用：一次手势最多响一次，滚动手势取消点击时也不会误震。
+ */
+@Composable
+fun rememberTapHaptic(type: HapticFeedbackType = HapticFeedbackType.ContextClick): () -> Unit {
+    val haptics = LocalHapticFeedback.current
+    return remember(haptics, type) {
+        { haptics.performHapticFeedback(type) }
+    }
 }
 
 /** 选中弹跳：选中项放大少许并带弹性落点（FilterChip / 日期条 / 色板圆点）。 */

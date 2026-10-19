@@ -31,6 +31,7 @@ import com.zhijian.schedule.core.theme.ThemePreset
 import com.zhijian.schedule.core.theme.courseTone
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.cascadeIn
+import com.zhijian.schedule.core.ui.rememberTapHaptic
 import com.zhijian.schedule.core.util.WeekMask
 
 /**
@@ -40,7 +41,8 @@ import com.zhijian.schedule.core.util.WeekMask
  * 标题 12.5sp / 行高 15sp，教室 10sp，块底余量放「周次 · 教师」；
  * 正在上的课，块底换成「剩 X 分」，让「现在」这件事在色块里也成立。
  *
- * 交互（扁平无阴影）：按压 0.94 回弹；详情打开期间「弹起 + 深色描边 + 容器加深」，
+ * 交互（扁平无阴影）：按压 0.94 回弹，点击时一下轻震（[rememberTapHaptic]，ContextClick）；
+ * 详情打开期间「弹起 + 深色描边 + 容器加深」，
  * 关闭动作一开始即快速回落（见 [Motion.SelectionExit]）与面板滑出并行完成。
  * 入场：随 tab 切页错峰淡入放大（[entranceDelayMs]，见 cascadeIn）。
  */
@@ -64,6 +66,7 @@ fun CourseBlock(
     val span = (course.endSection - course.startSection + 1).coerceAtLeast(1)
     val pressSource = remember { MutableInteractionSource() }
     val pressed by pressSource.collectIsPressedAsState()
+    val tapHaptic = rememberTapHaptic()
 
     // 同一目标值双向换规格：进入弹跳、退出干脆（animateFloatAsState 每次开跑都取最新 spec）
     val lift by animateFloatAsState(
@@ -104,7 +107,10 @@ fun CourseBlock(
             .clickable(
                 interactionSource = pressSource,
                 indication = LocalIndication.current,
-                onClick = onClick,
+                onClick = {
+                    tapHaptic()
+                    onClick()
+                },
             )
             .padding(start = 6.dp, end = 4.dp, top = 4.dp, bottom = 3.dp),
     ) {

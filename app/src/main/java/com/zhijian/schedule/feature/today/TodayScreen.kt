@@ -53,6 +53,7 @@ import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.ui.HolidayColors
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.StaggerIn
+import com.zhijian.schedule.core.ui.rememberTapHaptic
 import com.zhijian.schedule.core.util.TimeUtils
 import com.zhijian.schedule.feature.schedule.CourseDetailSheet
 import com.zhijian.schedule.navigation.IslandContentPadding
@@ -562,6 +563,7 @@ private fun CourseRow(
     val courseColor = Color(item.course.color)
     val pressSource = remember { MutableInteractionSource() }
     val pressed by pressSource.collectIsPressedAsState()
+    val tapHaptic = rememberTapHaptic()
     val shape = RoundedCornerShape(12.dp)
 
     // 详情打开期间「弹起 + 描边 + 填充加深」；关闭动作一开始即快速回落（与面板滑出并行）
@@ -601,7 +603,10 @@ private fun CourseRow(
             .clickable(
                 interactionSource = pressSource,
                 indication = LocalIndication.current,
-                onClick = onClick,
+                onClick = {
+                    tapHaptic()
+                    onClick()
+                },
             )
             .padding(horizontal = 13.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
