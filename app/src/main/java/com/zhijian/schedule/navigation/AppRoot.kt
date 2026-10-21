@@ -206,18 +206,19 @@ private val profileEntryRoutes = setOf(
 )
 
 /**
- * 进入二级页时「我的」页保持原位，并延后销毁，给实时展开当背景。
- * 用位移始终为 0 的滑出占位，只占用时长，不产生视觉位移。
+ * 进入二级页时「我的」页保持原位，并延后销毁，给实时展开/中途收回当背景。
+ * 位移只留 1px（约 0.5dp，肉眼不可见）：位移为 0 会被 Compose 判定为零距离动画
+ * 直接完成，「我的」页会立刻销毁，展开与收回就只剩空底色。
  */
 private val profileEntryHoldEnter: EnterTransition =
     slideInHorizontally(
         animationSpec = tween(PROFILE_ENTRY_HOLD_MS, easing = Motion.EaseOut),
-        initialOffsetX = { 0 },
+        initialOffsetX = { -1 },
     )
 private val profileEntryHoldExit: ExitTransition =
     slideOutHorizontally(
         animationSpec = tween(PROFILE_ENTRY_HOLD_MS, easing = Motion.EaseOut),
-        targetOffsetX = { 0 },
+        targetOffsetX = { -1 },
     )
 
 private val tabRoutes = setOf(Routes.TODAY_TAB, Routes.SCHEDULE_TAB, Routes.PROFILE_TAB)
@@ -565,6 +566,7 @@ private fun AppScaffold(
                             entryKey = ProfileEntryKeys.IMPORT,
                             transitions = entryTransitions,
                             captureLayer = entryLayer,
+                            isTop = currentDestination?.route == Routes.PROFILE_IMPORTER,
                             onPop = { navController.popBackStack() },
                         ) { handleBack ->
                             ImporterScreen(
@@ -593,6 +595,7 @@ private fun AppScaffold(
                             entryKey = ProfileEntryKeys.SETTINGS,
                             transitions = entryTransitions,
                             captureLayer = entryLayer,
+                            isTop = currentDestination?.route == Routes.PROFILE_SETTINGS,
                             onPop = { navController.popBackStack() },
                         ) { handleBack ->
                             SettingsScreen(onBack = handleBack)
@@ -621,6 +624,7 @@ private fun AppScaffold(
                             entryKey = entryKey,
                             transitions = entryTransitions,
                             captureLayer = entryLayer,
+                            isTop = currentDestination?.route == Routes.PROFILE_GRADES,
                             onPop = { navController.popBackStack() },
                         ) { handleBack ->
                             GradesScreen(
