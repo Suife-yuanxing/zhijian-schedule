@@ -80,6 +80,22 @@ class JwImportViewModel @Inject constructor(
     val detectedAdapterName: String?
         get() = JwAdapterRegistry.forUrl(url)?.name
 
+    /** 当前地址对应的统一认证入口；学校本地登录入口故障时可改走这里 */
+    val ssoEntry: String?
+        get() {
+            val target = withScheme(url)
+            if (target.isBlank()) return null
+            return JwAdapterRegistry.forUrl(target)?.ssoEntry(target)
+        }
+
+    /** 改跳统一认证登录（本地 LoginToXkLdap 源站响应超时 / 502 时的兜底入口） */
+    fun openSsoLogin() {
+        val entry = ssoEntry ?: return
+        pageError = null
+        httpErrorHint = 0
+        loadRequest = WebLoadRequest(entry, loadRequest.nonce + 1)
+    }
+
     init {
         viewModelScope.launch {
             val s = settingsStore.settings.first()

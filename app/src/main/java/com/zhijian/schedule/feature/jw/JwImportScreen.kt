@@ -161,6 +161,28 @@ private val JW_SHELL_FIX_JS = """
 })()
 """
 
+/**
+ * 学校 WAF 的 5xx 错误页常常以 200 返回，WebView 的 onReceivedHttpError 收不到；
+ * 页面加载完成后补查一次正文，命中就返回错误码，交给自动重试 / 顶部提示条。
+ */
+private const val WAF_ERROR_CHECK_JS = """
+(function () {
+  try {
+    var s = ((document.title || '') + ' ' + (document.body ? (document.body.innerText || '') : '')).slice(0, 4000);
+    if (/50[234]\s*(Bad Gateway|Gateway Time-?out|Service Unavailable)/i.test(s) || s.indexOf('云防护节点') >= 0) {
+      if (/504/.test(s)) return '504';
+      if (/503/.test(s)) return '503';
+      return '502';
+    }
+    return '';
+  } catch (e) { return ''; }
+})()
+"""
+
+/** WAF 5xx 多为瞬时抖动：自动重试两次再交给用户，避免一进来就是错误页 */
+private const val WAF_MAX_RETRIES = 2
+private const val WAF_RETRY_DELAY_MS = 1500L
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun JwImportScreen(
@@ -232,6 +254,20 @@ fun JwImportScreen(
                 onLoggedInPage = viewModel.onLoggedInPage,
                 onAuthserverPage = viewModel.onAuthserverPage,
             )
+
+            // 仅在学校本地登录入口返回 5xx（源站超时/被 WAF 拦截）时，才露出统一认证兜底入口
+            if (viewModel.httpErrorHint >= 500 && viewModel.ssoEntry != null) {
+                TapTextButton(
+                    onClick = viewModel::openSsoLogin,
+                    modifier = Modifier.padding(start = 8.dp),
+                ) {
+                    Text(
+                        text = "本地登录打不开？改用统一认证登录",
+                        fontSize = 12.sp,
+                        color = colors.accent,
+                    )
+                }
+            }
 
             Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
                 WebViewBox(
@@ -521,12 +557,12 @@ private fun HttpErrorBanner(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "学校服务器返回 $code：校外网络直连教务会被学校安全防护拦截。请连接校园 WiFi，或改用学校 WebVPN",
+                text = "学校服务器返回 $code：源站暂时不可用或校外网络被拦截。可改用统一认证登录（见上方），或连校园 WiFi / WebVPN 后重试",
                 color = colors.text,
                 fontSize = 12.sp,
                 modifier = Modifier.weight(1f),
             )
-            TapTextButton(onClick = onDismiss) { Text("知道了") }
+            TapTextButton(onClick = onDismiss) { Text("知道了", fontSize = 12.sp) }
         }
     }
 }
@@ -542,6 +578,8 @@ private fun WebViewBox(
     modifier: Modifier = Modifier,
 ) {
     val lastLoaded = remember { mutableStateOf<WebLoadRequest?>(null) }
+    // WAF 5xx 自动重试计数；每次新的加载请求归零
+    val wafRetries = remember { IntArray(1) }
     val ssoEntry = remember(request.url) {
         runCatching { JwAdapterRegistry.forUrl(request.url)?.ssoEntry(request.url) }.getOrNull()
     }
@@ -594,6 +632,21 @@ private fun WebViewBox(
                         view?.evaluateJavascript(FIT_VIEWPORT_JS, null)
                         if (ssoJs.isNotEmpty()) view?.evaluateJavascript(ssoJs, null)
                         view?.evaluateJavascript(JW_SHELL_FIX_JS, null)
+                        // WAF 错误页可能以 200 返回：先查正文；GET 页自动重试，登录 POST 直接提示
+                        view?.evaluateJavascript(WAF_ERROR_CHECK_JS) { result ->
+                            val code = result?.trim('"')?.toIntOrNull() ?: 0
+                            if (code == 0) {
+                                wafRetries[0] = 0
+                                return@evaluateJavascript
+                            }
+                            val isLoginPost = url?.contains("LoginToXk", ignoreCase = true) == true
+                            if (!isLoginPost && wafRetries[0] < WAF_MAX_RETRIES) {
+                                wafRetries[0]++
+                                view?.postDelayed({ view.reload() }, WAF_RETRY_DELAY_MS)
+                            } else {
+                                onHttpError(code)
+                            }
+                        }
                     }
 
                     override fun onReceivedError(
@@ -613,7 +666,8 @@ private fun WebViewBox(
                     ) {
                         if (req?.isForMainFrame == true) {
                             val code = errorResponse?.statusCode ?: 0
-                            if (code >= 400) onHttpError(code)
+                            // 5xx 交给正文检测：可能以 200 返回，且要先自动重试再提示
+                            if (code in 400..499) onHttpError(code)
                         }
                     }
 
@@ -631,6 +685,7 @@ private fun WebViewBox(
         update = { webView ->
             if (lastLoaded.value != request) {
                 lastLoaded.value = request
+                wafRetries[0] = 0
                 webView.loadUrl(request.url)
             }
         },

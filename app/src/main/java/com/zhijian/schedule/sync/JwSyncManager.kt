@@ -5,17 +5,21 @@ import com.zhijian.schedule.alarm.Notifications
 import com.zhijian.schedule.core.data.db.GradeDao
 import com.zhijian.schedule.core.data.prefs.SettingsStore
 import com.zhijian.schedule.core.jw.GradeFetcher
+import com.zhijian.schedule.core.jw.JwAdapter
 import com.zhijian.schedule.core.jw.JwAdapterRegistry
 import com.zhijian.schedule.core.jw.JwException
 import com.zhijian.schedule.core.jw.QiangZhiAdapter
 import com.zhijian.schedule.core.jw.toEntity
+import com.zhijian.schedule.core.model.CourseDraft
 import com.zhijian.schedule.core.model.ImportPreview
 import com.zhijian.schedule.core.model.ImportSource
 import com.zhijian.schedule.core.repository.ScheduleRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import okhttp3.OkHttpClient
 
@@ -55,7 +59,7 @@ class JwSyncManager @Inject constructor(
                     "暂未识别该教务系统（当前支持：强智 jsxsd、正方新版）。可先用 Excel / CSV 导入",
                     retryable = false,
                 )
-            val drafts = adapter.fetch(client, url, totalWeeks)
+            val drafts = fetchWithRetry(adapter, url, totalWeeks)
             if (drafts.isEmpty()) {
                 FetchResult.Failed("未解析到课程数据，请确认已进入课表页面")
             } else {
@@ -72,6 +76,33 @@ class JwSyncManager @Inject constructor(
         } catch (e: Exception) {
             FetchResult.Failed(e.message ?: "网络异常")
         }
+    }
+
+    /**
+     * 学校 WAF / 源站抖动时常返回 5xx 或直接断连，单次失败不代表真的不可用。
+     * 会话过期（NeedsLogin）交给 WebView 处理，页面结构错误（ParseFailed）重试也不会好，均不重试。
+     */
+    private suspend fun fetchWithRetry(
+        adapter: JwAdapter,
+        url: String,
+        totalWeeks: Int,
+    ): List<CourseDraft> {
+        var last: Exception? = null
+        repeat(FETCH_ATTEMPTS) { attempt ->
+            try {
+                return adapter.fetch(client, url, totalWeeks)
+            } catch (e: JwException.NeedsLogin) {
+                throw e
+            } catch (e: JwException.NetworkFailed) {
+                last = e
+            } catch (e: IOException) {
+                last = e
+            }
+            if (attempt < FETCH_ATTEMPTS - 1) {
+                delay(FETCH_RETRY_DELAY_MS * (attempt + 1))
+            }
+        }
+        throw last ?: JwException.NetworkFailed("网络异常")
     }
 
     /** 抓课表时顺带抓成绩（同一会话）：失败静默，不影响课表结果 */
@@ -115,5 +146,11 @@ class JwSyncManager @Inject constructor(
             }
             FetchResult.NoConfig -> result
         }
+    }
+
+    private companion object {
+        /** 首次 + 一次退避重试，覆盖学校 WAF 的短时抖动；后台同步还有 WorkManager 层重试 */
+        const val FETCH_ATTEMPTS = 2
+        const val FETCH_RETRY_DELAY_MS = 800L
     }
 }

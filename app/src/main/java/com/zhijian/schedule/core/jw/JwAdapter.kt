@@ -39,6 +39,17 @@ sealed class JwException(message: String) : Exception(message) {
     class NetworkFailed(message: String) : JwException(message)
 }
 
+/**
+ * HTTP 状态码 → 用户可读的失败原因。
+ * 5xx 多来自学校 WAF / 源站临时抖动，重试往往能恢复；单独给出提示，避免暴露裸状态码。
+ */
+internal fun httpFailure(code: Int): JwException.NetworkFailed =
+    if (code >= 500) {
+        JwException.NetworkFailed("学校服务器暂时不可用（HTTP $code），请稍后重试或连接校园网 / WebVPN")
+    } else {
+        JwException.NetworkFailed("教务系统返回 HTTP $code")
+    }
+
 object JwAdapterRegistry {
 
     private val adapters: List<JwAdapter> = listOf(

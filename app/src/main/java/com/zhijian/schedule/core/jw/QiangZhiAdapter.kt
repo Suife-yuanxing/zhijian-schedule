@@ -102,7 +102,7 @@ object QiangZhiAdapter : JwAdapter {
             .get()
             .build()
         client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) throw JwException.NetworkFailed("HTTP ${response.code}")
+            if (!response.isSuccessful) throw httpFailure(response.code)
             return response.body?.string().orEmpty()
         }
     }
