@@ -70,6 +70,15 @@ object Motion {
 
     /** 底部浮岛胶囊转移形变：行进中横向拉伸 / 纵向压缩，弹性回位（液体被吸走的顿挫感） */
     val FluidStretch = spring<Float>(dampingRatio = 0.62f, stiffness = 480f)
+
+    /** 触摸倾动回正：松手后带一次轻微过冲再落位，阻尼比低于 1 才有「纸片弹回」的手感 */
+    val TiltReturn = spring<Float>(dampingRatio = 0.55f, stiffness = 420f)
+
+    /** 倾动高光淡入：按下即亮，快于水波纹 */
+    const val DurTiltGlareIn = 90
+
+    /** 倾动高光淡出：松手后留一点余晖，但不要拖住回正 */
+    const val DurTiltGlareOut = 150
 }
 
 /**

@@ -80,7 +80,11 @@ import com.zhijian.schedule.core.theme.ThemePresets
 import com.zhijian.schedule.core.ui.StaggerIn
 import com.zhijian.schedule.core.ui.TapTextButton
 import com.zhijian.schedule.core.ui.buttonFeedback
+import com.zhijian.schedule.core.ui.cardTilt
+import com.zhijian.schedule.core.ui.cardTiltGlare
 import com.zhijian.schedule.core.ui.pressScale
+import com.zhijian.schedule.core.ui.rememberCardTiltState
+import com.zhijian.schedule.core.ui.rememberCardTiltStyle
 import com.zhijian.schedule.core.ui.selectedPop
 import com.zhijian.schedule.feature.update.UpdateDialog
 import com.zhijian.schedule.navigation.IslandContentPadding
@@ -410,6 +414,15 @@ private fun SemesterOverviewCard(
 ) {
     val colors = LocalCourseColors.current
     val shape = RoundedCornerShape(22.dp)
+    val tilt = rememberCardTiltState()
+    // 焦点卡面积大，倾角比课块多 2°、反光再提一档，才看得出「玻璃卡片被指腹压下去」
+    val baseTiltStyle = rememberCardTiltStyle()
+    val tiltStyle = remember(baseTiltStyle) {
+        baseTiltStyle.copy(
+            maxTiltDegrees = 10f,
+            glareAlpha = (baseTiltStyle.glareAlpha * 1.1f).coerceAtMost(0.9f),
+        )
+    }
     val fraction = if (week != null && timetable.totalWeeks > 0) {
         week.toFloat() / timetable.totalWeeks
     } else 0f
@@ -421,8 +434,11 @@ private fun SemesterOverviewCard(
     Column(
         Modifier
             .fillMaxWidth()
+            // 焦点卡跟着指腹做透视倾动：卡片够大，倾角比课块更收敛，反光落在卡面而非文字上
+            .cardTilt(state = tilt, shape = shape, style = tiltStyle)
             .clip(shape)
             .background(heroBrush)
+            .cardTiltGlare(state = tilt, shape = shape, style = tiltStyle)
             .padding(20.dp),
     ) {
         Row(verticalAlignment = Alignment.Top) {
