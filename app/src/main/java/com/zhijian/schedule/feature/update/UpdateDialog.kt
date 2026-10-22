@@ -746,6 +746,8 @@ private fun OutlinedAction(
 }
 
 private fun runningDetail(state: DownloadState.Running): String {
+    // 刚点下载时还在探测/连接源，进度和速度都是 0：给一句明确的「在干活」而不是干巴巴的 0 B
+    if (state.downloadedBytes <= 0L && state.bytesPerSecond <= 0L) return "正在连接下载源…"
     val size = state.totalBytes?.let {
         "${ResumableDownload.formatBytes(state.downloadedBytes)} / ${ResumableDownload.formatBytes(it)}"
     } ?: "已下载 ${ResumableDownload.formatBytes(state.downloadedBytes)}"

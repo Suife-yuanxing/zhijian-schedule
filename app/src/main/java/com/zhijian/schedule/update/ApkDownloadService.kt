@@ -37,38 +37,64 @@ class ApkDownloadService : Service() {
     private var watcher: Job? = null
     private var finished = false
 
+    /** 每次「换一轮下载」加一；旧任务收尾时用它判断自己还是不是当前任务 */
+    private var generation = 0
+    private var activeRequest: DownloadRequest? = null
+
+    /** 最近一次 start 的 id：stopSelf 带着它才不会被「刚到的下一次 start」抢先收掉 */
+    private var lastStartId = 0
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
         UpdateNotification.ensureChannel(this)
+        // 通知栏进度整个服务生命周期只收一份，多次 start 不会重复订阅
+        watcher = scope.launch { downloader.state.collect { renderProgress(it) } }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        lastStartId = startId
         if (intent?.action == UpdateNotification.ACTION_CANCEL) {
             downloader.cancel()
+            // 没有下载在跑时服务只是被这次取消唤醒的，立刻收工
+            if (job?.isActive != true) stopSelf(startId)
             return START_NOT_STICKY
         }
         val request = intent.toDownloadRequest()
         if (request == null) {
-            stopSelf()
-            return START_NOT_STICKY
-        }
-        if (job?.isActive == true) {
-            // 同一时刻只允许一个下载：重复启动只补上前台通知，满足前台服务的契约
-            runCatching { goForeground(statusNotification(request)) }
+            stopSelf(startId)
             return START_NOT_STICKY
         }
         if (!runCatching { goForeground(statusNotification(request)) }.isSuccess) {
             // Android 12+ 后台启动前台服务受限（例如点按后立刻切走）：直接收尾，状态不变由用户重试
-            stopSelf()
+            stopSelf(startId)
             return START_NOT_STICKY
         }
 
-        watcher = scope.launch { downloader.state.collect { renderProgress(it) } }
+        val running = job
+        if (running?.isActive == true && activeRequest == request && !downloader.isCancelling()) {
+            // 同一请求的重复点按：只补上前台通知，绝不重头再下一遍
+            return START_NOT_STICKY
+        }
+        // 「取消后马上点继续」时上一轮可能还在收尾：先让它彻底停下再开新的，
+        // 两轮同时写同一个 .part 会把进度账目和文件内容一起搞乱
+        if (running?.isActive == true) {
+            downloader.cancel()
+            running.cancel()
+        }
+        val round = ++generation
+        activeRequest = request
+        // 上一轮可能刚 stopSelf 完还没被销毁，这次 start 让服务继续活着：收工标记必须重置
+        finished = false
         job = scope.launch {
-            downloader.download(request)
-            finish()
+            running?.join()
+            try {
+                downloader.download(request)
+            } finally {
+                // 只有最新一轮负责收工，旧轮次的 finally 不能把新下载一起停掉
+                if (round == generation) finish()
+            }
         }
         return START_NOT_STICKY
     }
@@ -100,7 +126,7 @@ class ApkDownloadService : Service() {
         finished = true
         (downloader.state.value as? DownloadState.Ready)?.let { UpdateNotification.postDone(this, it.version) }
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
-        stopSelf()
+        stopSelf(lastStartId)
     }
 
     private fun goForeground(notification: Notification) {

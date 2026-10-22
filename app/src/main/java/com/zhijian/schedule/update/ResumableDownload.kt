@@ -24,6 +24,13 @@ data class PartMeta(
     val chunkSize: Long = 0L,
     /** 已完成的分片序号；只有这里的序号才算下载完成 */
     val completedChunks: List<Int> = emptyList(),
+    /** 未完成分片已写字节（分片内偏移）；暂停时落盘，续传从这些偏移接着写 */
+    val partialChunks: Map<Int, Long> = emptyMap(),
+    /**
+     * true = 按分片稀疏写入（v2 并行路径）。此时 `.part` 的长度包含还没写过的空洞，
+     * 既不能当进度用，也不能按长度推断「前 N 片已完成」。
+     */
+    val sparseChunks: Boolean = false,
 )
 
 /** `Content-Range: bytes 1234-46920381/46920382` 的解析结果；total 为 `*` 时是 null */
@@ -172,20 +179,61 @@ object ResumableDownload {
 
         if (meta == null || meta.url != url || plan == null) return ResumePoint.Fresh(plan)
 
-        // v1 的 `.part` 是连续前缀，可以直接认成前 N 个整片，半截那片重下即可
+        // 分片进度唯一权威在 meta
         val completed = meta.completedChunks
+            .filter { it in 0 until plan.chunkCount }
+            .distinct()
+            .sorted()
+        val partial = meta.partialChunks
+            .filterKeys { it in 0 until plan.chunkCount && it !in completed }
+            .mapValues { (index, bytes) -> bytes.coerceIn(0L, plan.bytesOf(index)) }
+            .filterValues { it > 0L }
+
+        // v2 稀疏写：`.part` 长度不是已下字节，哪怕一片都没记账也不能按长度折算，
+        // 否则会把长满空洞的前 N 片当成完成片，拼出来的包只能等摘要校验兜底
+        if (meta.sparseChunks) {
+            return if (completed.isEmpty() && partial.isEmpty()) {
+                ResumePoint.Fresh(plan)
+            } else {
+                ResumePoint.Chunked(plan, completed, partial)
+            }
+        }
+
+        // v1 的 `.part` 是连续前缀，可以直接认成前 N 个整片，半截那片重下即可
+        val legacyCompleted = completed
             .ifEmpty { (0 until (chunkCountOf(partBytes, plan.chunkSize) ?: 0)).toList() }
             .filter { it in 0 until plan.chunkCount }
             .distinct()
             .sorted()
 
-        // 分片进度唯一权威在 meta；它一片都没记账、磁盘上却已经有东西时，按 `.part` 重新规划
-        return if (completed.isEmpty()) {
+        return if (legacyCompleted.isEmpty()) {
             val safe = chunkCountOf(partBytes, plan.chunkSize) ?: 0
             ResumePoint.Chunked(plan, (0 until minOf(safe, plan.chunkCount)).toList())
         } else {
-            ResumePoint.Chunked(plan, completed)
+            ResumePoint.Chunked(plan, legacyCompleted)
         }
+    }
+
+    /** 已完成片 + 未完成片已写字节，即磁盘上真正可续传的进度 */
+    fun downloadedBytes(
+        plan: ChunkPlan,
+        completed: List<Int>,
+        partial: Map<Int, Long> = emptyMap(),
+    ): Long {
+        val done = completed.filter { it in 0 until plan.chunkCount }.toSet()
+        val partialBytes = partial
+            .filterKeys { it in 0 until plan.chunkCount && it !in done }
+            .map { (index, bytes) -> bytes.coerceIn(0L, plan.bytesOf(index)) }
+            .sum()
+        return done.sumOf { plan.bytesOf(it) } + partialBytes
+    }
+
+    /** `.meta` 能证明的续传进度；长度不可信的稀疏 `.part` 一律走这里，不读文件长度 */
+    fun progressBytes(meta: PartMeta?): Long {
+        val m = meta ?: return 0L
+        if (!m.sparseChunks) return 0L
+        val plan = planChunks(m.totalBytes, m.chunkSize) ?: return 0L
+        return downloadedBytes(plan, m.completedChunks, m.partialChunks)
     }
 
     // ---------- 校验 ----------
@@ -196,7 +244,8 @@ object ResumableDownload {
      * `.meta` 的兼容解析（v1 ↔ v2）：
      * 1. `version` 对不上就当作没有断点；
      * 2. 缺 `chunkSize`/`completedChunks` 的 v1 元数据一律补成默认分片大小 + 空列表 —— **不臆造分片进度**；
-     * 3. 新写的 v2 元数据补上分片大小。
+     * 3. 新写的 v2 元数据补上分片大小；旧版 v2 元数据没有 `sparseChunks` 标记，
+     *    但写过 `chunkSize` 的一定是分片稀疏写，按稀疏处理才不会再拿 `.part` 长度当进度。
      */
     fun parseMeta(version: String, raw: PartMeta?): PartMeta? {
         val meta = raw ?: return null
@@ -205,6 +254,7 @@ object ResumableDownload {
         return meta.copy(
             chunkSize = chunkSize,
             completedChunks = meta.completedChunks.distinct().sorted(),
+            sparseChunks = meta.sparseChunks || meta.chunkSize > 0L,
         )
     }
 
@@ -346,8 +396,13 @@ sealed interface ResumePoint {
      */
     data class Fresh(val plan: ChunkPlan?) : ResumePoint
 
-    /** v2 元数据或可升级的裸 `.part`：按 [plan] 的 [completed] 片续传，只补剩下的片 */
-    data class Chunked(val plan: ChunkPlan, val completed: List<Int>) : ResumePoint
+    /** v2 元数据或可升级的裸 `.part`：按 [plan] 的 [completed] 片续传，只补剩下的片；
+     * [partial] 是未完成片已写到的分片内偏移，续传从这些偏移接着写，不从头覆盖 */
+    data class Chunked(
+        val plan: ChunkPlan,
+        val completed: List<Int>,
+        val partial: Map<Int, Long> = emptyMap(),
+    ) : ResumePoint
 }
 
 /** 分片响应的处理结论 */

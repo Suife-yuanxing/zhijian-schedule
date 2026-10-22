@@ -124,6 +124,10 @@ class ResumableDownloadTest {
             lastModified = "Wed, 15 Oct 2026 10:00:00 GMT",
             totalBytes = 46920382L,
             digest = "sha256:d3dba925",
+            chunkSize = 4L * 1024L * 1024L,
+            completedChunks = listOf(0, 3),
+            partialChunks = mapOf(1 to 1024L, 5 to 2048L),
+            sparseChunks = true,
         )
         assertEquals(meta, json.decodeFromString<PartMeta>(json.encodeToString(meta)))
     }
@@ -443,6 +447,70 @@ class ResumableDownloadTest {
             ResumePoint.Fresh(null),
             ResumableDownload.resolveResumePoint("1.0.3", "https://example.com/a.apk", null, 0L, null),
         )
+    }
+
+    @Test
+    fun sparseMetaResumesInFlightChunksFromTheirOffsets() {
+        // 稀疏写的 .part 里第 0 片整片完成、第 1 片只写了 1 MiB：续传必须从 1 MiB 处接着写
+        val total = 16L * 1024L * 1024L
+        val plan = ResumableDownload.planChunks(total)!!
+        val meta = PartMeta(
+            version = "1.0.3",
+            url = "https://example.com/a.apk",
+            totalBytes = total,
+            chunkSize = 4L * 1024L * 1024L,
+            completedChunks = listOf(0),
+            partialChunks = mapOf(1 to 1024L * 1024L),
+            sparseChunks = true,
+        )
+        val point = ResumableDownload.resolveResumePoint(
+            version = "1.0.3",
+            url = "https://example.com/a.apk",
+            totalBytes = total,
+            partBytes = 12L * 1024L * 1024L,
+            rawMeta = meta,
+        )
+        assertEquals(ResumePoint.Chunked(plan, listOf(0), mapOf(1 to 1024L * 1024L)), point)
+    }
+
+    @Test
+    fun sparseMetaWithoutRecordsRestartsInsteadOfTrustingFileLength() {
+        // 稀疏 .part 的长度是「最远写到的偏移」，不是已下字节；没记账就只能重下，不能把前 N 片当完成
+        val total = 16L * 1024L * 1024L
+        val plan = ResumableDownload.planChunks(total)!!
+        val meta = PartMeta(
+            version = "1.0.3",
+            url = "https://example.com/a.apk",
+            totalBytes = total,
+            chunkSize = 4L * 1024L * 1024L,
+            sparseChunks = true,
+        )
+        val point = ResumableDownload.resolveResumePoint(
+            version = "1.0.3",
+            url = "https://example.com/a.apk",
+            totalBytes = total,
+            partBytes = 12L * 1024L * 1024L,
+            rawMeta = meta,
+        )
+        assertEquals(ResumePoint.Fresh(plan), point)
+    }
+
+    @Test
+    fun progressBytesCountsCompletedChunksAndInFlightOffsets() {
+        val total = 16L * 1024L * 1024L
+        val meta = PartMeta(
+            version = "1.0.3",
+            url = "https://example.com/a.apk",
+            totalBytes = total,
+            chunkSize = 4L * 1024L * 1024L,
+            completedChunks = listOf(0),
+            partialChunks = mapOf(1 to 1024L * 1024L, 2 to 2L * 1024L * 1024L),
+            sparseChunks = true,
+        )
+        assertEquals(7L * 1024L * 1024L, ResumableDownload.progressBytes(meta))
+        // 顺序路径的元数据没有稀疏标记，进度由 `.part` 长度说话
+        assertEquals(0L, ResumableDownload.progressBytes(meta.copy(sparseChunks = false)))
+        assertEquals(0L, ResumableDownload.progressBytes(null))
     }
 
     @Test
