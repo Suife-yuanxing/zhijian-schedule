@@ -40,8 +40,32 @@ object Motion {
     /** 慢速登场：交错入场、进度扫描 */
     const val DurSlow = 420
 
+    /**
+     * 主题扩散：整屏级裁剪转场。
+     * 比 [DurSlow] 略长——被裁的是一整屏旧帧，收尾要留够时间，否则圆洞边缘像被硬切。
+     * 缓动必须用 [EaseReveal] 而不是 [EaseOut]，原因见 [EaseReveal]。
+     */
+    const val DurReveal = 560
+
+    /**
+     * 反向扩散（页面收回被点按钮）。
+     * 比 [DurReveal] 短一截：收拢本来就是「东西在离开」，拖长了像卡顿；
+     * 而且反向还叠了一层整块缩放，视觉信息更多，同样时长会显得慢。
+     */
+    const val DurRevealBack = 460
+
     /** 标准缓动：快速起步、缓慢收尾 */
     val EaseOut = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+
+    /**
+     * 主题扩散专用缓动。
+     *
+     * 不能用 [EaseOut]：那条曲线在 50% 时间点已走完 87% 的行程，而扩散的行程是「圆半径」，
+     * 半径一旦到 87% 就已经盖满整屏，剩下的时间全花在屏幕最远的那个角落里——
+     * 观感上等于**瞬切**（真机实测就是这么「看不出效果」的）。
+     * 这里用近似 FastOutSlowIn 的曲线：前段起速、中段匀速推进，半径到 100% 时刚好触到最远角。
+     */
+    val EaseReveal = CubicBezierEasing(0.4f, 0f, 0.2f, 1f)
 
     /** 按压回弹：按下干脆、松手轻微回弹 */
     val PressSpring = spring<Float>(dampingRatio = 0.62f, stiffness = 620f)

@@ -48,7 +48,10 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -77,6 +80,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun ScheduleScreen(
     onAddCourse: (day: Int?, section: Int?) -> Unit = { _, _ -> },
+    /** 加号单独一条：带上按钮自身的 root 坐标，供「从加号圆形扩散进编辑页」用 */
+    onAddCourseFromFab: (fabBoundsInRoot: Rect) -> Unit = { onAddCourse(null, null) },
     onEditCourse: (Long) -> Unit = {},
     onOpenSettings: () -> Unit = {},
     onOpenImport: () -> Unit = {},
@@ -189,6 +194,8 @@ fun ScheduleScreen(
 
     val fabSource = remember { MutableInteractionSource() }
     var fabArrived by remember { mutableStateOf(false) }
+    // 加号在 Compose 根坐标系里的位置：编辑页从这个圆里长出来
+    var fabBounds by remember { mutableStateOf(Rect.Zero) }
     LaunchedEffect(Unit) { fabArrived = true }
     val fabScale by animateFloatAsState(
         targetValue = if (fabArrived) 1f else 0f,
@@ -197,12 +204,13 @@ fun ScheduleScreen(
     )
     Box(Modifier.fillMaxSize()) {
         FloatingActionButton(
-            onClick = { onAddCourse(null, null) },
+            onClick = { onAddCourseFromFab(fabBounds) },
             interactionSource = fabSource,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = 20.dp, bottom = IslandContentPadding)
                 .size(48.dp)
+                .onGloballyPositioned { fabBounds = it.boundsInRoot() }
                 .buttonFeedback(fabSource, pressedScale = 0.9f)
                 .graphicsLayer {
                     scaleX = fabScale

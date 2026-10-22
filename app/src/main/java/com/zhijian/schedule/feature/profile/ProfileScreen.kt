@@ -57,6 +57,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -64,6 +65,8 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -79,6 +82,7 @@ import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.theme.ThemePresets
 import com.zhijian.schedule.core.ui.StaggerIn
 import com.zhijian.schedule.core.ui.TapTextButton
+import com.zhijian.schedule.core.ui.RevealState
 import com.zhijian.schedule.core.ui.buttonFeedback
 import com.zhijian.schedule.core.ui.cardTilt
 import com.zhijian.schedule.core.ui.cardTiltGlare
@@ -99,6 +103,7 @@ private const val ACCENT_SELECTED_ALPHA = 0.20f
 @Composable
 fun ProfileScreen(
     entryTransitions: ProfileEntryTransitions,
+    reveal: RevealState,
     entranceEpoch: Int = 0,
     onOpenImport: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
@@ -271,11 +276,30 @@ fun ProfileScreen(
                 SectionTitle("主题风格")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ThemePresets.all.forEach { preset ->
-                        ProfileChip(
-                            label = preset.name,
-                            selected = ui.settings.themeId == preset.id,
-                            onClick = { viewModel.setTheme(preset.id) },
-                        )
+                        // 胶囊自带选中弹跳（缩放），圆心取外包 Box 的屏幕坐标才是稳定的定位点：
+                        // 点击时以它为圆心发起圆形扩散，新主题从这颗胶囊铺开。
+                        val anchor = remember(preset.id) { ThemeChipAnchor() }
+                        Box(
+                            Modifier.onGloballyPositioned {
+                                anchor.bounds = it.boundsInRoot()
+                            }
+                        ) {
+                            ProfileChip(
+                                label = preset.name,
+                                selected = ui.settings.themeId == preset.id,
+                                onClick = {
+                                    val accepted = reveal.requestTheme(
+                                        toId = preset.id,
+                                        fromId = ui.settings.themeId,
+                                        chipBoundsInRoot = anchor.bounds,
+                                        fromBg = colors.bg,
+                                    )
+                                    // 只有「点的就是正在渲染/正在去的那颗」才不落库；
+                                    // 扩散进行中再点别的主题会被受理：定格当前帧，从新胶囊重新起播
+                                    if (accepted) viewModel.setTheme(preset.id)
+                                },
+                            )
+                        }
                     }
                 }
             }
@@ -590,6 +614,11 @@ private fun GpaTile(weightedGpa: Double?, totalCredits: Double, onClick: () -> U
             )
         }
     }
+}
+
+/** 主题胶囊在根坐标系中的位置（px）：点击时作为扩散圆心，宽高折半作为起始半径 */
+private class ThemeChipAnchor {
+    var bounds: Rect = Rect.Zero
 }
 
 /** 偏好选项：选中=强调色描边 + 浅色底 + 加粗；只保留按压回弹，选中不额外震动 */

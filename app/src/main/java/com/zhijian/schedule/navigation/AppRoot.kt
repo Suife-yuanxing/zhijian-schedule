@@ -30,12 +30,14 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -56,10 +58,13 @@ import com.zhijian.schedule.core.theme.CourseTheme
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.theme.LocalCoursePreset
 import com.zhijian.schedule.core.ui.Motion
+import com.zhijian.schedule.core.ui.RevealHost
+import com.zhijian.schedule.core.ui.RevealState
 import com.zhijian.schedule.core.ui.glass.glassBackdropSource
 import com.zhijian.schedule.core.ui.glass.rememberGlassBackdrop
 import com.zhijian.schedule.core.ui.glass.rememberGlassClock
 import com.zhijian.schedule.core.ui.glass.rememberGlassTilt
+import com.zhijian.schedule.core.ui.rememberRevealState
 import com.zhijian.schedule.feature.course_editor.CourseEditorScreen
 import com.zhijian.schedule.feature.grades.GradesScreen
 import com.zhijian.schedule.feature.importer.ImporterScreen
@@ -244,17 +249,34 @@ fun AppRoot(openTodayCount: Int = 0, openJwImportCount: Int = 0) {
     val appViewModel: AppViewModel = hiltViewModel()
     val updatePrompt: UpdatePromptViewModel = hiltViewModel()
     val settings by appViewModel.settings.collectAsStateWithLifecycle()
+    val reveal = rememberRevealState()
+    // 扩散期间先按旧主题渲染，旧帧录好之后才切新主题（renderedId 由扩散状态机给出）；
+    // 播完由 settlingId 兜住 DataStore 回传延迟，避免闪回旧主题一帧。
+    val renderedThemeId = reveal.renderedId ?: settings.themeId
+    LaunchedEffect(renderedThemeId) {
+        com.zhijian.schedule.core.ui.RevealTrace.log {
+            "render theme=$renderedThemeId settings=${settings.themeId}"
+        }
+    }
+    LaunchedEffect(settings.themeId) { reveal.onSettingsTheme(settings.themeId) }
     CourseTheme(
-        presetId = settings.themeId,
+        presetId = renderedThemeId,
         darkMode = settings.darkMode,
         gridStyle = settings.gridStyle,
     ) {
-        AppScaffold(openTodayCount = openTodayCount, openJwImportCount = openJwImportCount)
+        // 扩散浮层要盖住导航、底栏与所有页面，所以挂在主题壳的根部
+        RevealHost(state = reveal) {
+            AppScaffold(
+                openTodayCount = openTodayCount,
+                openJwImportCount = openJwImportCount,
+                reveal = reveal,
+            )
 
-        // 进入应用自动检查更新：静默检查，发现新版本才弹更新窗口（失败/已最新不打扰）
-        LaunchedEffect(Unit) { updatePrompt.checkOnLaunch() }
-        if (updatePrompt.promptVersion != null) {
-            UpdateDialog(onDismiss = { updatePrompt.dismiss() })
+            // 进入应用自动检查更新：静默检查，发现新版本才弹更新窗口（失败/已最新不打扰）
+            LaunchedEffect(Unit) { updatePrompt.checkOnLaunch() }
+            if (updatePrompt.promptVersion != null) {
+                UpdateDialog(onDismiss = { updatePrompt.dismiss() })
+            }
         }
     }
 }
@@ -263,11 +285,14 @@ fun AppRoot(openTodayCount: Int = 0, openJwImportCount: Int = 0) {
 private fun AppScaffold(
     openTodayCount: Int,
     openJwImportCount: Int,
+    reveal: RevealState,
 ) {
     val navController = rememberNavController()
     val entryTransitions = remember { ProfileEntryTransitions() }
     // 每次从其他 tab 进入「我的」自增，触发该页重播分段级联；二级页返回不自增
     var profileEntranceEpoch by remember { mutableIntStateOf(0) }
+    // 从加号进课程编辑页时记下加号的位置：返回时页面要反向收回这里
+    var fabOrigin by remember { mutableStateOf<Rect?>(null) }
     // 二级页持续录进这个图层，返回时浮层直接重绘它（无位图读回）
     val entryLayer = rememberGraphicsLayer()
     val colors = LocalCourseColors.current
@@ -386,20 +411,24 @@ private fun AppScaffold(
                             else -> pushExit
                         }
                     },
-                    popEnterTransition = { if (initialState.isInTabGraph()) tabPopEnter else popEnter },
+                    popEnterTransition = {
+                        if (reveal.navigating) EnterTransition.None
+                        else if (initialState.isInTabGraph()) tabPopEnter else popEnter
+                    },
                     popExitTransition = { tabPopExit },
                 ) {
                     composable(
                         route = Routes.SCHEDULE,
                         enterTransition = {
-                            if (initialState.isInTabGraph()) {
-                                tabSlideEnter(initialState, targetState)
-                            } else {
-                                tabEnter
-                            }
+                            // 反向扩散：课表是被露出的一页，不能自己再滑入，否则被收走的编辑页会留在下面成重影
+                            if (reveal.navigating) EnterTransition.None
+                            else if (initialState.isInTabGraph()) tabSlideEnter(initialState, targetState)
+                            else tabEnter
                         },
                         exitTransition = {
                             when {
+                                // 圆形扩散接管了这一程：旧页静止不动，由浮层的旧帧顶住圆外
+                                reveal.navigating -> ExitTransition.None
                                 targetState.isRootTab() -> tabSlideExit(initialState, targetState)
                                 targetState.isInTabGraph() -> tabExit
                                 else -> pushExit
@@ -413,9 +442,24 @@ private fun AppScaffold(
                         ) {
                             ScheduleScreen(
                                 onAddCourse = { day, section ->
+                                    fabOrigin = null
                                     navController.navigate(Routes.scheduleEditor(day = day, section = section))
                                 },
-                                onEditCourse = { id -> navController.navigate(Routes.scheduleEditor(courseId = id)) },
+                                // 加号：先定格整屏取成图底再导航，编辑页从加号那个圆里长出来，
+                                // 圆外仍是旧课表（转场交给根部 RevealHost，导航转场让位）
+                                onAddCourseFromFab = { bounds ->
+                                    fabOrigin = bounds
+                                    val started = reveal.requestNavigation(bounds, colors.bg) {
+                                        navController.navigate(Routes.scheduleEditor(day = null, section = null))
+                                    }
+                                    if (!started) {
+                                        navController.navigate(Routes.scheduleEditor(day = null, section = null))
+                                    }
+                                },
+                                onEditCourse = { id ->
+                                    fabOrigin = null
+                                    navController.navigate(Routes.scheduleEditor(courseId = id))
+                                },
                                 onOpenSettings = {
                                     profileEntranceEpoch++
                                     navController.navigateToTab(Routes.PROFILE_TAB)
@@ -450,12 +494,24 @@ private fun AppScaffold(
                     composable(
                         route = Routes.SCHEDULE_EDITOR,
                         arguments = editorArgs,
-                        enterTransition = { pushEnter },
-                        exitTransition = { pushExit },
+                        // 从加号圆形扩散进来时不要滑入：新页面只被浮层按圆裁剪
+                        enterTransition = { if (reveal.navigating) EnterTransition.None else pushEnter },
+                        exitTransition = { if (reveal.navigating) ExitTransition.None else pushExit },
                         popEnterTransition = { popEnter },
-                        popExitTransition = { popExit },
+                        popExitTransition = { if (reveal.navigating) ExitTransition.None else popExit },
                     ) {
-                        CourseEditorScreen(onDone = { navController.popBackStack() })
+                        // 从加号进来时，返回改成反向圆形收回：先定格编辑页取图底，再 pop，
+                        // 编辑页按圆一路收进加号，露出下面的课表；其他入口保持原本的返回转场
+                        val leave: () -> Unit = {
+                            val origin = fabOrigin
+                            val started = origin != null &&
+                                reveal.requestNavigationBack(origin, colors.bg) {
+                                    navController.popBackStack()
+                                }
+                            if (!started) navController.popBackStack()
+                        }
+                        BackHandler(onBack = leave)
+                        CourseEditorScreen(onDone = leave)
                     }
                 }
 
@@ -535,6 +591,7 @@ private fun AppScaffold(
                         ) {
                             ProfileScreen(
                                 entryTransitions = entryTransitions,
+                                reveal = reveal,
                                 entranceEpoch = profileEntranceEpoch,
                                 onOpenImport = {
                                     navController.navigate(Routes.PROFILE_IMPORTER) { launchSingleTop = true }

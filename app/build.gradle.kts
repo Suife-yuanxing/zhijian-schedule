@@ -67,6 +67,13 @@ android {
         buildConfig = true
     }
 
+    testOptions {
+        unitTests {
+            // 状态机单测会碰 android.util.Log（诊断打点）：默认桩抛异常，这里让它返回默认值
+            isReturnDefaultValues = true
+        }
+    }
+
     packaging {
         resources {
             excludes += setOf(
