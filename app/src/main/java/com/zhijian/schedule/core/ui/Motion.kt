@@ -1,5 +1,10 @@
 package com.zhijian.schedule.core.ui
 
+import android.content.ContentResolver
+import android.database.ContentObserver
+import android.os.Handler
+import android.os.Looper
+import android.provider.Settings
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -11,6 +16,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -20,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -160,6 +167,20 @@ object Motion {
 
     /** 底部浮岛胶囊转移形变：行进中横向拉伸 / 纵向压缩，弹性回位（液体被吸走的顿挫感） */
     val FluidStretch = spring<Float>(dampingRatio = 0.62f, stiffness = 480f)
+
+    /**
+     * 触摸倾动的**指腹跟随**弹簧：倾角要贴着手指走，但不能瞬移。
+     *
+     * 为什么不是直接 snapTo：触摸事件是一帧一跳的离散采样，直接赋值等于把采样抖动原样
+     * 交给画面；拖动越快，跳越大。业界无一例外都在这一层加阻尼——vanilla-tilt 用
+     * 300ms 的 CSS transition（`speed`），beUI/Framer 用 `SPRING_MOUSE`
+     * （stiffness 200 / mass 0.3 ⇒ ω ≈ 26 rad/s，damping 15 ⇒ ζ ≈ 0.97）。
+     *
+     * 为什么取 1200 / 0.95：Compose 的 stiffness 就是 ω²，1200 ⇒ ω ≈ 34.6 rad/s，
+     * 时间常数约 29ms——够快，手感仍是「指哪打哪」，只把一帧一跳抹平；
+     * 阻尼比 0.95 接近临界，拖动过程中不过冲、不震荡（过冲留给松手时的 [TiltReturn]）。
+     */
+    val TiltFollow = spring<Float>(dampingRatio = 0.95f, stiffness = 1200f)
 
     /** 触摸倾动回正：松手后带一次轻微过冲再落位，阻尼比低于 1 才有「纸片弹回」的手感 */
     val TiltReturn = spring<Float>(dampingRatio = 0.55f, stiffness = 420f)
@@ -332,6 +353,45 @@ fun Modifier.cascadeIn(
         translationY = (1f - progress) * riseDp.dp.toPx()
     }
 }
+
+/**
+ * 系统是否允许播放动画。
+ *
+ * `Settings.Global.ANIMATOR_DURATION_SCALE == 0` 是 Android 表达「不要动画」的统一开关
+ * （开发者选项的 Animator duration scale 关掉，以及无障碍里的「移除动画」都会写这个值）。
+ *
+ * 为什么纯装饰的动效必须查它：WCAG 2.3.3（AAA）把「由交互触发的运动」列为需要用户可控，
+ * 并点名 **parallax**——卡片倾斜正是这一类；Apple tvOS 规范 ACCESS-04 同样是硬要求
+ * （"Parallax effects and other animations must be reduced or disabled when the user
+ * enables Reduce Motion"）。业界组件都照此办理：beUI 的 TiltCard 在 reduced motion 下
+ * 「卡片保持平放、反光不绘制」。
+ *
+ * 用 ContentObserver 而不是只读一次：用户在系统设置里一改就立刻生效，无需重启 Activity。
+ */
+@Composable
+fun rememberMotionAllowed(): Boolean {
+    val resolver = LocalContext.current.contentResolver
+    var allowed by remember(resolver) {
+        mutableStateOf(resolver.readAnimatorScale() > 0f)
+    }
+    DisposableEffect(resolver) {
+        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                allowed = resolver.readAnimatorScale() > 0f
+            }
+        }
+        resolver.registerContentObserver(
+            Settings.Global.getUriFor(Settings.Global.ANIMATOR_DURATION_SCALE),
+            false,
+            observer,
+        )
+        onDispose { resolver.unregisterContentObserver(observer) }
+    }
+    return allowed
+}
+
+private fun ContentResolver.readAnimatorScale(): Float =
+    Settings.Global.getFloat(this, Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
 
 /**
  * 分段关键帧求值：把单一动画进度 [progress]（0..1）映射到多通道（缩放/位移/旋转），
