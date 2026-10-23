@@ -2,6 +2,7 @@ package com.zhijian.schedule.core.ui
 
 import android.os.SystemClock
 import android.util.Log
+import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -24,7 +25,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.clipPath
-import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -81,6 +81,10 @@ internal object RevealTrace {
  *
  * 同一套机制也服务「页面扩散」（[requestNavigation]）：加号开课程编辑页时，
  * 先定格整屏取图底 → 再导航 → 新页面从加号那个圆里长出来，圆外仍是旧课表。
+ *
+ * 返回（[requestNavigationBack]）是它的反向用法：编辑页同样先定格取图底，再 pop，
+ * 然后这张图底盖在最上层按圆收缩进加号——**圆外不铺任何底图**，直接露浮层下面的实时课表，
+ * 这样动画结束撤掉浮层时画面连续（缘由见 [RevealHost] 反向分支）。
  */
 @Stable
 class RevealState {
@@ -97,7 +101,7 @@ class RevealState {
         val fromBg: Color,
         /** 旧帧到手后要执行的动作（页面扩散用它来导航）；须在取帧之后跑，否则旧帧就拍到新页面了 */
         val onReady: (() -> Unit)? = null,
-        /** true = 反向（返回）：新页面整屏，旧帧在上层按圆收缩进被点控件 */
+        /** true = 反向（返回）：实时内容整屏铺底，旧帧在上层按圆收缩进被点控件 */
         val reverse: Boolean = false,
     )
 
@@ -121,19 +125,16 @@ class RevealState {
     internal var active by mutableStateOf<Active?>(null)
         private set
 
-    /** 旧帧像素；null = 退化到纯底色 */
-    internal var oldFrame by mutableStateOf<ImageBitmap?>(null)
-        private set
-
     /**
-     * 反向扩散的「新页面」底图：pop 之后再把上一页取一张，整段动画只画两张图。
-     * 不这么做的话，NavHost 的退场转场会把被收走的那一页留在下面，出现「两页重影」。
+     * 旧帧像素；null = 退化到纯底色。
+     *
+     * 反向（返回）用的也是这一张：它是 pop **之前**抓下的编辑页，是唯一一张「已经不在组合里、
+     * 却必须留在屏幕上的画面」。反向的**背景**不再另抓位图，直接用浮层下面的实时内容
+     * （见 [RevealHost] 反向分支的注释）：上一版在 pop 之后另抓过一张课表整屏位图当背景，
+     * 那张图抓完就定格，而课表返回时会重播逐块入场，于是整段收回盖的都是过期画面、
+     * 动画一结束硬切一下——返回闪烁的直接来源。
      */
-    internal var backdrop by mutableStateOf<ImageBitmap?>(null)
-        private set
-
-    /** 反向扩散：已 pop，正在等上一页的底图；这段时间动画不启动 */
-    internal var awaitingBackdrop by mutableStateOf(false)
+    internal var oldFrame by mutableStateOf<ImageBitmap?>(null)
         private set
 
     /**
@@ -245,9 +246,13 @@ class RevealState {
 
     /**
      * 反向的页面扩散（返回）：先把当前整屏定格取成图底，取到之后执行 [onReady]（通常就是 pop），
-     * 旧页面在上层按圆一路收缩进 [boundsInRoot] 那个控件，露出下面的上一页。
+     * 旧页面（就是这张图底）在上层按圆一路收缩进 [boundsInRoot] 那个控件，
+     * 圆外露出下面的**实时内容**——也就是被返回的那一页。
      *
      * 与正向对称：取帧必须在 pop 之前，否则拍到的就是上一页而不是要收走的那一页。
+     * 与正向不同：反向**只取这一张**。上一版还会在 pop 之后再抓一张上一页的整屏位图当背景，
+     * 那张图抓完即定格，而上一页（课表）这时正在重播入场动画，于是整段收回盖的都是过期画面；
+     * 现在背景交给实时内容，交接处天然连续（缘由见 [oldFrame] 与 [RevealHost] 反向分支）。
      */
     fun requestNavigationBack(
         boundsInRoot: Rect,
@@ -311,15 +316,6 @@ class RevealState {
         }
         // 旧帧已经拿到，这时再导航：新页面出现时圆外的底才是旧页面
         start.onReady?.invoke()
-        // 反向还要再取一张「上一页」的底图，取到才起播
-        if (start.reverse) awaitingBackdrop = true
-    }
-
-    /** 上一页底图到手：从此整段反向动画只画两张图，不再受导航转场影响 */
-    internal fun finishBackdropCapture(frame: ImageBitmap?) {
-        backdrop = frame
-        awaitingBackdrop = false
-        RevealTrace.log { "backdrop frame=${frame?.width}x${frame?.height}" }
     }
 
     internal fun finish() {
@@ -327,8 +323,6 @@ class RevealState {
         active = null
         pending = null
         oldFrame = null
-        backdrop = null
-        awaitingBackdrop = false
         frozen = false
         progress.floatValue = 0f
     }
@@ -381,23 +375,21 @@ fun RevealHost(
     content: @Composable () -> Unit,
 ) {
     val captureLayer = rememberGraphicsLayer()
-    // 第二张图层：只录内容（不含浮层），反向时用它取「上一页」的底图
-    val contentLayer = rememberGraphicsLayer()
     // 图层里到底有没有画过内容：没有就得先等帧，直接取会拿到空图（圆外会闪成纯色）
     val layerReady = remember { CaptureFlag() }
-    val contentReady = remember { CaptureFlag() }
 
     val active = state.active
     val capturing = state.pending != null
-    // 转场期间整屏都持续录进图层：连点时「定格的那一帧」就在图层里，可以直接取成图底，
-    // 不用再等帧。整层只在转场这 560ms 内挂着，平时零开销。
-    val recording = capturing || active != null
+    // 整屏录制只在「马上要取一张整屏」的时候挂着：
+    // - 取帧阶段（pending）：正向抓旧页、反向抓编辑页，都靠这一张；
+    // - 主题扩散进行中：连点要定格当前帧，图底必须已经在图层里，现等帧会跳。
+    // 页面扩散（toId == null）一旦起播就不再需要它：正向的底是 oldFrame、反向的底是实时内容，
+    // 没有任何「再抓一张」的需求。继续录就是每帧多一次整屏离屏渲染 + 一次全屏合成。
+    val recording = capturing || active?.toId != null
 
     LaunchedEffect(recording) {
         if (!recording) layerReady.ready = false
     }
-
-    val capturingReverse = state.pending?.reverse == true
 
     LaunchedEffect(capturing) {
         if (!capturing) return@LaunchedEffect
@@ -415,23 +407,6 @@ fun RevealHost(
         }?.takeIf { it.width > 0 && it.height > 0 }
         RevealTrace.log { "capture done frame=${frame?.width}x${frame?.height}" }
         state.beginReveal(frame)
-    }
-
-    // 反向：pop 之后再取一张上一页的底图，取到才起播
-    LaunchedEffect(state.awaitingBackdrop) {
-        if (!state.awaitingBackdrop) return@LaunchedEffect
-        val frame = try {
-            withTimeoutOrNull(400) {
-                // 多等几帧：pop 的退场转场（即便设成 None）也可能要一两帧才真正撤掉旧页，
-                // 太早取会把被收走的那一页当成底图，缩起来就是两页重影
-                repeat(6) { withFrameNanos { } }
-                contentLayer.toImageBitmap()
-            }
-        } catch (t: Throwable) {
-            RevealTrace.log { "backdrop threw ${t::class.java.simpleName}: ${t.message}" }
-            null
-        }?.takeIf { it.width > 0 && it.height > 0 }
-        state.finishBackdropCapture(frame)
     }
 
     Box(modifier.fillMaxSize().onSizeChanged { state.hostSize = it }) {
@@ -467,25 +442,10 @@ fun RevealHost(
                 }
             }
 
-            val contentRecording = state.pending?.reverse == true || state.active?.reverse == true
             Box(
                 Modifier
                     .fillMaxSize()
                     .onGloballyPositioned { state.markHostOrigin(it.positionInRoot()) }
-                    // 反向：单独录一张「只有内容」的图层，pop 之后从这里取上一页底图
-                    .then(
-                        if (contentRecording) {
-                            Modifier.drawWithContent {
-                                contentLayer.record {
-                                    this@drawWithContent.drawContent()
-                                }
-                                drawLayer(contentLayer)
-                                contentReady.ready = true
-                            }
-                        } else {
-                            Modifier
-                        },
-                    )
                     .drawWithContent {
                         val current = state.active
                         // 反向（返回）：新页面整屏画，被收走的那一页在上层按圆收缩
@@ -511,83 +471,112 @@ fun RevealHost(
                 content()
             }
 
-            // 反向：被收走的那一页（旧帧）盖在最上层，一边缩进被点控件、一边被圆收走。
-            // 只缩圆不够显眼——加号在右下角，圆有大半在屏幕外，光靠圆看着像「淡出」；
-            // 所以整块（内容 + 圆形窗口）一起绕按钮缩放，读起来才是「页面缩回加号里」。
+            // 反向：被收走的那一页（旧帧）盖在最上层，被一个缩回被点控件的圆裁掉。
+            //
+            // 这里**不做整块缩放、也不做淡出**（只有最后一下化掉），就是正向的严格镜像：
+            // 正向「圆从按钮长大、圆内是新页面」，反向「圆从满屏缩回按钮、圆内是旧页面」。
+            // 曾经试过再叠一层 zoom + fade 来「加强存在感」，结果是三重运动互相打架：
+            // 圆被缩一遍、图又被缩一遍，剩下的那块既不在按钮中心、边界也不是圆，
+            // 画出来是一块飘在屏幕中间的残影（像素分析实测缩放中心落在画布中心附近，
+            // 根本不是加号）。镜像本身就是最清楚的语义，加强只能靠时长与缓动，不能靠叠运动。
+            //
+            // 圆外**不铺任何底图**：浮层下面那层实时内容就是背景。上一版在 pop 之后另抓一张
+            // 「上一页整屏位图」盖上来，那张图抓完即定格，而课表返回时会重播逐块入场
+            // （WeekGrid 的 entranceDelayMs → CourseBlock.cascadeIn），抓图那一刻课块还没落位，
+            // 于是整段收回盖着的都是「半空的课表」；动画一结束 finish() 撤掉浮层，真实课表
+            // 整屏顶上来，交接处硬切一下——返回闪烁的直接来源。
+            // 另外抓图要等 6 帧（旧代码），而驱动协程一设 active 就起播，那 6 帧里 backdrop 还是
+            // null，圆外露的是纯底色，起手先闪一下。
+            // 铺实时内容之后：整段收回背景=真实课表，最后那一段淡出露出的也正是它自己，
+            // 交接在构造上就不可能跳；少一次整屏位图读回（GPU 同步），也少两张整屏图层的录制。
             if (active != null && active.reverse) {
                 val frame = state.oldFrame
-                val backdrop = state.backdrop
-                Canvas(Modifier.fillMaxSize()) {
-                    // 先整屏铺上一页的底图：动画只依赖这两张图，不受导航转场快慢影响
-                    drawRect(active.fromBg)
-                    if (backdrop != null) {
-                        drawImage(
-                            image = backdrop,
-                            dstSize = IntSize(size.width.toInt(), size.height.toInt()),
-                        )
-                    }
-                    val t = state.progress.floatValue.coerceIn(0f, 1f)
-                    val radius = state.radiusOf(active)
-                    val scale = 1f - 0.72f * t
-                    // 末段淡出：缩到按钮大小时别留一个硬边的圆点
-                    val fade = 1f - smoothstep(0.78f, 1f, t)
-                    val path = Path().apply {
-                        addOval(
-                            Rect(
-                                left = active.center.x - radius,
-                                top = active.center.y - radius,
-                                right = active.center.x + radius,
-                                bottom = active.center.y + radius,
-                            ),
-                        )
-                    }
-                    withTransform({ scale(scale, scale, pivot = active.center) }) {
+                if (frame != null) {
+                    Canvas(Modifier.fillMaxSize()) {
+                        val t = state.progress.floatValue.coerceIn(0f, 1f)
+                        val radius = state.radiusOf(active)
+                        // 最后一小段化掉：圆收到加号大小时让真实加号接上，别留一个硬边的圆
+                        val alpha = reverseMaskAlpha(t)
+                        val path = Path().apply {
+                            addOval(
+                                Rect(
+                                    left = active.center.x - radius,
+                                    top = active.center.y - radius,
+                                    right = active.center.x + radius,
+                                    bottom = active.center.y + radius,
+                                ),
+                            )
+                        }
                         clipPath(path) {
-                            drawRect(active.fromBg.copy(alpha = fade))
-                            if (frame != null) {
-                                drawImage(
-                                    image = frame,
-                                    dstSize = IntSize(size.width.toInt(), size.height.toInt()),
-                                    alpha = fade,
-                                )
-                            }
+                            drawImage(
+                                image = frame,
+                                dstSize = IntSize(size.width.toInt(), size.height.toInt()),
+                                alpha = alpha,
+                            )
                         }
                     }
                 }
             }
         }
 
-        if (active != null) RevealDriver(state, active.runId)
+        if (active != null) RevealDriver(state, active)
     }
 }
 
 /** 只推进进度、不画东西：进度是绘制阶段读的，改它只失效绘制 */
 @Composable
-private fun RevealDriver(state: RevealState, runId: Long) {
-    // 方向在一次扩散内固定：正向铺开用长时长，反向收回短一截
-    val reverse = state.active?.reverse == true
-    LaunchedEffect(runId) {
-        RevealTrace.log { "driver start run=$runId" }
+private fun RevealDriver(state: RevealState, active: RevealState.Active) {
+    // 时间线（时长 + 缓动）由方向与语义决定，分发抽成纯函数便于单测钉住，见 revealTiming。
+    val timing = revealTiming(reverse = active.reverse, themeSwitch = active.toId != null)
+    LaunchedEffect(active.runId) {
+        RevealTrace.log { "driver start run=${active.runId}" }
         try {
             animate(
                 initialValue = 0f,
                 targetValue = 1f,
                 animationSpec = tween(
-                    durationMillis = if (reverse) Motion.DurRevealBack else Motion.DurReveal,
-                    easing = Motion.EaseReveal,
+                    durationMillis = timing.durationMillis,
+                    easing = timing.easing,
                 ),
             ) { value, _ ->
                 // 连点定格期间停写：屏幕停在取图底的那一帧，重播才不会跳
                 if (!state.frozen) state.progress.floatValue = value
             }
-            RevealTrace.log { "driver done run=$runId" }
+            RevealTrace.log { "driver done run=${active.runId}" }
         } finally {
             // 被取消（切后台 / 离开组合 / 旋转 / 换新一段）时也要收尾，
             // 但只收自己这一轮：换新一段后旧协程被取消，不能把新的清掉
-            state.finishIfRunning(runId)
+            state.finishIfRunning(active.runId)
         }
     }
 }
+
+/** 一次扩散的时长与缓动 */
+internal data class RevealTiming(val durationMillis: Int, val easing: Easing)
+
+/**
+ * 扩散时间线的分发：一次扩散的方向（reverse）与语义（换主题 / 换页面）决定用哪套时长与缓动。
+ *
+ * - 页面正向（加号 → 编辑页）与换主题：同一条加速曲线 [Motion.EaseRevealAccelerate]，
+ *   时长各自补偿过（见 Motion 里两个常量的推导）；
+ * - 页面反向（返回收回）：[Motion.EaseRevealDecelerate]，正向曲线的严格时间镜像——
+ *   方向相反但不打架，反向就是正向的倒放；
+ * - [reverse] 优先于 [themeSwitch]：反向只可能来自 requestNavigationBack（toId 恒为 null），
+ *   两者同时为真不可达；这条优先级只是把「不可达组合」的语义提前定死，免得日后改动踩空。
+ */
+internal fun revealTiming(reverse: Boolean, themeSwitch: Boolean): RevealTiming = when {
+    reverse -> RevealTiming(Motion.DurRevealBack, Motion.EaseRevealDecelerate)
+    themeSwitch -> RevealTiming(Motion.DurRevealTheme, Motion.EaseRevealAccelerate)
+    else -> RevealTiming(Motion.DurReveal, Motion.EaseRevealAccelerate)
+}
+
+/**
+ * 反向遮罩的淡出系数：进度 0.9 之前整块不透明，到 1 完全化掉，
+ * 让圆收到加号大小时由真实的加号接手，不留一个硬边的圆点。
+ * 圆外不参与——那里是实时内容（见 [RevealHost] 反向分支）。
+ */
+internal fun reverseMaskAlpha(progress: Float): Float =
+    1f - smoothstep(0.9f, 1f, progress)
 
 /**
  * 圆心到屏幕最远角的距离：扩散半径的终点。
