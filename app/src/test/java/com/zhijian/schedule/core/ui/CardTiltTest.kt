@@ -2,6 +2,7 @@ package com.zhijian.schedule.core.ui
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.unit.dp
 import kotlin.math.abs
 import kotlin.math.hypot
 import org.junit.Assert.assertEquals
@@ -77,6 +78,33 @@ class CardTiltTest {
         val n = tiltNormalized(Offset(10f, 10f), Size.Zero)
         assertEquals(0f, n.x, 1e-5f)
         assertEquals(0f, n.y, 1e-5f)
+    }
+
+    // ---- 焦点大卡（我的课表 / 今日正在上课）共用一份参数 ----
+
+    @Test
+    fun `focus card amplifies tilt, glare and lift over the base style`() {
+        val base = CardTiltStyle(
+            maxTiltDegrees = 8f,
+            glareAlpha = 0.4f,
+            liftScale = 0.01f,
+            liftElevation = 12.dp,
+            glareShade = 0.05f,
+        )
+        val focus = focusTiltStyle(base)
+        assertEquals(10f, focus.maxTiltDegrees, 1e-5f)
+        assertEquals(0.44f, focus.glareAlpha, 1e-5f)
+        assertEquals(0.012f, focus.liftScale, 1e-5f)
+        assertEquals(16.dp, focus.liftElevation)
+        // 与倾动无关的通道原样继承，别顺手改掉浅色纸面的背光压暗
+        assertEquals(0.05f, focus.glareShade, 1e-5f)
+    }
+
+    @Test
+    fun `focus card glare stays under the ceiling on bright themes`() {
+        // 玻璃浅色主题的基准反光最高（0.82 → ×1.1 = 0.902），必须被 0.9 截住
+        val bright = CardTiltStyle(8f, glareAlpha = 0.82f, liftScale = 0.014f, liftElevation = 16.dp, glareShade = 0.05f)
+        assertEquals(0.9f, focusTiltStyle(bright).glareAlpha, 1e-5f)
     }
 
     // ---- 反光几何（业界取法：farthest-corner 半径 + 过指腹的定向扫光带）----

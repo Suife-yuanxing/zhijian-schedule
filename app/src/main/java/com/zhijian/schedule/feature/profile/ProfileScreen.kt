@@ -89,7 +89,7 @@ import com.zhijian.schedule.core.ui.cardTiltGlare
 import com.zhijian.schedule.core.ui.cardTiltParallax
 import com.zhijian.schedule.core.ui.pressScale
 import com.zhijian.schedule.core.ui.rememberCardTiltState
-import com.zhijian.schedule.core.ui.rememberCardTiltStyle
+import com.zhijian.schedule.core.ui.rememberFocusCardTiltStyle
 import com.zhijian.schedule.core.ui.rememberMotionAllowed
 import com.zhijian.schedule.core.ui.selectedPop
 import com.zhijian.schedule.feature.update.UpdateDialog
@@ -444,15 +444,8 @@ private fun SemesterOverviewCard(
     // 系统「关闭动画」时整块倾动/反光/抬升都停用（WCAG 2.3.3、tvOS ACCESS-04）
     val motionAllowed = rememberMotionAllowed()
     // 焦点卡面积大，倾角比课块多 2°、反光再提一档，才看得出「玻璃卡片被指腹压下去」
-    val baseTiltStyle = rememberCardTiltStyle()
-    val tiltStyle = remember(baseTiltStyle) {
-        baseTiltStyle.copy(
-            maxTiltDegrees = 10f,
-            glareAlpha = (baseTiltStyle.glareAlpha * 1.1f).coerceAtMost(0.9f),
-            liftScale = baseTiltStyle.liftScale * 1.2f,
-            liftElevation = baseTiltStyle.liftElevation + 4.dp,
-        )
-    }
+    // （与今日页「正在上课」大卡共用同一份取值，见 rememberFocusCardTiltStyle）
+    val tiltStyle = rememberFocusCardTiltStyle()
     val fraction = if (week != null && timetable.totalWeeks > 0) {
         week.toFloat() / timetable.totalWeeks
     } else 0f

@@ -126,10 +126,34 @@ fun rememberCardTiltStyle(): CardTiltStyle {
 }
 
 /**
+ * 焦点大卡（整宽、字号最大、整页只该有一张的那块卡面）的倾动参数。
+ *
+ * 「我的」页学期概览卡与今日页「正在上课」卡共用这一份取值——两块卡面积接近、
+ * 可动范围接近，只有共用一个工厂，「复刻」才是同一套手感而不是两次调参的相似值。
+ *
+ * 相对 [rememberCardTiltStyle] 的课块/小卡基准：倾角 +2°（面积越大越吃角度，
+ * 8° 在大卡上几乎读不出透视）、反光 ×1.1（卡面越宽，光斑越要够亮才铺得开）、
+ * 抬升 ×1.2 且多 4dp（大卡的投影半径更大，同样的高度在大卡上会显得没抬起来）。
+ */
+@Composable
+fun rememberFocusCardTiltStyle(): CardTiltStyle {
+    val base = rememberCardTiltStyle()
+    return remember(base) { focusTiltStyle(base) }
+}
+
+/** [rememberFocusCardTiltStyle] 的纯函数内核：取值可单测，两块焦点卡不可能各调各的。 */
+internal fun focusTiltStyle(base: CardTiltStyle): CardTiltStyle = base.copy(
+    maxTiltDegrees = 10f,
+    glareAlpha = (base.glareAlpha * 1.1f).coerceAtMost(0.9f),
+    liftScale = base.liftScale * 1.2f,
+    liftElevation = base.liftElevation + 4.dp,
+)
+
+/**
  * 让卡片跟随触摸位置做 3D 透视倾斜，松手用 [Motion.TiltReturn] 阻尼回正。
  *
  * **手势归属**：卡片是一块"实体纸片"，指腹落在卡面上就是在摆弄它——一旦拖动超过触摸阈值，
- * 本次手势就归卡片所有，位移被吃掉，父级 verticalScroll 不会同时滚起来（[consumeDrag]）。
+ * 本次手势就归卡片所有，位移被吃掉，父级 verticalScroll 不会同时滚起来。
  * 这正是主人要的手感：交互卡片时页面不要跟着滑。
  *
  * 为什么不连按下事件一起消费：轻点要照常生效（卡内的"加权绩点"入口是一个 clickable）。
@@ -148,12 +172,11 @@ fun Modifier.cardTilt(
     shape: Shape,
     style: CardTiltStyle,
     enabled: Boolean = true,
-    consumeDrag: Boolean = true,
 ): Modifier {
     if (!enabled) return this
     val scope = rememberCoroutineScope()
     return this
-        .pointerInput(state, style.maxTiltDegrees, consumeDrag) {
+        .pointerInput(state, style.maxTiltDegrees) {
             awaitEachGesture {
                 // Initial 趟先看见按下；不消费，clickable 与滚动都还能拿到这串事件
                 val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
@@ -178,7 +201,7 @@ fun Modifier.cardTilt(
                         dragging = true
                     }
                     // 越过阈值后才开始吃位移：轻点不受影响，拖动则把滚动挡在卡片外
-                    if (dragging && consumeDrag) change.consume()
+                    if (dragging) change.consume()
                 }
 
                 // 高光中心保留在最后落点，让它顺着 alpha 淡出；下次按下会被覆盖

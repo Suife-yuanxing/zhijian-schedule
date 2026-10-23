@@ -53,6 +53,12 @@ import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.ui.HolidayColors
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.StaggerIn
+import com.zhijian.schedule.core.ui.cardTilt
+import com.zhijian.schedule.core.ui.cardTiltGlare
+import com.zhijian.schedule.core.ui.cardTiltParallax
+import com.zhijian.schedule.core.ui.rememberCardTiltState
+import com.zhijian.schedule.core.ui.rememberFocusCardTiltStyle
+import com.zhijian.schedule.core.ui.rememberMotionAllowed
 import com.zhijian.schedule.core.ui.rememberTapHaptic
 import com.zhijian.schedule.core.util.TimeUtils
 import com.zhijian.schedule.feature.schedule.CourseDetailSheet
@@ -303,6 +309,11 @@ private fun CurrentClassCard(item: TodayCourseItem, now: LocalTime) {
     val remainMin = (total - passed) / 60
     val courseColor = Color(item.course.color)
     val shape = RoundedCornerShape(18.dp)
+    // 「我的」页学期概览卡那套交互原样复刻到这张焦点卡上：指腹透视倾动 + 径向流光 +
+    // 前景视差 + 按下抬升，两者共用同一份取值（rememberFocusCardTiltStyle），手感是同一块纸片
+    val tilt = rememberCardTiltState()
+    val tiltStyle = rememberFocusCardTiltStyle()
+    val motionAllowed = rememberMotionAllowed()
     val sectionText = when {
         item.course.startSection <= 0 -> null
         item.course.startSection == item.course.endSection -> "第${item.course.startSection}节"
@@ -330,11 +341,19 @@ private fun CurrentClassCard(item: TodayCourseItem, now: LocalTime) {
     Column(
         Modifier
             .fillMaxWidth()
+            // 倾动/抬升在最外层图层：clip 之后的背景与流光都跟着卡面一起转
+            .cardTilt(state = tilt, shape = shape, style = tiltStyle, enabled = motionAllowed)
+            .clip(shape)
             .background(lerp(colors.surface, courseColor, 0.07f), shape)
+            // 流光必须压在背景之后、文字之前：只提亮卡面，不洗淡课名与倒计时
+            .cardTiltGlare(state = tilt, shape = shape, style = tiltStyle)
             .border(1.dp, courseColor.copy(alpha = 0.28f), shape)
             .padding(horizontal = 18.dp, vertical = 16.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.cardTiltParallax(state = tilt, style = tiltStyle, depth = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Box(
                 Modifier
                     .size(10.dp)
@@ -363,11 +382,13 @@ private fun CurrentClassCard(item: TodayCourseItem, now: LocalTime) {
             }
         }
         Spacer(Modifier.height(10.dp))
+        // 前景文字按 Apple 图层位移表动得最多；下面的进度条是"事实"（真实时间），不参与视差
         Text(
             text = item.course.name,
             style = MaterialTheme.typography.titleLarge,
             color = colors.text,
             fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.cardTiltParallax(state = tilt, style = tiltStyle, depth = 4.dp),
         )
         val info = listOf(item.course.room, item.course.teacher)
             .filter { it.isNotBlank() }
@@ -381,7 +402,10 @@ private fun CurrentClassCard(item: TodayCourseItem, now: LocalTime) {
             )
         }
         Spacer(Modifier.height(14.dp))
-        Row(verticalAlignment = Alignment.Bottom) {
+        Row(
+            Modifier.cardTiltParallax(state = tilt, style = tiltStyle, depth = 4.dp),
+            verticalAlignment = Alignment.Bottom,
+        ) {
             Text(
                 text = remainMin.toString(),
                 color = courseColor,
