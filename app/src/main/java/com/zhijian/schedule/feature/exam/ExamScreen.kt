@@ -1,7 +1,9 @@
 package com.zhijian.schedule.feature.exam
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -128,16 +130,22 @@ fun ExamScreen(
                         Spacer(Modifier.height(14.dp))
                         GroupLabel("即将到来")
                         upcoming.forEach { exam ->
-                            ExamRow(exam, now, past = false) {
-                                editing = exam
-                                showEditor = true
-                            }
+                            ExamRow(
+                                exam, now, past = false,
+                                onClick = {
+                                    editing = exam
+                                    showEditor = true
+                                },
+                                onLongClick = { pendingDelete = exam },
+                            )
                         }
                     }
                     if (past.isNotEmpty()) {
                         Spacer(Modifier.height(14.dp))
                         GroupLabel("已结束")
-                        past.forEach { exam -> ExamRow(exam, now, past = true) {} }
+                        past.forEach { exam ->
+                            ExamRow(exam, now, past = true, onClick = {}, onLongClick = { pendingDelete = exam })
+                        }
                     }
                 }
                 Spacer(Modifier.height(96.dp))
@@ -217,8 +225,15 @@ private fun NoticeBanner(text: String, tint: Color, onClick: () -> Unit) {
     )
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ExamRow(exam: ExamEntity, now: LocalDateTime, past: Boolean, onClick: () -> Unit) {
+private fun ExamRow(
+    exam: ExamEntity,
+    now: LocalDateTime,
+    past: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit = {},
+) {
     val colors = LocalCourseColors.current
     val alpha = if (past) 0.5f else 1f
     Row(
@@ -227,7 +242,11 @@ private fun ExamRow(exam: ExamEntity, now: LocalDateTime, past: Boolean, onClick
             .padding(bottom = 8.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(colors.surface)
-            .clickable(enabled = !past, onClick = onClick)
+            .combinedClickable(
+                enabled = true,
+                onClick = { if (!past) onClick() },
+                onLongClick = onLongClick,
+            )
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
