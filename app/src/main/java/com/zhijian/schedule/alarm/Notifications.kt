@@ -164,4 +164,36 @@ object Notifications {
     fun cancelSyncFailed(context: Context) {
         runCatching { NotificationManagerCompat.from(context).cancel(ID_SYNC_FAILED) }
     }
+
+    /** 考前提醒（考试提醒渠道）：时刻/考场随闹钟 intent 携带 */
+    fun showExamReminder(
+        context: Context,
+        examId: Long,
+        name: String,
+        room: String,
+        seat: String,
+        leadMinutes: Int,
+    ) {
+        if (!canNotify(context)) return
+        val where = listOf(
+            room.takeIf { it.isNotBlank() },
+            seat.takeIf { it.isNotBlank() }?.let { "$it 号座" },
+        ).filterNotNull().joinToString(" · ")
+        val whenText = if (leadMinutes >= 60) "考试在 ${leadMinutes / 60} 小时后开始" else "考试在 $leadMinutes 分钟后开始"
+        val notification = NotificationCompat.Builder(context, CH_EXAM)
+            .setSmallIcon(R.drawable.ic_stat_notify)
+            .setContentTitle("$name · 考试提醒")
+            .setContentText(listOf(whenText, where).filter { it.isNotBlank() }.joinToString(" · "))
+            .setSubText("纸间课表")
+            .setStyle(
+                NotificationCompat.BigTextStyle()
+                    .bigText(listOf(whenText, where).filter { it.isNotBlank() }.joinToString(" · ")),
+            )
+            .setAutoCancel(true)
+            .setContentIntent(activityIntent(context, requestCode = 5100))
+            .build()
+        runCatching {
+            NotificationManagerCompat.from(context).notify(ExamAlarms.notificationId(examId), notification)
+        }
+    }
 }

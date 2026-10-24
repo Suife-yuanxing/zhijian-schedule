@@ -24,6 +24,9 @@ class BootReceiver : BroadcastReceiver() {
     lateinit var coordinator: ReminderCoordinator
 
     @Inject
+    lateinit var examReminderCoordinator: ExamReminderCoordinator
+
+    @Inject
     lateinit var settingsStore: SettingsStore
 
     @Inject
@@ -33,6 +36,7 @@ class BootReceiver : BroadcastReceiver() {
         when (intent.action) {
             Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED -> {
                 coordinator.refresh()
+                examReminderCoordinator.refresh()
                 reviveCapsule(context)
             }
         }

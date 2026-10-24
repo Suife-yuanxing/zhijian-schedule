@@ -3,6 +3,7 @@ package com.zhijian.schedule
 import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
+import com.zhijian.schedule.alarm.ExamReminderCoordinator
 import com.zhijian.schedule.alarm.Notifications
 import com.zhijian.schedule.alarm.ReminderCoordinator
 import com.zhijian.schedule.calendar.CalendarSyncCoordinator
@@ -37,6 +38,9 @@ class ZhiJianApp : Application(), Configuration.Provider {
     lateinit var reminderCoordinator: ReminderCoordinator
 
     @Inject
+    lateinit var examReminderCoordinator: ExamReminderCoordinator
+
+    @Inject
     lateinit var calendarSyncCoordinator: CalendarSyncCoordinator
 
     @Inject
@@ -64,6 +68,8 @@ class ZhiJianApp : Application(), Configuration.Provider {
         }
         // 监听数据变化，自动重排课前提醒
         reminderCoordinator.start()
+        // 监听考试数据变化，自动重排考前提醒
+        examReminderCoordinator.start()
         // 课表数据变化时自动重刷系统日历（「写入系统日历」开关打开时）
         calendarSyncCoordinator.start()
     }

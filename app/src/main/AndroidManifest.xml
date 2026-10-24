@@ -112,6 +112,10 @@
         <receiver
             android:name=".alarm.NotificationActionReceiver"
             android:exported="false" />
+        <!-- 考前提醒（24h/1h 两档） -->
+        <receiver
+            android:name=".alarm.ExamReminderReceiver"
+            android:exported="false" />
         <!-- 胶囊状态切换闹钟（提醒窗口/上课/下课/跨天） -->
         <receiver
             android:name=".capsule.CapsuleTransitionReceiver"
