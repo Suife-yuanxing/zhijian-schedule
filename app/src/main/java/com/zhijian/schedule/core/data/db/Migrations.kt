@@ -22,3 +22,10 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
         )
     }
 }
+
+/** v2→v3：考试表补「手动编辑」标记（教务同步永不覆盖） */
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `exam` ADD COLUMN `manuallyEdited` INTEGER NOT NULL DEFAULT 0")
+    }
+}

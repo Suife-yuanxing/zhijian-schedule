@@ -19,6 +19,17 @@ data class CourseDraft(
     val note: String = "",
 )
 
+/** 教务考试安排的中转模型（未落库） */
+@Serializable
+data class ExamDraft(
+    val name: String,
+    val room: String = "",
+    val seat: String = "",
+    /** 开考时刻 epoch millis */
+    val examTime: Long,
+    val note: String = "",
+)
+
 @Serializable
 enum class ImportSource(val label: String) {
     MANUAL("手动"),

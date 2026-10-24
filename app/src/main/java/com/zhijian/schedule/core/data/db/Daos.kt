@@ -126,6 +126,12 @@ interface ExamDao {
     @Query("SELECT * FROM exam WHERE tableId = :tableId ORDER BY examTime ASC")
     fun observeByTable(tableId: Long): Flow<List<ExamEntity>>
 
+    @Query("SELECT * FROM exam WHERE tableId = :tableId ORDER BY examTime ASC")
+    suspend fun getByTable(tableId: Long): List<ExamEntity>
+
+    @Query("SELECT * FROM exam WHERE id = :id")
+    suspend fun getById(id: Long): ExamEntity?
+
     @Insert
     suspend fun insert(item: ExamEntity): Long
 
@@ -134,6 +140,9 @@ interface ExamDao {
 
     @Delete
     suspend fun delete(item: ExamEntity)
+
+    @Query("DELETE FROM exam WHERE id = :id")
+    suspend fun deleteById(id: Long)
 }
 
 @Dao

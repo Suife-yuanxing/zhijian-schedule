@@ -14,6 +14,7 @@ import com.zhijian.schedule.core.data.db.GradeDao
 import com.zhijian.schedule.core.data.db.HolidayDao
 import com.zhijian.schedule.core.data.db.ImportSnapshotDao
 import com.zhijian.schedule.core.data.db.MIGRATION_1_2
+import com.zhijian.schedule.core.data.db.MIGRATION_2_3
 import com.zhijian.schedule.core.data.db.TimeModeDao
 import com.zhijian.schedule.core.data.db.TimetableDao
 import com.zhijian.schedule.core.net.WebViewCookieJar
@@ -35,7 +36,7 @@ object AppModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, "zhijian_schedule.db")
-            .addMigrations(MIGRATION_1_2)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
             .build()
 
     @Provides

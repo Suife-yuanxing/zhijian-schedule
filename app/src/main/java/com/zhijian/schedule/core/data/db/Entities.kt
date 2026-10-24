@@ -151,6 +151,8 @@ data class ExamEntity(
     /** 考试开始时间 epoch millis */
     val examTime: Long,
     val note: String = "",
+    /** 用户手动创建/编辑过的考试，教务同步永不覆盖（与 CourseEntity 同语义） */
+    val manuallyEdited: Boolean = false,
 )
 
 @Entity(
