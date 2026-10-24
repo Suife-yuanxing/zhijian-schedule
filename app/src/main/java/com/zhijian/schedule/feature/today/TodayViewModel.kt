@@ -3,6 +3,7 @@ package com.zhijian.schedule.feature.today
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.zhijian.schedule.core.data.db.CourseEntity
+import com.zhijian.schedule.core.data.db.ExamEntity
 import com.zhijian.schedule.core.data.db.HolidayDao
 import com.zhijian.schedule.core.data.db.HolidayEntity
 import com.zhijian.schedule.core.repository.ScheduleRepository
@@ -31,6 +32,8 @@ data class TodayUiState(
     val courses: List<TodayCourseItem> = emptyList(),
     /** 今天是法定假日（休）或调休补班日（班）；平时为 null */
     val todayHoliday: HolidayEntity? = null,
+    /** 最近一场 14 天内的考试；无则为 null */
+    val nextExam: ExamEntity? = null,
 )
 
 @HiltViewModel
@@ -44,7 +47,8 @@ class TodayViewModel @Inject constructor(
         repository.activeCourses,
         repository.activeSections,
         holidayDao.observeAll(),
-    ) { timetable, courses, sections, holidays ->
+        repository.activeExams,
+    ) { timetable, courses, sections, holidays, exams ->
         val today = LocalDate.now()
         val start = timetable?.let { TimeUtils.parseDate(it.startDate) }
         val week = if (timetable != null && start != null) {
@@ -65,12 +69,19 @@ class TodayViewModel @Inject constructor(
                     )
                 }
         } else emptyList()
+        val nowMillis = System.currentTimeMillis()
+        val horizonMillis = today.plusDays(14).atTime(23, 59)
+            .atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val nextExam = exams
+            .filter { it.examTime >= nowMillis && it.examTime <= horizonMillis }
+            .minByOrNull { it.examTime }
         TodayUiState(
             timetableName = timetable?.name.orEmpty(),
             week = week,
             today = today,
             courses = items,
             todayHoliday = holidays.firstOrNull { it.date == today.toString() },
+            nextExam = nextExam,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), TodayUiState())
 

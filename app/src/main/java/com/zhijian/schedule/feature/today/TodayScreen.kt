@@ -27,6 +27,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -48,11 +52,13 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.zhijian.schedule.core.data.db.CourseEntity
+import com.zhijian.schedule.core.data.db.ExamEntity
 import com.zhijian.schedule.core.data.db.HolidayEntity
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.ui.HolidayColors
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.StaggerIn
+import com.zhijian.schedule.feature.exam.ExamCountdown
 import com.zhijian.schedule.core.ui.cardTilt
 import com.zhijian.schedule.core.ui.cardTiltGlare
 import com.zhijian.schedule.core.ui.cardTiltParallax
@@ -71,6 +77,7 @@ import kotlinx.coroutines.delay
 @Composable
 fun TodayScreen(
     onEditCourse: (Long) -> Unit = {},
+    onOpenExams: () -> Unit = {},
     viewModel: TodayViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
@@ -173,6 +180,12 @@ fun TodayScreen(
                     }
                     Spacer(Modifier.height(18.dp))
                 }
+                ui.nextExam?.let { exam ->
+                    StaggerIn(index = 1) {
+                        ExamCountdownCard(exam, clock, onClick = onOpenExams)
+                    }
+                    Spacer(Modifier.height(14.dp))
+                }
                 val groups = DayPart.entries.mapNotNull { part ->
                     val entries = ui.courses.withIndex()
                         .filter { dayPartOf(it.value.startTime) == part }
@@ -233,6 +246,63 @@ fun TodayScreen(
                 viewModel.deleteCourse(course.id)
                 selectedCourse = null
             },
+        )
+    }
+}
+
+/** 最近考试倒计时卡：14 天内出现在「下一节」之后，点击进考试页 */
+@Composable
+private fun ExamCountdownCard(exam: ExamEntity, now: LocalDateTime, onClick: () -> Unit) {
+    val colors = LocalCourseColors.current
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(colors.accent.copy(alpha = 0.08f))
+            .clickable(onClick = onClick)
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(38.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(colors.accent.copy(alpha = 0.13f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.DateRange,
+                contentDescription = null,
+                tint = colors.accent,
+                modifier = Modifier.size(19.dp),
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                ExamCountdown.cardTitle(exam.name, exam.examTime, now),
+                color = colors.text,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+            )
+            val where = listOf(
+                exam.room.takeIf { it.isNotBlank() },
+                exam.seat.takeIf { it.isNotBlank() }?.let { "$it 号座" },
+            ).filterNotNull().joinToString(" · ")
+            Text(
+                listOfNotNull(ExamCountdown.detailLine(exam.examTime), where.ifBlank { null })
+                    .joinToString(" · "),
+                color = colors.textMuted,
+                fontSize = 11.sp,
+                maxLines = 1,
+            )
+        }
+        Icon(
+            imageVector = Icons.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = colors.textMuted.copy(alpha = 0.7f),
+            modifier = Modifier.size(20.dp),
         )
     }
 }
