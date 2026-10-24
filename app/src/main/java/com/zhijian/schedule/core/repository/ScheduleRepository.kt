@@ -4,6 +4,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.room.withTransaction
 import com.zhijian.schedule.core.data.db.AppDatabase
 import com.zhijian.schedule.core.data.db.CourseEntity
+import com.zhijian.schedule.core.data.db.ExamEntity
 import com.zhijian.schedule.core.data.db.ImportSnapshotEntity
 import com.zhijian.schedule.core.data.db.SectionTimeEntity
 import com.zhijian.schedule.core.data.db.TimeModeEntity
@@ -11,6 +12,7 @@ import com.zhijian.schedule.core.data.db.TimetableEntity
 import com.zhijian.schedule.core.data.prefs.AppSettings
 import com.zhijian.schedule.core.data.prefs.SettingsStore
 import com.zhijian.schedule.core.model.CourseDraft
+import com.zhijian.schedule.core.model.ExamDraft
 import com.zhijian.schedule.core.model.ImportChange
 import com.zhijian.schedule.core.model.ImportChangeKind
 import com.zhijian.schedule.core.model.ImportPreview
@@ -186,6 +188,55 @@ class ScheduleRepository @Inject constructor(
     suspend fun updateTimetable(timetable: TimetableEntity) = db.timetableDao().update(timetable)
 
     suspend fun updateSectionTime(section: SectionTimeEntity) = db.timeModeDao().updateSection(section)
+
+    // ---------- 考试 ----------
+
+    /** 手动保存考试；新建或编辑均视为手动，教务同步永不覆盖 */
+    suspend fun saveExam(
+        name: String,
+        room: String,
+        seat: String,
+        examTime: Long,
+        note: String,
+        examId: Long? = null,
+    ): Long {
+        val tableId = currentTableId() ?: return -1
+        return if (examId == null) {
+            db.examDao().insert(
+                ExamEntity(
+                    tableId = tableId, name = name, room = room, seat = seat,
+                    examTime = examTime, note = note, manuallyEdited = true,
+                )
+            )
+        } else {
+            val old = db.examDao().getById(examId) ?: return -1
+            db.examDao().update(
+                old.copy(
+                    name = name, room = room, seat = seat,
+                    examTime = examTime, note = note, manuallyEdited = true,
+                )
+            )
+            examId
+        }
+    }
+
+    suspend fun deleteExam(id: Long) = db.examDao().deleteById(id)
+
+    /**
+     * 应用教务考试合并（键 = 课程名 + 开考时刻，见 ExamMergePlan）。
+     * @return null 表示没有活动课表
+     */
+    suspend fun applyExamMerge(fetched: List<ExamDraft>): ExamMergePlan.Result? {
+        val tableId = currentTableId() ?: return null
+        val result = ExamMergePlan.plan(db.examDao().getByTable(tableId), fetched)
+        if (!result.changed) return result
+        db.withTransaction {
+            result.toInsert.forEach { db.examDao().insert(it.copy(tableId = tableId)) }
+            result.toUpdate.forEach { db.examDao().update(it) }
+            result.toDeleteIds.forEach { db.examDao().deleteById(it) }
+        }
+        return result
+    }
 
     fun assignColor(name: String): Int {
         val palette = ThemePresets.paper.coursePalette
