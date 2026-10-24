@@ -166,7 +166,16 @@ fun TodayScreen(
         }
 
         when {
-            ui.courses.isEmpty() -> StaggerIn(index = 0) { EmptyToday(ui) }
+            ui.courses.isEmpty() -> {
+                StaggerIn(index = 0) { EmptyToday(ui) }
+                Spacer(Modifier.height(14.dp))
+                ui.nextExam?.let { exam ->
+                    StaggerIn(index = 1) {
+                        ExamCountdownCard(exam, clock, onClick = onOpenExams)
+                    }
+                    Spacer(Modifier.height(14.dp))
+                }
+            }
             else -> {
                 current?.let { item ->
                     StaggerIn(index = 0) {
