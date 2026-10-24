@@ -40,9 +40,8 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import com.zhijian.schedule.core.ui.JellySwitch
 import com.zhijian.schedule.core.ui.TapIconButton
 import com.zhijian.schedule.core.ui.TapTextButton
 import com.zhijian.schedule.core.ui.buttonFeedback
@@ -625,15 +624,11 @@ private fun DownloadOptions(
                 )
             }
             Spacer(Modifier.width(10.dp))
-            Switch(
+            JellySwitch(
                 checked = ui.mirrorsEnabled,
                 onCheckedChange = {
                     viewModel.setMirrorsEnabled(it)
                 },
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = colors.onAccent,
-                    checkedTrackColor = colors.accent,
-                ),
             )
         }
         Row(

@@ -42,7 +42,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -80,6 +79,7 @@ import com.zhijian.schedule.core.data.db.TimetableEntity
 import com.zhijian.schedule.core.theme.GridStyles
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.theme.ThemePresets
+import com.zhijian.schedule.core.ui.JellySwitch
 import com.zhijian.schedule.core.ui.StaggerIn
 import com.zhijian.schedule.core.ui.TapTextButton
 import com.zhijian.schedule.core.ui.RevealState
@@ -737,7 +737,7 @@ private fun SettingSwitchRow(
             Text(title, color = colors.text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
             Text(subtitle, color = colors.textMuted, fontSize = 11.sp)
         }
-        Switch(
+        JellySwitch(
             checked = checked,
             onCheckedChange = {
                 onCheckedChange(it)

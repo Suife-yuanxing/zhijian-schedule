@@ -48,7 +48,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.Composable
@@ -72,6 +71,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.zhijian.schedule.core.model.ImportChange
 import com.zhijian.schedule.core.model.ImportChangeKind
 import com.zhijian.schedule.core.theme.LocalCourseColors
+import com.zhijian.schedule.core.ui.JellySwitch
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.SecondaryTopBar
 import com.zhijian.schedule.core.ui.StaggerIn
@@ -396,7 +396,7 @@ private fun PreviewContent(
                         fontSize = 11.sp,
                     )
                 }
-                Switch(
+                JellySwitch(
                     checked = applyConflicts,
                     onCheckedChange = {
                         onToggleConflicts(it)

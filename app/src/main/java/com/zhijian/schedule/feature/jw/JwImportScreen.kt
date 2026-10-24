@@ -42,7 +42,6 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -63,6 +62,7 @@ import com.zhijian.schedule.core.jw.JwAdapterRegistry
 import com.zhijian.schedule.core.model.ImportChangeKind
 import com.zhijian.schedule.core.theme.CourseColors
 import com.zhijian.schedule.core.theme.LocalCourseColors
+import com.zhijian.schedule.core.ui.JellySwitch
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.SecondaryTopBar
 import com.zhijian.schedule.core.ui.TapButton
@@ -334,7 +334,7 @@ fun JwImportScreen(
                         fontSize = 11.sp,
                     )
                 }
-                Switch(
+                JellySwitch(
                     checked = viewModel.autoSyncEnabled,
                     onCheckedChange = {
                         viewModel.setAutoSync(it)

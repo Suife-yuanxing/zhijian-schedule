@@ -40,7 +40,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -61,6 +60,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import com.zhijian.schedule.capsule.CapsuleReliability
 import com.zhijian.schedule.core.data.db.SectionTimeEntity
+import com.zhijian.schedule.core.ui.JellySwitch
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.SecondaryTopBar
 import com.zhijian.schedule.core.ui.StaggerIn
@@ -234,7 +234,7 @@ fun SettingsScreen(
                                 fontSize = 12.sp,
                             )
                         }
-                        SettingsSwitch(
+                        JellySwitch(
                             checked = ui.settings.capsuleEnabled,
                             onCheckedChange = { viewModel.setCapsule(it) },
                         )
@@ -289,7 +289,7 @@ fun SettingsScreen(
                                     fontSize = 12.sp,
                                 )
                             }
-                            SettingsSwitch(
+                            JellySwitch(
                                 checked = ui.settings.capsuleAlarmFallbackEnabled,
                                 onCheckedChange = { viewModel.setCapsuleAlarmFallback(it) },
                             )
@@ -318,7 +318,7 @@ fun SettingsScreen(
                                 fontSize = 12.sp,
                             )
                         }
-                        SettingsSwitch(
+                        JellySwitch(
                             checked = ui.settings.calendarSyncEnabled && ui.calendarPermissionGranted,
                             enabled = ui.calendarAvailable,
                             onCheckedChange = { checked ->
@@ -560,21 +560,6 @@ private fun SectionEditDialog(
             ) { Text("保存") }
         },
         dismissButton = { TapTextButton(onClick = onDismiss) { Text("取消") } },
-    )
-}
-
-@Composable
-private fun SettingsSwitch(
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    enabled: Boolean = true,
-) {
-    Switch(
-        checked = checked,
-        enabled = enabled,
-        onCheckedChange = {
-            onCheckedChange(it)
-        },
     )
 }
 
