@@ -29,6 +29,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Lock
@@ -111,6 +112,7 @@ fun ProfileScreen(
     onOpenSettings: () -> Unit = {},
     onOpenGrades: () -> Unit = {},
     onOpenGradesFromSummary: () -> Unit = {},
+    onOpenExams: () -> Unit = {},
     viewModel: ProfileViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
@@ -224,6 +226,20 @@ fun ProfileScreen(
                             title = "成绩查询",
                             subtitle = "教务成绩\n加权绩点 / 平均分",
                             onClick = onOpenGrades,
+                        )
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                GroupedEntryCard {
+                    ProfileEntryAnchor(
+                        key = ProfileEntryKeys.EXAMS,
+                        transitions = entryTransitions,
+                    ) {
+                        GroupedEntryRow(
+                            painter = rememberVectorPainter(Icons.Filled.DateRange),
+                            title = "考试安排",
+                            subtitle = ui.examPreview.ifBlank { "添加考试 · 考前自动提醒" },
+                            onClick = onOpenExams,
                         )
                     }
                 }

@@ -10,6 +10,7 @@ import com.zhijian.schedule.core.jw.GradeParser
 import com.zhijian.schedule.core.jw.toRecord
 import com.zhijian.schedule.core.repository.ScheduleRepository
 import com.zhijian.schedule.core.util.TimeUtils
+import com.zhijian.schedule.feature.exam.ExamCountdown
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.LocalDate
 import javax.inject.Inject
@@ -27,6 +28,8 @@ data class ProfileUiState(
     val courseCount: Int = 0,
     val weightedGpa: Double? = null,
     val totalCredits: Double = 0.0,
+    /** 最近一场考试的预览文案，如「高等数学 · 3 天」；无考试为空 */
+    val examPreview: String = "",
 )
 
 @HiltViewModel
@@ -41,13 +44,21 @@ class ProfileViewModel @Inject constructor(
         repository.activeTimetable,
         repository.activeCourses,
         gradeDao.observeAll(),
-    ) { settings, timetable, courses, grades ->
+        repository.activeExams,
+    ) { settings, timetable, courses, grades, exams ->
         val today = LocalDate.now()
         val week = timetable?.let { table ->
             TimeUtils.parseDate(table.startDate)
                 ?.let { TimeUtils.weekOfSemester(it, table.totalWeeks, today) }
         }
         val stats = GradeParser.stats(grades.map { it.toRecord() })
+        val nowDateTime = java.time.LocalDateTime.now()
+        val nextExam = exams
+            .filter { it.examTime >= System.currentTimeMillis() }
+            .minByOrNull { it.examTime }
+        val examPreview = nextExam
+            ?.let { "${it.name} · ${ExamCountdown.badge(it.examTime, nowDateTime)}" }
+            .orEmpty()
         ProfileUiState(
             settings = settings,
             timetable = timetable,
@@ -55,6 +66,7 @@ class ProfileViewModel @Inject constructor(
             courseCount = courses.size,
             weightedGpa = stats.weightedGpa,
             totalCredits = stats.totalCredits,
+            examPreview = examPreview,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ProfileUiState())
 

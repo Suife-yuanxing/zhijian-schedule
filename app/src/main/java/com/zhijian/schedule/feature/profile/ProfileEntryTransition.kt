@@ -56,6 +56,7 @@ object ProfileEntryKeys {
     const val IMPORT = "profile-entry-import"
     const val GRADES = "profile-entry-grades"
     const val GRADES_GPA = "profile-entry-grades-gpa"
+    const val EXAMS = "profile-entry-exams"
     const val SETTINGS = "profile-entry-settings"
 }
 
