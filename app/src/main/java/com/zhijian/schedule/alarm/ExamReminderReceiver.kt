@@ -3,30 +3,42 @@ package com.zhijian.schedule.alarm
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import com.zhijian.schedule.core.data.db.ExamDao
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
-/** 考前提醒触发：数据随 intent 携带，无需回查数据库（考试时刻固定，无需续排） */
+/** 考前提醒触发；考试时刻固定无需续排，但需防幽灵闹钟（考试已删而闹钟未及撤销） */
 @AndroidEntryPoint
 class ExamReminderReceiver : BroadcastReceiver() {
+
+    @Inject lateinit var examDao: ExamDao
 
     override fun onReceive(context: Context, intent: Intent) {
         val examId = intent.getLongExtra(EXTRA_EXAM_ID, -1L)
         if (examId <= 0) return
-        Notifications.showExamReminder(
-            context = context,
-            examId = examId,
-            name = intent.getStringExtra(EXTRA_NAME).orEmpty(),
-            room = intent.getStringExtra(EXTRA_ROOM).orEmpty(),
-            seat = intent.getStringExtra(EXTRA_SEAT).orEmpty(),
-            leadMinutes = intent.getIntExtra(EXTRA_LEAD, 60),
-        )
+        val pending = goAsync()
+        CoroutineScope(Dispatchers.Default).launch {
+            try {
+                val exam = examDao.getById(examId) ?: return@launch
+                Notifications.showExamReminder(
+                    context = context,
+                    examId = exam.id,
+                    name = exam.name,
+                    room = exam.room,
+                    seat = exam.seat,
+                    leadMinutes = intent.getIntExtra(EXTRA_LEAD, 60),
+                )
+            } finally {
+                pending.finish()
+            }
+        }
     }
 
     companion object {
         const val EXTRA_EXAM_ID = "exam_id"
-        const val EXTRA_NAME = "name"
-        const val EXTRA_ROOM = "room"
-        const val EXTRA_SEAT = "seat"
         const val EXTRA_LEAD = "lead"
     }
 }

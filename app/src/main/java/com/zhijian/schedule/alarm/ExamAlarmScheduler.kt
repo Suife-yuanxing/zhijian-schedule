@@ -21,9 +21,16 @@ class ExamAlarmScheduler @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
 
+    /** 当前由本调度器托管的考试 id：全量重排时据此撤销已删除考试的残留闹钟 */
+    private val managedIds = mutableSetOf<Long>()
+
+    @Synchronized
     fun rescheduleAll(exams: List<ExamEntity>, now: LocalDateTime = LocalDateTime.now()) {
         val exactAllowed = canScheduleExact()
-        exams.forEach { cancel(it.id) }
+        val keepIds = exams.mapTo(mutableSetOf()) { it.id }
+        managedIds.filter { it !in keepIds }.forEach { cancel(it) }
+        managedIds.clear()
+        managedIds.addAll(keepIds)
         exams.forEach { exam ->
             ExamAlarms.slots(exam, now).forEachIndexed { index, slot ->
                 schedule(exam, slot, index, exactAllowed)
@@ -31,6 +38,7 @@ class ExamAlarmScheduler @Inject constructor(
         }
     }
 
+    @Synchronized
     fun cancel(examId: Long) {
         val manager = context.getSystemService(AlarmManager::class.java) ?: return
         (ExamAlarms.LEAD_MINUTES.indices).forEach { slot ->
@@ -49,9 +57,6 @@ class ExamAlarmScheduler @Inject constructor(
         val triggerAt = slot.at.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
         val intent = Intent(context, ExamReminderReceiver::class.java).apply {
             putExtra(ExamReminderReceiver.EXTRA_EXAM_ID, exam.id)
-            putExtra(ExamReminderReceiver.EXTRA_NAME, exam.name)
-            putExtra(ExamReminderReceiver.EXTRA_ROOM, exam.room)
-            putExtra(ExamReminderReceiver.EXTRA_SEAT, exam.seat)
             putExtra(ExamReminderReceiver.EXTRA_LEAD, slot.leadMinutes)
         }
         val pi = PendingIntent.getBroadcast(
