@@ -59,6 +59,7 @@ class CapsuleCoordinator @Inject constructor(
             now = now,
             reminderMinutes = if (settings.reminderEnabled) settings.reminderMinutes else 0,
             holidayName = todayHolidayName(now),
+            exams = repository.activeExams.first(),
         )
         val posted = CapsuleNotifier.post(context, plan, previousCardKey, previousSkeletonKey)
         scheduleNextTransition(plan, now, settings.capsuleAlarmFallbackEnabled)

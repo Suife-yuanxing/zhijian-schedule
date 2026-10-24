@@ -9,6 +9,7 @@ import com.zhijian.schedule.capsule.nextTransitionAtMillis
 import com.zhijian.schedule.capsule.reminderMilestones
 import com.zhijian.schedule.capsule.shouldUseAlarmClockFallback
 import com.zhijian.schedule.core.data.db.CourseEntity
+import com.zhijian.schedule.core.data.db.ExamEntity
 import com.zhijian.schedule.core.data.db.SectionTimeEntity
 import com.zhijian.schedule.core.data.db.TimetableEntity
 import com.zhijian.schedule.core.util.WeekMask
@@ -59,6 +60,76 @@ class CapsulePlanTest {
     )
 
     private fun tuesday(h: Int, m: Int) = LocalDateTime.of(2026, 10, 13, h, m)
+
+    // ---------- 考试伪课程 ----------
+
+    private fun exam(
+        at: LocalDateTime,
+        name: String = "高等数学",
+        room: String = "教305",
+        seat: String = "12",
+    ) = ExamEntity(
+        id = 9, tableId = 1, name = name, room = room, seat = seat,
+        examTime = at.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+    )
+
+    @Test
+    fun examDayMapsToPseudoCourseAndWinsSameSlot() {
+        // 考试 14:00 开考（周二），同时排了一节 14:20 的课：开考后 10 分钟应显示考试态
+        val plan = buildCapsulePlan(
+            timetable(), listOf(course(day = 2, 5, 6, name = "下午课")),
+            sections(), tuesday(14, 10), reminderMinutes = 30,
+            exams = listOf(exam(at = tuesday(14, 0))),
+        )
+        val ongoing = plan as CapsulePlan.Ongoing
+        assertEquals("高等数学 · 考试", ongoing.course.name)
+        assertEquals("教305 · 12 号座", ongoing.course.room)
+    }
+
+    @Test
+    fun examBeforeStartEntersAboutToStartWindow() {
+        val plan = buildCapsulePlan(
+            timetable(), emptyList(), sections(), tuesday(13, 50), reminderMinutes = 30,
+            exams = listOf(exam(at = tuesday(14, 0))),
+        )
+        val about = plan as CapsulePlan.AboutToStart
+        assertEquals("高等数学 · 考试", about.course.name)
+        assertEquals(10, about.minutesUntil)
+    }
+
+    @Test
+    fun examDayDoneNextTextMentionsExam() {
+        val plan = buildCapsulePlan(
+            timetable(), emptyList(), sections(), tuesday(12, 30), reminderMinutes = 30,
+            exams = listOf(exam(at = LocalDateTime.of(2026, 10, 14, 14, 0))),
+        )
+        val done = plan as CapsulePlan.DayDone
+        assertEquals("明天 14:00 · 高等数学考试", done.nextText)
+    }
+
+    @Test
+    fun examNotTodayStillShowsInNextText() {
+        val plan = buildCapsulePlan(
+            timetable(), emptyList(), sections(), tuesday(10, 30), reminderMinutes = 30,
+            exams = listOf(exam(at = LocalDateTime.of(2026, 10, 15, 14, 0))),
+        )
+        val done = plan as CapsulePlan.DayDone
+        assertEquals(false, done.hadClassesToday)
+        assertEquals("周四 14:00 · 高等数学考试", done.nextText)
+    }
+
+    @Test
+    fun examEarlierThanCourseWinsNextText() {
+        // 明天既有 08:20 的课也有 14:00 的考试 → nextText 取较早的课
+        val plan = buildCapsulePlan(
+            timetable(),
+            listOf(course(day = 3, 1, 2, name = "周三早课")),
+            sections(), tuesday(12, 30), reminderMinutes = 30,
+            exams = listOf(exam(at = LocalDateTime.of(2026, 10, 14, 14, 0))),
+        )
+        val done = plan as CapsulePlan.DayDone
+        assertEquals("明天 08:20 · 周三早课", done.nextText)
+    }
 
     @Test
     fun ongoingMidClassComputesProgress() {

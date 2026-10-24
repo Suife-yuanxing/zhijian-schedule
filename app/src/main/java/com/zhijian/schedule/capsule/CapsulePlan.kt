@@ -1,11 +1,13 @@
 package com.zhijian.schedule.capsule
 
 import com.zhijian.schedule.core.data.db.CourseEntity
+import com.zhijian.schedule.core.data.db.ExamEntity
 import com.zhijian.schedule.core.data.db.SectionTimeEntity
 import com.zhijian.schedule.core.data.db.TimetableEntity
 import com.zhijian.schedule.core.util.TimeUtils
 import com.zhijian.schedule.core.util.WeekMask
 import java.time.Duration
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -120,6 +122,12 @@ private const val REMINDER_HIGHLIGHT_MS = REMINDER_HIGHLIGHT_MINUTES * 60_000L
 val CapsulePlan.isLive: Boolean
     get() = this is CapsulePlan.Ongoing || this is CapsulePlan.AboutToStart
 
+/** 考试伪课程的展示时长：ExamEntity 无时长字段，按 120 分钟计（已知限制，见 spec §11） */
+private const val EXAM_PSEUDO_DURATION_MINUTES = 120L
+
+/** 考试伪课程色：陶土红（纯数据层无主题访问，用固定色值） */
+private const val EXAM_COLOR = 0xFFC4704F.toInt()
+
 fun buildCapsulePlan(
     timetable: TimetableEntity?,
     courses: List<CourseEntity>,
@@ -129,6 +137,8 @@ fun buildCapsulePlan(
     reminderMinutes: Int,
     /** 今天是法定假日（休）时的节日名；调休补班日与平时传 null */
     holidayName: String? = null,
+    /** 教务/手动录入的考试；仅考试当天的参与状态机（伪课程，排同日最前） */
+    exams: List<ExamEntity> = emptyList(),
 ): CapsulePlan {
     val table = timetable ?: return CapsulePlan.NoTable
     val startDate = TimeUtils.parseDate(table.startDate) ?: return CapsulePlan.NoTable
@@ -140,7 +150,7 @@ fun buildCapsulePlan(
     if (holidayName != null) {
         return CapsulePlan.Holiday(
             name = holidayName,
-            nextText = nextOccurrenceText(startDate, table.totalWeeks, courses, sections, today),
+            nextText = nextOccurrenceText(startDate, table.totalWeeks, courses, sections, today, exams),
         )
     }
 
@@ -154,7 +164,30 @@ fun buildCapsulePlan(
             .toList()
     }
 
-    todayCourses
+    // 考试当天的考试映射为伪课程：与真实课程同槽时考试优先（考试日通常停课）
+    val examCourses = exams.asSequence()
+        .mapNotNull { e ->
+            val start = LocalDateTime.ofInstant(Instant.ofEpochMilli(e.examTime), ZoneId.systemDefault())
+            if (start.toLocalDate() != today) return@mapNotNull null
+            val startTime = start.toLocalTime()
+            val endTime = startTime.plusMinutes(EXAM_PSEUDO_DURATION_MINUTES)
+            CapsuleCourse(
+                name = "${e.name} · 考试",
+                room = listOf(
+                    e.room.takeIf { it.isNotBlank() },
+                    e.seat.takeIf { it.isNotBlank() }?.let { "$it 号座" },
+                ).filterNotNull().joinToString(" · "),
+                teacher = "",
+                color = EXAM_COLOR,
+                start = startTime,
+                end = if (endTime <= startTime) LocalTime.MAX else endTime, // 跨零点截断
+                sectionText = "开考 $startTime",
+            )
+        }
+        .toList()
+    val allToday = (examCourses + todayCourses).sortedBy { it.start }
+
+    allToday
         .firstOrNull { !nowTime.isBefore(it.start) && nowTime.isBefore(it.end) }
         ?.let { c ->
             val total = secondsBetween(c.start, c.end)
@@ -183,14 +216,14 @@ fun buildCapsulePlan(
             )
         }
 
-    todayCourses
+    allToday
         .firstOrNull { it.start.isAfter(nowTime) }
         ?.let { c ->
             val minutesUntil = Duration.between(nowTime, c.start).toMinutes().coerceAtLeast(0)
             // 课前提醒窗口：从 max(上一节课下课, 开课前 reminderMinutes) 起倒数
             val windowStart = if (reminderMinutes > 0) {
                 val remindAt = c.start.minusMinutes(reminderMinutes.toLong())
-                val prevEnd = todayCourses.lastOrNull { !it.end.isAfter(nowTime) }?.end
+                val prevEnd = allToday.lastOrNull { !it.end.isAfter(nowTime) }?.end
                 if (prevEnd != null && prevEnd.isAfter(remindAt)) prevEnd else remindAt
             } else null
             if (windowStart != null && !nowTime.isBefore(windowStart)) {
@@ -212,8 +245,8 @@ fun buildCapsulePlan(
         }
 
     return CapsulePlan.DayDone(
-        hadClassesToday = todayCourses.isNotEmpty(),
-        nextText = nextOccurrenceText(startDate, table.totalWeeks, courses, sections, today),
+        hadClassesToday = allToday.isNotEmpty(),
+        nextText = nextOccurrenceText(startDate, table.totalWeeks, courses, sections, today, exams),
     )
 }
 
@@ -344,25 +377,44 @@ const val ALARM_CLOCK_WINDOW_MS = 15 * 60_000L
 private fun nextMidnightMillis(now: LocalDateTime): Long =
     now.toLocalDate().plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
 
-/** 未来 7 天里最近的一节课，如「明天 08:20 · 包装材料与检测」 */
+/**
+ * 未来 7 天里最近的一节课或考试，如「明天 08:20 · 包装材料与检测」「明天 14:00 · 高等数学考试」。
+ * 同一天既有课又有考试时取较早者。
+ */
 private fun nextOccurrenceText(
     startDate: LocalDate,
     totalWeeks: Int,
     courses: List<CourseEntity>,
     sections: List<SectionTimeEntity>,
     today: LocalDate,
+    exams: List<ExamEntity>,
 ): String? {
     for (offset in 1..7) {
         val date = today.plusDays(offset.toLong())
         val week = TimeUtils.weekOfSemester(startDate, totalWeeks, date) ?: continue
         val dow = TimeUtils.dayOfWeek(date)
+        val label = if (offset == 1) "明天" else TimeUtils.dayName(dow)
         val course = courses
             .filter { it.dayOfWeek == dow && WeekMask.contains(it.weekMask, week) }
             .sortedBy { it.startSection }
-            .firstOrNull { courseOf(it, sections) != null } ?: continue
-        val start = sections.getOrNull(course.startSection - 1)?.startTime ?: continue
-        val label = if (offset == 1) "明天" else TimeUtils.dayName(dow)
-        return "$label $start · ${course.name}"
+            .firstOrNull { courseOf(it, sections) != null }
+        val courseTime = course
+            ?.let { sections.getOrNull(it.startSection - 1)?.startTime }
+            ?.let { TimeUtils.parseTime(it) }
+        val exam = exams.asSequence()
+            .map { e ->
+                e to LocalDateTime.ofInstant(Instant.ofEpochMilli(e.examTime), ZoneId.systemDefault())
+            }
+            .filter { it.second.toLocalDate() == date }
+            .minByOrNull { it.second.toLocalTime() }
+        // 考试比当天第一节课早（或当天没课）→ 显示考试
+        if (exam != null && (courseTime == null || exam.second.toLocalTime() <= courseTime)) {
+            return "$label ${exam.second.toLocalTime()} · ${exam.first.name}考试"
+        }
+        if (course != null && courseTime != null) {
+            val start = sections.getOrNull(course.startSection - 1)?.startTime ?: continue
+            return "$label $start · ${course.name}"
+        }
     }
     return null
 }
