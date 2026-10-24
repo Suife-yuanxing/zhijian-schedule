@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -33,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -40,6 +42,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.zhijian.schedule.core.jw.GradeParser
 import com.zhijian.schedule.core.jw.GradeRecord
 import com.zhijian.schedule.core.jw.GradeStats
+import com.zhijian.schedule.core.jw.GradeTrend
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.ui.SecondaryTopBar
 import com.zhijian.schedule.core.ui.TapIconButton
@@ -68,6 +71,8 @@ fun GradesScreen(
         if (term == null) state.records else state.records.filter { it.term == term }
     }
     val stats = remember(filtered) { GradeParser.stats(filtered) }
+    val trend = remember(state.records) { GradeTrend.perTerm(state.records) }
+    val latestTerm = remember(state.records) { GradeTrend.latest(state.records) }
     val groups = remember(filtered) {
         filtered.groupBy { it.term }.toSortedMap(compareByDescending { it })
     }
@@ -118,7 +123,10 @@ fun GradesScreen(
             ) {
                 item(key = "summary") {
                     Spacer(Modifier.height(4.dp))
-                    SummaryCard(stats = stats, term = term, fetchedAt = state.fetchedAt, failed = state.error != null || state.needsLogin)
+                    SummaryCard(stats, term, state.fetchedAt, state.error != null || state.needsLogin, latestTerm)
+                }
+                if (trend.size >= 2) {
+                    item(key = "trend") { TermTrendCard(trend) }
                 }
                 item(key = "chips") {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -146,7 +154,13 @@ fun GradesScreen(
 }
 
 @Composable
-private fun SummaryCard(stats: GradeStats, term: String?, fetchedAt: Long, failed: Boolean) {
+private fun SummaryCard(
+    stats: GradeStats,
+    term: String?,
+    fetchedAt: Long,
+    failed: Boolean,
+    latestTerm: GradeTrend.TermSummary?,
+) {
     val colors = LocalCourseColors.current
     Column(
         Modifier
@@ -165,6 +179,16 @@ private fun SummaryCard(stats: GradeStats, term: String?, fetchedAt: Long, faile
                 BigStat("${stats.failCount}", "挂科", FAIL_COLOR)
             }
         }
+        // 「全部学期」口径不含补考重修与等级制课程，单列最新学期供快速对照
+        if (term == null && latestTerm != null) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = "最新学期 ${latestTerm.term}：绩点 ${format2(latestTerm.gpa)} · " +
+                    "${format1(latestTerm.credits)} 学分",
+                color = colors.textMuted,
+                fontSize = 12.sp,
+            )
+        }
         stats.weightedAvg?.let {
             Spacer(Modifier.height(6.dp))
             Text("加权平均分 ${format1(it)}", color = colors.textMuted, fontSize = 12.sp)
@@ -180,6 +204,67 @@ private fun SummaryCard(stats: GradeStats, term: String?, fetchedAt: Long, faile
             color = if (failed) FAIL_COLOR else colors.textMuted,
             fontSize = 11.sp,
         )
+    }
+}
+
+@Composable
+private fun TermTrendCard(summaries: List<GradeTrend.TermSummary>) {
+    val colors = LocalCourseColors.current
+    val maxGpa = summaries.mapNotNull { it.gpa }.maxOrNull() ?: return
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(colors.surface, RoundedCornerShape(14.dp))
+            .padding(16.dp),
+    ) {
+        Text("学期绩点趋势", color = colors.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        Text(
+            "只计有绩点课程 · 补考重修不参与",
+            color = colors.textMuted,
+            fontSize = 11.sp,
+            modifier = Modifier.padding(top = 2.dp),
+        )
+        Spacer(Modifier.height(10.dp))
+        summaries.forEach { s ->
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    s.term,
+                    color = colors.textMuted,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    modifier = Modifier.width(88.dp),
+                )
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(colors.border.copy(alpha = 0.4f)),
+                ) {
+                    val fraction = ((s.gpa ?: 0.0) / maxGpa.coerceAtLeast(0.01)).toFloat()
+                    Box(
+                        Modifier
+                            .fillMaxWidth(fraction.coerceIn(0.02f, 1f))
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(colors.accent),
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    s.gpa?.let { format2(it) } ?: "—",
+                    color = colors.text,
+                    fontSize = 11.sp,
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.width(34.dp),
+                )
+            }
+        }
     }
 }
 
