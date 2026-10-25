@@ -35,6 +35,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material3.Button
@@ -433,7 +435,10 @@ fun JwImportScreen(
                 showScriptPicker = false
                 onOpenScripts()
             },
-            onRun = ::runScript,
+            onRun = { option ->
+                showScriptPicker = false
+                runScript(option)
+            },
         )
     }
 
@@ -679,6 +684,11 @@ private fun WebViewBox(
                 settings.setSupportMultipleWindows(true)
                 CookieManager.getInstance().setAcceptCookie(true)
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                // 脚本执行桥：创建时永久注入（运行时注入对已加载页面不保证生效）
+                addJavascriptInterface(
+                    com.zhijian.schedule.core.jw.script.JwScriptRunner.PaperJavascriptBridge(),
+                    "PaperBridge",
+                )
                 webChromeClient = object : WebChromeClient() {
                     override fun onProgressChanged(view: WebView?, newProgress: Int) {
                         onProgress(newProgress)
@@ -770,7 +780,8 @@ private fun WebViewBox(
 private fun formatTime(millis: Long): String =
     SimpleDateFormat("M月d日 HH:mm", Locale.CHINA).format(Date(millis))
 
-/** 脚本选择对话框：命中当前站点的排前；底部入口进管理页（spec §4） */
+/** 脚本选择底部弹层：命中当前站点的排前；底部入口进管理页（spec §4） */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ScriptPickerDialog(
     pageUrl: String,
@@ -784,93 +795,93 @@ private fun ScriptPickerDialog(
     LaunchedEffect(pageUrl) {
         options.value = optionsProvider()
     }
-    androidx.compose.material3.AlertDialog(
+    val sheetState = androidx.compose.material3.rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+    )
+    androidx.compose.material3.ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text("用脚本导入") },
-        text = {
-            Column {
-                val list = options.value
-                when {
-                    list == null -> {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp,
-                            color = colors.accent,
-                        )
-                    }
-                    list.isEmpty() -> {
-                        Text(
-                            "还没有可用的课程脚本。可在「管理脚本」里导入 .js 或从仓库安装。",
-                            color = colors.textMuted,
-                            fontSize = 13.sp,
-                        )
-                    }
-                    else -> {
-                        LazyColumn(Modifier.height(340.dp)) {
-                            items(list, key = { it.id }) { option ->
-                                val enabled = option.runnable
-                                val interaction = remember { MutableInteractionSource() }
-                                Row(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .buttonFeedback(interaction, enabled = enabled)
-                                        .clickable(
-                                            interactionSource = interaction,
-                                            indication = null,
-                                            enabled = enabled,
-                                            onClick = { onRun(option) },
-                                        )
-                                        .padding(vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text(
-                                            text = option.name,
-                                            color = if (enabled) colors.text else colors.textMuted,
-                                            fontSize = 14.sp,
-                                            fontWeight = FontWeight.Medium,
-                                        )
-                                        Text(
-                                            text = option.subtitle(),
-                                            color = colors.textMuted,
-                                            fontSize = 11.sp,
-                                        )
-                                        if (option.entryHint.isNotBlank()) {
-                                            Text(
-                                                text = option.entryHint,
-                                                color = colors.textMuted,
-                                                fontSize = 11.sp,
-                                            )
-                                        }
-                                        if (option.matched) {
-                                            Text(
-                                                text = "适用于当前站点",
-                                                color = colors.accent,
-                                                fontSize = 11.sp,
-                                            )
-                                        }
-                                        if (!option.enabled) {
-                                            Text(text = "已在管理页停用", color = colors.textMuted, fontSize = 11.sp)
-                                        } else if (!option.matched && option.hosts.isNotEmpty()) {
-                                            Text(
-                                                text = "当前页面不属于该脚本适用的站点",
-                                                color = colors.textMuted,
-                                                fontSize = 11.sp,
-                                            )
-                                        }
-                                    }
-                                }
+        sheetState = sheetState,
+    ) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+            Text(
+                text = "用脚本导入",
+                style = MaterialTheme.typography.titleMedium,
+                color = colors.text,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(10.dp))
+            val list = options.value
+            when {
+                list == null -> {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = colors.accent,
+                    )
+                }
+                list.isEmpty() -> {
+                    Text(
+                        "还没有可用的课程脚本。可在「管理脚本」里导入 .js 或从仓库安装。",
+                        color = colors.textMuted,
+                        fontSize = 13.sp,
+                    )
+                }
+                else -> {
+                    list.forEach { option ->
+                        val enabled = option.runnable
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable(enabled = enabled) { onRun(option) }
+                                .padding(vertical = 10.dp),
+                        ) {
+                            Text(
+                                text = option.name,
+                                color = if (enabled) colors.text else colors.textMuted,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium,
+                            )
+                            Text(
+                                text = option.subtitle(),
+                                color = colors.textMuted,
+                                fontSize = 11.sp,
+                            )
+                            if (option.entryHint.isNotBlank()) {
+                                Text(
+                                    text = option.entryHint,
+                                    color = colors.textMuted,
+                                    fontSize = 11.sp,
+                                )
+                            }
+                            if (option.matched) {
+                                Text(
+                                    text = "适用于当前站点",
+                                    color = colors.accent,
+                                    fontSize = 11.sp,
+                                )
+                            }
+                            if (!option.enabled) {
+                                Text(text = "已在管理页停用", color = colors.textMuted, fontSize = 11.sp)
+                            } else if (!option.matched && option.hosts.isNotEmpty()) {
+                                Text(
+                                    text = "当前页面不属于该脚本适用的站点",
+                                    color = colors.textMuted,
+                                    fontSize = 11.sp,
+                                )
                             }
                         }
                     }
                 }
             }
-        },
-        confirmButton = {
-            TapTextButton(onClick = onManage) { Text("管理脚本…") }
-        },
-        dismissButton = {
-            TapTextButton(onClick = onDismiss) { Text("取消") }
-        },
-    )
+            HorizontalDivider(color = colors.border)
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                TapTextButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("取消") }
+                TapTextButton(onClick = onManage, modifier = Modifier.weight(1f)) { Text("管理脚本…") }
+            }
+            Spacer(Modifier.height(20.dp))
+        }
+    }
 }

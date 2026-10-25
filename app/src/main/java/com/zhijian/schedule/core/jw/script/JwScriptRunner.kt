@@ -4,7 +4,6 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import java.net.URI
 import java.util.concurrent.CancellationException
-import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -14,6 +13,10 @@ import org.json.JSONObject
 /**
  * 页面上下文脚本执行（spec §2）：把脚本注入当前教务 WebView 的主 frame，
  * 脚本读 DOM / 同源 fetch，经 bridge 回传 JSON 信封。20s 超时；执行完清理全局残留。
+ *
+ * bridge 在 WebView 创建时由 [PaperJavascriptBridge] 永久注入（已加载页面上
+ * 事后 addJavascriptInterface 在部分 ROM 不立即生效），通过 [ScriptBridgeHub]
+ * 路由到当次运行的 deferred。
  */
 object JwScriptRunner {
 
@@ -24,7 +27,6 @@ object JwScriptRunner {
         data class Failed(val message: String, val kind: FailureKind) : RunResult
     }
 
-    private const val BRIDGE_NAME = "PaperBridge"
     private const val DEFAULT_TIMEOUT_MS = 20_000L
 
     suspend fun run(
@@ -45,7 +47,7 @@ object JwScriptRunner {
             }
         }
         val deferred = CompletableDeferred<String>()
-        webView.addJavascriptInterface(Bridge(deferred), BRIDGE_NAME)
+        ScriptBridgeHub.attach(deferred)
         try {
             webView.evaluateJavascript(buildLoader(sourceText, totalWeeks), null)
             val outcome = try {
@@ -63,7 +65,7 @@ object JwScriptRunner {
                 is Outcome.ScriptError -> RunResult.Failed(outcome.message, FailureKind.SCRIPT_ERROR)
             }
         } finally {
-            runCatching { webView.removeJavascriptInterface(BRIDGE_NAME) }
+            ScriptBridgeHub.detach(deferred)
             // 清理全局引用，避免下一个脚本读到上一个的残留
             runCatching {
                 webView.evaluateJavascript("try { delete globalThis.__paperScheduleScript } catch (e) {}", null)
@@ -77,29 +79,39 @@ object JwScriptRunner {
         data class ScriptError(val message: String) : Outcome
     }
 
-    /** bridge 回调跑在 WebView 的 JavaBridge 线程，用原子标志保证只完成一次 */
-    private class Bridge(private val deferred: CompletableDeferred<String>) {
-        private val done = AtomicReference(false)
+    /** bridge 回调跑在 WebView 的 JavaBridge 线程；attach 的 deferred 即当次运行 */
+    internal object ScriptBridgeHub {
+        @Volatile
+        private var current: CompletableDeferred<String>? = null
 
-        private fun completeOnce(block: () -> Unit) {
-            if (done.compareAndSet(false, true)) block()
+        fun attach(deferred: CompletableDeferred<String>) {
+            current = deferred
         }
 
-        @JavascriptInterface
+        fun detach(deferred: CompletableDeferred<String>) {
+            if (current === deferred) current = null
+        }
+
         fun onResult(json: String?) {
-            completeOnce { deferred.complete(json ?: "null") }
+            current?.complete(json ?: "null")
         }
 
-        @JavascriptInterface
         fun onError(kind: String?, message: String?) {
-            completeOnce {
-                val reason = when (kind) {
-                    "no_entry" -> "脚本未定义 fetchSchedule 入口"
-                    else -> "脚本执行出错：${message ?: "未知错误"}"
-                }
-                deferred.cancel(CancellationException(reason))
+            val reason = when (kind) {
+                "no_entry" -> "脚本未定义 fetchSchedule 入口"
+                else -> "脚本执行出错：${message ?: "未知错误"}"
             }
+            current?.cancel(CancellationException(reason))
         }
+    }
+
+    /** 暴露给 JS 的桥；公开类 + 公开方法，WebView 创建时注入一次 */
+    class PaperJavascriptBridge {
+        @JavascriptInterface
+        fun onResult(json: String?) = ScriptBridgeHub.onResult(json)
+
+        @JavascriptInterface
+        fun onError(kind: String?, message: String?) = ScriptBridgeHub.onError(kind, message)
     }
 
     private fun buildLoader(sourceText: String, totalWeeks: Int): String {
@@ -113,15 +125,15 @@ object JwScriptRunner {
                 (0, eval)(src);
                 var script = globalThis.__paperScheduleScript;
                 if (!script || typeof script.fetchSchedule !== 'function') {
-                  $BRIDGE_NAME.onError('no_entry', 'fetchSchedule 未定义');
+                  PaperBridge.onError('no_entry', 'fetchSchedule 未定义');
                   return;
                 }
                 Promise.resolve()
                   .then(function () { return script.fetchSchedule({ url: location.href, totalWeeks: $weeks }); })
-                  .then(function (r) { $BRIDGE_NAME.onResult(JSON.stringify(r === undefined ? null : r)); })
-                  .catch(function (e) { $BRIDGE_NAME.onError('script_error', String((e && e.message) || e)); });
+                  .then(function (r) { PaperBridge.onResult(JSON.stringify(r === undefined ? null : r)); })
+                  .catch(function (e) { PaperBridge.onError('script_error', String((e && e.message) || e)); });
               } catch (e) {
-                try { $BRIDGE_NAME.onError('script_error', String((e && e.message) || e)); } catch (e2) {}
+                try { PaperBridge.onError('script_error', String((e && e.message) || e)); } catch (e2) {}
               }
             })()
         """.trimIndent()
