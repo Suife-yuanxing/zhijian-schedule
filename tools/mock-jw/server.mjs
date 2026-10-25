@@ -114,6 +114,97 @@ const examPage = `<!doctype html>
 </table>
 </body></html>`;
 
+// ---------- 旧版正方（xskbcx.aspx 大表格） ----------
+
+const zfOldLoginPage = `<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>模拟旧正方登录</title></head>
+<body>
+  <h1>模拟旧版正方教务（本地假数据）</h1>
+  <p><a href="/zfold/xskbcx.aspx">课表查询（xskbcx.aspx）</a></p>
+</body></html>`;
+
+/** 12 小节行布局 + 带时间标签（脚本需走行列序推算）+ rowspan 连堂 + 单双周 */
+function zfOldCoursePage() {
+  const label = (n) => `第${n}节(${String(8 + Math.floor((n - 1) / 2)).padStart(2, '0')}:${(n - 1) % 2 ? '05' : '00'})`;
+  const empty = '<td>&nbsp;</td>';
+  const rows = [];
+  for (let i = 0; i < 12; i++) {
+    let cells = `<td class="tdlabel">${label(i + 1)}</td>`;
+    if (i === 0) cells += `<td rowspan="2">模拟高等数学<br>1-16周<br>王老师<br>A101</td>${empty}${empty}${empty}${empty}`;
+    else if (i === 2) cells += `${empty}${empty}${empty}${empty}<td rowspan="2">模拟C语言<br>1-8周<br>孙老师<br>D404</td>`;
+    else if (i === 4) cells += `${empty}${empty}<td rowspan="2">模拟大学英语<br>1-16周(单)<br>李老师<br>B202</td>${empty}${empty}`;
+    else if (i === 10) cells += `${empty}<td rowspan="2">模拟体育<br>1-16周(双)<br>钱老师<br>田径场</td>${empty}${empty}${empty}`;
+    else cells += `${empty}${empty}${empty}${empty}${empty}`;
+    rows.push(`<tr>${cells}</tr>`);
+  }
+  return `<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>学生课表</title></head>
+<body>
+<table id="xskb_table">
+<tr><td>节次</td><td>星期一</td><td>星期二</td><td>星期三</td><td>星期四</td><td>星期五</td></tr>
+${rows.join('\n')}
+</table>
+</body></html>`;
+}
+
+// ---------- 金智 wisedu jwapp（ehall 网关） ----------
+
+const wiseduHomePage = `<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>模拟网上服务大厅</title></head>
+<body>
+  <h1>模拟金智网上服务大厅（本地假数据）</h1>
+  <p>会话已建立，可回 App 用「金智网上服务大厅」脚本导入。</p>
+</body></html>`;
+
+const WISEDU_ROWS = [
+  { KCM: '模拟高等数学', SKJS: '王老师', JASMC: 'A101', SKXQ: '1', KSJC: 1, JSJC: 2, SKZC: '1111111111111111' },
+  { KCM: '模拟大学英语', SKJS: '李老师', JASMC: 'B202', SKXQ: '3', KSJC: 3, JSJC: 4, SKZC: '1010101010101010' },
+  { KCM: '模拟数据结构', SKJS: '赵老师', JASMC: 'C303', SKXQ: '2', KSJC: 5, JSJC: 6, SKZC: '1111111100000000' },
+  { KCM: '模拟体育', SKJS: '钱老师', JASMC: '田径场', SKXQ: '4', KSJC: 7, JSJC: 8, SKZC: '0101010101010101' },
+];
+
+// ---------- 通用 HTML 课表页（无厂商特征） ----------
+
+const genericCoursePage = `<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>我的课表</title></head>
+<body>
+<table>
+<tr><th>节次</th><th>星期一</th><th>星期二</th><th>星期三</th><th>星期四</th><th>星期五</th></tr>
+<tr>
+  <td>第一大节 08:00-09:40</td>
+  <td>模拟高等数学<br>1-16周<br>王老师<br>A101</td>
+  <td>&nbsp;</td>
+  <td>&nbsp;</td>
+  <td>&nbsp;</td>
+  <td><div class="kbcontent">模拟C语言<br>1-8周<br>孙老师<br>D404</div><hr><div class="kbcontent">模拟Java<br>9-16周<br>周老师<br>E505</div></td>
+</tr>
+<tr>
+  <td>第二大节 10:00-11:40</td>
+  <td>&nbsp;</td>
+  <td>&nbsp;</td>
+  <td>模拟数据结构<br>1-8,10-16周<br>赵老师<br>C303</td>
+  <td>&nbsp;</td>
+  <td>&nbsp;</td>
+</tr>
+<tr>
+  <td>第三大节 14:00-15:40</td>
+  <td>&nbsp;</td>
+  <td>&nbsp;</td>
+  <td rowspan="2">模拟大学英语<br>1-16周(单)<br>李老师<br>B202</td>
+  <td>&nbsp;</td>
+  <td>&nbsp;</td>
+</tr>
+<tr>
+  <td>第四大节 16:00-17:40</td>
+  <td>&nbsp;</td>
+  <td>&nbsp;</td>
+  <td>&nbsp;</td>
+  <td>模拟体育<br>1-16周(双)<br>钱老师<br>田径场</td>
+  <td>&nbsp;</td>
+</tr>
+</table>
+</body></html>`;
+
 function send(res, status, contentType, body, headers = {}) {
   res.writeHead(status, { 'Content-Type': contentType, ...headers });
   res.end(body);
@@ -183,6 +274,44 @@ const server = createServer((req, res) => {
     return;
   }
 
+  if (path === '/zfold/' || path === '/zfold/default.aspx') {
+    send(res, 200, 'text/html; charset=utf-8', zfOldLoginPage, {
+      'Set-Cookie': 'ASP.NET_SessionId=mock-zfold-session; Path=/',
+    });
+    return;
+  }
+
+  if (path === '/zfold/xskbcx.aspx') {
+    send(res, 200, 'text/html; charset=utf-8', zfOldCoursePage(), {
+      'Set-Cookie': 'ASP.NET_SessionId=mock-zfold-session; Path=/',
+    });
+    return;
+  }
+
+  if (path === '/wisedu/') {
+    send(res, 200, 'text/html; charset=utf-8', wiseduHomePage, {
+      'Set-Cookie': 'iPlanetDirectoryPro=mock-wisedu-session; Path=/',
+    });
+    return;
+  }
+
+  // 金智课表接口：wdkb / wdkbby 两个变体都接；SKZC 二进制周次串
+  if (
+    path === '/jwapp/sys/wdkb/modules/xskcb/cxxszhxqkb.do' ||
+    path === '/jwapp/sys/wdkbby/modules/xskcb/cxxszhxqkb.do'
+  ) {
+    send(res, 200, 'application/json; charset=utf-8', JSON.stringify({
+      code: '0',
+      datas: { cxxszhxqkb: { rows: WISEDU_ROWS, extParams: { code: 1, msg: '查询成功' } } },
+    }));
+    return;
+  }
+
+  if (path === '/generic/table.html') {
+    send(res, 200, 'text/html; charset=utf-8', genericCoursePage);
+    return;
+  }
+
   send(res, 404, 'text/plain; charset=utf-8', 'not found');
 });
 
@@ -191,4 +320,7 @@ server.listen(port, '0.0.0.0', () => {
   console.log('模拟器访问：http://10.0.2.2:' + port + '/jwglxt/xtgl/login_slogin.html');
   console.log(`mock 强智 jsxsd（考试安排）：http://127.0.0.1:${port}/jsxsd/framework/xsMain.jsp`);
   console.log(`mock 强智 jsxsd（课表页·脚本导入）：http://127.0.0.1:${port}/jsxsd/xskb/xskb_list.do`);
+  console.log(`mock 旧版正方（课表页）：http://127.0.0.1:${port}/zfold/default.aspx`);
+  console.log(`mock 金智 jwapp（大厅首页）：http://127.0.0.1:${port}/wisedu/`);
+  console.log(`mock 通用课表页：http://127.0.0.1:${port}/generic/table.html`);
 });

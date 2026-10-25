@@ -72,3 +72,20 @@ PORT=18080 node tools/mock-jw/server.mjs
 5. 脚本管理页（选择器底部「管理脚本…」）：内置两份带「内置」徽章；填仓库地址后「检查更新」可装远程脚本（index 校验要求 url 为 https，本地验证建议直接「导入 .js」）；
 6. 「导入 .js」选一个 manifest 非法的文件 → 应提示原因且不落盘。
 
+## 8. 脚本导入 E2E（旧正方 / 金智 / 通用表格）
+
+三个通用脚本各自的 mock 页面（同一个 8080 服务）：
+
+- 旧正方 `/zfold/default.aspx` → `/zfold/xskbcx.aspx`：12 小节行、标签带时间
+  `第1节(08:00)`（脚本走行列序推算）、rowspan 连堂、单双周。选「正方旧版教务（通用）」
+  运行 → 预览 4 门课：高数 周一 1-2、C语言 周五 3-4（1-8 周）、英语 周三 5-6（单）、
+  体育 周二 11-12（双）。
+- 金智 `/wisedu/`：选「金智网上服务大厅（通用）」运行 → 脚本会 POST
+  `/jwapp/sys/wdkb*/modules/xskcb/cxxszhxqkb.do`，预览 4 门课，周次来自 SKZC
+  二进制串（英语=单周数组、数据结构=1-8、体育=双周数组）。
+- 通用 `/generic/table.html`：无厂商特征表格（`div.kbcontent` + `<hr>` 一格两门课 +
+  rowspan 跨两大节）。选「通用课表页（HTML 表格）」运行 → 预览 6 门课：C语言/Java 同格
+  切成两条，英语 周三 5-8（rowspan 并集），体育 周四 7-8（双）。
+
+本地解析快速验证（不装机）：`.tmp/jsdom-test/run.mjs` 用 jsdom 对着 mock 页面跑三个脚本。
+
