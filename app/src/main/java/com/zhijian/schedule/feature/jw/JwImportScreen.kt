@@ -20,6 +20,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,13 +31,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
@@ -45,8 +50,11 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -59,6 +67,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.zhijian.schedule.core.jw.JwAdapterRegistry
+import com.zhijian.schedule.core.jw.script.JwScriptRunner
+import com.zhijian.schedule.core.jw.script.ScriptOption
 import com.zhijian.schedule.core.model.ImportChangeKind
 import com.zhijian.schedule.core.theme.CourseColors
 import com.zhijian.schedule.core.theme.LocalCourseColors
@@ -66,11 +76,13 @@ import com.zhijian.schedule.core.ui.JellySwitch
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.SecondaryTopBar
 import com.zhijian.schedule.core.ui.TapButton
+import com.zhijian.schedule.core.ui.TapIconButton
 import com.zhijian.schedule.core.ui.TapTextButton
 import com.zhijian.schedule.core.ui.buttonFeedback
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.launch
 import org.json.JSONObject
 
 private const val WEB_UA =
@@ -187,11 +199,42 @@ private const val WAF_RETRY_DELAY_MS = 1500L
 @Composable
 fun JwImportScreen(
     onBack: () -> Unit,
+    onOpenScripts: () -> Unit = {},
     viewModel: JwImportViewModel = hiltViewModel(),
 ) {
     val colors = LocalCourseColors.current
     val preview = viewModel.preview
     val haptics = LocalHapticFeedback.current
+    var webView by remember { mutableStateOf<android.webkit.WebView?>(null) }
+    var showScriptPicker by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    fun runScript(option: ScriptOption) {
+        val wv = webView
+        if (wv == null) {
+            viewModel.onScriptFailed("网页尚未就绪，请稍候重试")
+            return
+        }
+        scope.launch {
+            viewModel.setScriptBusy(true)
+            try {
+                val source = viewModel.scriptSource(option.id)
+                if (source == null) {
+                    viewModel.onScriptFailed("脚本内容缺失，请重新安装")
+                    return@launch
+                }
+                val weeks = viewModel.currentTotalWeeks()
+                when (val run = JwScriptRunner.run(wv, source, option.manifest, viewModel.pageUrl, weeks)) {
+                    is JwScriptRunner.RunResult.Ok -> viewModel.onScriptEnvelope(run.envelopeJson)
+                    is JwScriptRunner.RunResult.Failed -> viewModel.onScriptFailed(run.message)
+                }
+            } catch (e: IllegalStateException) {
+                viewModel.onScriptFailed(e.message ?: "脚本执行出错")
+            } finally {
+                viewModel.setScriptBusy(false)
+            }
+        }
+    }
 
     // 抓取完成时给一个确认轻震（弹窗同时出现）
     LaunchedEffect(viewModel.done) {
@@ -202,7 +245,15 @@ fun JwImportScreen(
 
     Scaffold(
         topBar = {
-            SecondaryTopBar(title = "教务系统导入", onBack = onBack)
+            SecondaryTopBar(
+                title = "教务系统导入",
+                onBack = onBack,
+                actions = {
+                    TapIconButton(onClick = { showScriptPicker = true }) {
+                        Icon(Icons.Filled.Build, contentDescription = "课程脚本", tint = colors.text)
+                    }
+                },
+            )
         },
         containerColor = colors.bg,
     ) { padding ->
@@ -276,6 +327,7 @@ fun JwImportScreen(
                     onProgress = viewModel::onLoadProgress,
                     onError = viewModel::onLoadError,
                     onHttpError = viewModel::onHttpError,
+                    onWebView = { webView = it },
                     modifier = Modifier.fillMaxSize().clipToBounds(),
                 )
                 TopProgressBar(
@@ -289,12 +341,21 @@ fun JwImportScreen(
                     onReload = viewModel::reload,
                     colors = colors,
                 )
-                LoadingOverlay(visible = viewModel.loading, colors = colors)
+                LoadingOverlay(visible = viewModel.loading || viewModel.scriptRunning, colors = colors)
                 HttpErrorBanner(
                     code = viewModel.httpErrorHint,
                     onDismiss = viewModel::dismissHttpError,
                     colors = colors,
                     modifier = Modifier.align(Alignment.TopCenter),
+                )
+            }
+
+            viewModel.scriptNotice?.let { message ->
+                Text(
+                    text = message,
+                    color = colors.accent,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
                 )
             }
 
@@ -360,6 +421,19 @@ fun JwImportScreen(
             title = { Text("导入完成") },
             text = { Text("课表已更新，可在周视图查看。") },
             confirmButton = { TapTextButton(onClick = onBack) { Text("好的") } },
+        )
+    }
+
+    if (showScriptPicker) {
+        ScriptPickerDialog(
+            pageUrl = viewModel.pageUrl,
+            optionsProvider = { viewModel.scriptOptions(viewModel.pageUrl) },
+            onDismiss = { showScriptPicker = false },
+            onManage = {
+                showScriptPicker = false
+                onOpenScripts()
+            },
+            onRun = ::runScript,
         )
     }
 
@@ -575,6 +649,7 @@ private fun WebViewBox(
     onProgress: (Int) -> Unit,
     onError: (String) -> Unit,
     onHttpError: (Int) -> Unit,
+    onWebView: (android.webkit.WebView?) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val lastLoaded = remember { mutableStateOf<WebLoadRequest?>(null) }
@@ -680,7 +755,7 @@ private fun WebViewBox(
                         onError("HTTPS 证书校验失败（${error?.url ?: "未知地址"}）")
                     }
                 }
-            }
+            }.also(onWebView)
         },
         update = { webView ->
             if (lastLoaded.value != request) {
@@ -694,3 +769,108 @@ private fun WebViewBox(
 
 private fun formatTime(millis: Long): String =
     SimpleDateFormat("M月d日 HH:mm", Locale.CHINA).format(Date(millis))
+
+/** 脚本选择对话框：命中当前站点的排前；底部入口进管理页（spec §4） */
+@Composable
+private fun ScriptPickerDialog(
+    pageUrl: String,
+    optionsProvider: suspend () -> List<ScriptOption>,
+    onDismiss: () -> Unit,
+    onManage: () -> Unit,
+    onRun: (ScriptOption) -> Unit,
+) {
+    val colors = LocalCourseColors.current
+    val options = remember(pageUrl) { mutableStateOf<List<ScriptOption>?>(null) }
+    LaunchedEffect(pageUrl) {
+        options.value = optionsProvider()
+    }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("用脚本导入") },
+        text = {
+            Column {
+                val list = options.value
+                when {
+                    list == null -> {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = colors.accent,
+                        )
+                    }
+                    list.isEmpty() -> {
+                        Text(
+                            "还没有可用的课程脚本。可在「管理脚本」里导入 .js 或从仓库安装。",
+                            color = colors.textMuted,
+                            fontSize = 13.sp,
+                        )
+                    }
+                    else -> {
+                        LazyColumn(Modifier.height(340.dp)) {
+                            items(list, key = { it.id }) { option ->
+                                val enabled = option.runnable
+                                val interaction = remember { MutableInteractionSource() }
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .buttonFeedback(interaction, enabled = enabled)
+                                        .clickable(
+                                            interactionSource = interaction,
+                                            indication = null,
+                                            enabled = enabled,
+                                            onClick = { onRun(option) },
+                                        )
+                                        .padding(vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            text = option.name,
+                                            color = if (enabled) colors.text else colors.textMuted,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Medium,
+                                        )
+                                        Text(
+                                            text = option.subtitle(),
+                                            color = colors.textMuted,
+                                            fontSize = 11.sp,
+                                        )
+                                        if (option.entryHint.isNotBlank()) {
+                                            Text(
+                                                text = option.entryHint,
+                                                color = colors.textMuted,
+                                                fontSize = 11.sp,
+                                            )
+                                        }
+                                        if (option.matched) {
+                                            Text(
+                                                text = "适用于当前站点",
+                                                color = colors.accent,
+                                                fontSize = 11.sp,
+                                            )
+                                        }
+                                        if (!option.enabled) {
+                                            Text(text = "已在管理页停用", color = colors.textMuted, fontSize = 11.sp)
+                                        } else if (!option.matched && option.hosts.isNotEmpty()) {
+                                            Text(
+                                                text = "当前页面不属于该脚本适用的站点",
+                                                color = colors.textMuted,
+                                                fontSize = 11.sp,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TapTextButton(onClick = onManage) { Text("管理脚本…") }
+        },
+        dismissButton = {
+            TapTextButton(onClick = onDismiss) { Text("取消") }
+        },
+    )
+}
