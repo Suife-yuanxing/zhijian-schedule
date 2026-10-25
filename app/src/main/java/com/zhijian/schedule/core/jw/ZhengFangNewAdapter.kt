@@ -204,7 +204,7 @@ object ZhengFangNewAdapter : JwAdapter {
      * 同一门课可能按周次拆成多条（如 1-8 周、9-16 周），按
      * 课程/星期/节次/教师/教室 合并周次，避免预览里出现重复行。
      */
-    private fun mergeDuplicates(drafts: List<CourseDraft>): List<CourseDraft> {
+    internal fun mergeDuplicates(drafts: List<CourseDraft>): List<CourseDraft> {
         val merged = LinkedHashMap<String, CourseDraft>()
         drafts.forEach { draft ->
             val key = listOf(
