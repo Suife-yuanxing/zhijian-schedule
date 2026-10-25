@@ -75,7 +75,33 @@ const qzLoginPage = `<!doctype html>
 
 const qzHomePage = `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><title>模拟强智首页</title></head>
-<body><h1>模拟强智教务首页</h1><p>会话已建立，可回 App 抓取课表 / 考试安排。</p></body></html>`;
+<body><h1>模拟强智教务首页</h1><p>会话已建立，可回 App 抓取课表 / 考试安排。</p>
+<p><a href="/jsxsd/xskb/xskb_list.do">学生课表（脚本导入用）</a></p></body></html>`;
+
+/** 强智课表页：与 QiangZhiAdapter/内置强智脚本的目标结构同构（#kbtable + div.kbcontent） */
+const qzCoursePage = `<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>学生课表</title></head>
+<body>
+<table id="kbtable">
+<tr><th>第一大节 08:20-09:55</th><th>星期一</th><th>星期二</th><th>星期三</th><th>星期四</th><th>星期五</th></tr>
+<tr>
+  <th>第一大节 08:20-09:55</th>
+  <td><div class="kbcontent">模拟高等数学<br/>王老师<br/>A101<br/>1-16周(第1-16周)<br/>[01-02节]</div></td>
+  <td><div class="kbcontent"></div></td>
+  <td><div class="kbcontent">模拟大学英语<br/>李老师<br/>B202<br/>1-16周(单)<br/>[01-02节]</div></td>
+  <td><div class="kbcontent"></div></td>
+  <td><div class="kbcontent"></div></td>
+</tr>
+<tr>
+  <th>第二大节 10:10-11:45</th>
+  <td><div class="kbcontent"></div></td>
+  <td><div class="kbcontent">模拟数据结构<br/>赵老师<br/>C303<br/>1-8,10-16周(第1-16周)<br/>[03-04节]</div></td>
+  <td><div class="kbcontent"></div></td>
+  <td><div class="kbcontent">模拟体育<br/>钱老师<br/>田径场<br/>1-16周(双)<br/>[03-04节]</div></td>
+  <td><div class="kbcontent"></div></td>
+</tr>
+</table>
+</body></html>`;
 
 /** 考试安排表：与 ExamParserTest fixture 同构（id=dataList，列头模糊匹配） */
 const examPage = `<!doctype html>
@@ -150,6 +176,13 @@ const server = createServer((req, res) => {
     return;
   }
 
+  if (path === '/jsxsd/xskb/xskb_list.do') {
+    send(res, 200, 'text/html; charset=utf-8', qzCoursePage, {
+      'Set-Cookie': 'JSESSIONID=mock-qz-session; Path=/',
+    });
+    return;
+  }
+
   send(res, 404, 'text/plain; charset=utf-8', 'not found');
 });
 
@@ -157,4 +190,5 @@ server.listen(port, '0.0.0.0', () => {
   console.log(`mock 正方教务已启动：http://127.0.0.1:${port}/jwglxt/xtgl/login_slogin.html`);
   console.log('模拟器访问：http://10.0.2.2:' + port + '/jwglxt/xtgl/login_slogin.html');
   console.log(`mock 强智 jsxsd（考试安排）：http://127.0.0.1:${port}/jsxsd/framework/xsMain.jsp`);
+  console.log(`mock 强智 jsxsd（课表页·脚本导入）：http://127.0.0.1:${port}/jsxsd/xskb/xskb_list.do`);
 });

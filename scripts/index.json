@@ -1,0 +1,25 @@
+{
+  "indexVersion": 1,
+  "scripts": [
+    {
+      "id": "qiangzhi-jsxsd",
+      "name": "强智教务（通用）",
+      "version": 1,
+      "url": "https://raw.githubusercontent.com/Suife-yuanxing/zhijian-scripts/main/scripts/qiangzhi-jsxsd.js",
+      "sha256": "faf5584d75fef3fa068fa7b9c4584cbb412f59da0dbe46cac5880eea7b89dfb0",
+      "hosts": [],
+      "minAppVersion": "1.0.11",
+      "entryHint": "登录教务后打开「学生课表」页面，再点导入"
+    },
+    {
+      "id": "zhengfang-new",
+      "name": "正方新版教务（通用）",
+      "version": 1,
+      "url": "https://raw.githubusercontent.com/Suife-yuanxing/zhijian-scripts/main/scripts/zhengfang-new.js",
+      "sha256": "5a5430b35cd537a8d21c95d802844ae78dd0103a850241f12abdc73e2775ff28",
+      "hosts": [],
+      "minAppVersion": "1.0.11",
+      "entryHint": "登录正方教务后任意页面即可点导入"
+    }
+  ]
+}
