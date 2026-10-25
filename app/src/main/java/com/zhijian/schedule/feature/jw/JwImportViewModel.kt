@@ -8,7 +8,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.zhijian.schedule.core.data.prefs.SettingsStore
 import com.zhijian.schedule.core.jw.JwAdapterRegistry
+import com.zhijian.schedule.core.jw.script.JwScriptOutput
+import com.zhijian.schedule.core.jw.script.ScriptCatalog
+import com.zhijian.schedule.core.jw.script.ScriptOption
 import com.zhijian.schedule.core.model.ImportPreview
+import com.zhijian.schedule.core.model.ImportSource
 import com.zhijian.schedule.core.repository.ScheduleRepository
 import com.zhijian.schedule.sync.JwSyncManager
 import com.zhijian.schedule.sync.SyncScheduler
@@ -26,6 +30,7 @@ class JwImportViewModel @Inject constructor(
     private val repository: ScheduleRepository,
     private val settingsStore: SettingsStore,
     private val scheduler: SyncScheduler,
+    private val catalog: ScriptCatalog,
 ) : ViewModel() {
 
     var url by mutableStateOf("")
@@ -53,6 +58,12 @@ class JwImportViewModel @Inject constructor(
     var autoSyncEnabled by mutableStateOf(false)
         private set
     var lastSyncTime by mutableStateOf(0L)
+        private set
+    var scriptRunning by mutableStateOf(false)
+        private set
+
+    /** 脚本 warnings / 管理操作反馈（accent 色提示条） */
+    var scriptNotice by mutableStateOf<String?>(null)
         private set
 
     /** WebView 当前停在登录页（动态引导文案用） */
@@ -192,6 +203,43 @@ class JwImportViewModel @Inject constructor(
             settingsStore.setAutoSync(enabled)
             if (enabled) scheduler.enableDaily() else scheduler.disableDaily()
         }
+    }
+
+    // ---------- 脚本导入（spec §5：结果进同一 ImportPreview 管线） ----------
+
+    fun dismissScriptNotice() {
+        scriptNotice = null
+    }
+
+    fun setScriptBusy(running: Boolean) {
+        scriptRunning = running
+    }
+
+    suspend fun scriptOptions(pageUrl: String): List<ScriptOption> {
+        val host = runCatching { java.net.URI(pageUrl).host }.getOrNull()
+        return catalog.all(host)
+    }
+
+    suspend fun scriptSource(id: String): String? = catalog.readSource(id)
+
+    suspend fun currentTotalWeeks(): Int =
+        repository.activeTimetable.first()?.totalWeeks ?: 20
+
+    fun onScriptEnvelope(envelopeJson: String) {
+        viewModelScope.launch {
+            val weeks = currentTotalWeeks()
+            when (val out = JwScriptOutput.parse(envelopeJson, weeks)) {
+                is JwScriptOutput.ParseResult.Invalid -> errorMessage = out.reason
+                is JwScriptOutput.ParseResult.Ok -> {
+                    scriptNotice = out.warnings.takeIf { it.isNotEmpty() }?.joinToString("；")
+                    preview = repository.buildPreview(out.drafts, ImportSource.JW, syncMode = false)
+                }
+            }
+        }
+    }
+
+    fun onScriptFailed(message: String) {
+        errorMessage = message
     }
 
     companion object {
