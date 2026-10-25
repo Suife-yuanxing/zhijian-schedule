@@ -17,12 +17,14 @@ import com.zhijian.schedule.core.data.db.MIGRATION_1_2
 import com.zhijian.schedule.core.data.db.MIGRATION_2_3
 import com.zhijian.schedule.core.data.db.TimeModeDao
 import com.zhijian.schedule.core.data.db.TimetableDao
+import com.zhijian.schedule.core.jw.script.ScriptStore
 import com.zhijian.schedule.core.net.WebViewCookieJar
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import java.io.File
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 import kotlinx.serialization.json.Json
@@ -102,4 +104,9 @@ object AppModule {
         .retryOnConnectionFailure(true)
         .followRedirects(true)
         .build()
+
+    @Provides
+    @Singleton
+    fun provideScriptStore(@ApplicationContext context: Context): ScriptStore =
+        ScriptStore(File(context.filesDir, "jw-scripts"))
 }
