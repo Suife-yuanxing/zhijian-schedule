@@ -20,6 +20,36 @@
       "hosts": [],
       "minAppVersion": "1.0.12",
       "entryHint": "登录正方教务后任意页面即可点导入"
+    },
+    {
+      "id": "zhengfang-old",
+      "name": "正方旧版教务（通用）",
+      "version": 1,
+      "url": "https://raw.githubusercontent.com/Suife-yuanxing/zhijian-scripts/main/scripts/zhengfang-old.js",
+      "sha256": "29d263e5b12745a362e7b70cbf671d6eb9d8c3f8bdeb6ee78b1598beb3d1e0d5",
+      "hosts": [],
+      "minAppVersion": "1.0.12",
+      "entryHint": "登录旧版正方教务后打开「课表查询(xskbcx.aspx)」页面，再点导入"
+    },
+    {
+      "id": "wisedu-ehall",
+      "name": "金智网上服务大厅（通用）",
+      "version": 1,
+      "url": "https://raw.githubusercontent.com/Suife-yuanxing/zhijian-scripts/main/scripts/wisedu-ehall.js",
+      "sha256": "833cb795c1b204b32687212997548c16cd0135da7ce0fa67ff137166098c1c68",
+      "hosts": [],
+      "minAppVersion": "1.0.12",
+      "entryHint": "登录统一身份认证进入网上服务大厅/教务系统任意页面后，点导入"
+    },
+    {
+      "id": "generic-table",
+      "name": "通用课表页（HTML 表格）",
+      "version": 1,
+      "url": "https://raw.githubusercontent.com/Suife-yuanxing/zhijian-scripts/main/scripts/generic-table.js",
+      "sha256": "324a54fb467000bb8db7029a54c1e8f1b6b370d3fdb3af53c66f96bf2818a2d5",
+      "hosts": [],
+      "minAppVersion": "1.0.12",
+      "entryHint": "打开学校课表页面（网页上是「星期一～星期日」的大表格）后点导入"
     }
   ]
 }

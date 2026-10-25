@@ -103,6 +103,12 @@ class ScriptCatalog @Inject constructor(
 
     private companion object {
         const val ORIGIN_BUILTIN = "builtin"
-        val BUILTIN_FILES = listOf("qiangzhi-jsxsd.js", "zhengfang-new.js")
+        val BUILTIN_FILES = listOf(
+            "qiangzhi-jsxsd.js",
+            "zhengfang-new.js",
+            "zhengfang-old.js",
+            "wisedu-ehall.js",
+            "generic-table.js",
+        )
     }
 }

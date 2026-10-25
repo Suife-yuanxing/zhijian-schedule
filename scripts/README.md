@@ -17,6 +17,12 @@
 
 ## 脚本编写
 
-契约见 `docs/research/2026-10-25-script-engine-notes.md`；两份内置脚本
-（`qiangzhi-jsxsd.js` / `zhengfang-new.js`）就是范本：强智版演示 DOM 表格解析，
-正方版演示同源 `fetch` 调 JSON 接口。
+契约见 `docs/research/2026-10-25-script-engine-notes.md`；内置五份脚本就是范本：
+
+| 脚本 | 演示的套路 |
+| --- | --- |
+| `qiangzhi-jsxsd.js` | DOM 表格解析（div.kbcontent、`[01-02节]` 括号节次） |
+| `zhengfang-new.js` | 同源 `fetch` 调 JSON 接口（学期候选逐个试） |
+| `zhengfang-old.js` | HTML 大表格：rowspan/colspan 展开成网格、一格多课切块 |
+| `wisedu-ehall.js` | 金智 jwapp 网关接口 + SKZC 周次二进制串转数组 |
+| `generic-table.js` | 无厂商特征的通用 HTML 课表页兜底 |
