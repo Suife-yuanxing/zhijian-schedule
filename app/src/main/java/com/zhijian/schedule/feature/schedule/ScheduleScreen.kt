@@ -85,10 +85,23 @@ fun ScheduleScreen(
     onEditCourse: (Long) -> Unit = {},
     onOpenSettings: () -> Unit = {},
     onOpenImport: () -> Unit = {},
+    /**
+     * 是否播放「课块级联入场 + 加号弹出」。
+     *
+     * tab 切页本身已经是一整屏横滑（tabSlideEnter/tabSlideExit），若每次切回课表
+     * 再叠一层内容级联，就会比切到今日/我的多出一段收尾动作——两个方向的运动曲线
+     * 于是不一样。所以只在首次进入课表时播放，之后切回直接落位。
+     */
+    playEntrance: Boolean = true,
+    /** 首次入场已经开始：宿主据此记住「已经播过」，下次切回不再重播 */
+    onEntranceShown: () -> Unit = {},
     viewModel: ScheduleViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val colors = LocalCourseColors.current
+    // 冻结成本次组合的常量：回调置位后入参会变成 false，但这一轮的入场已经起播，不能中途改
+    val entranceOnce = remember { playEntrance }
+    LaunchedEffect(Unit) { if (entranceOnce) onEntranceShown() }
     var selectedCourse by remember { mutableStateOf<CourseEntity?>(null) }
     // 面板目标可见性：关闭动作一开始即置回 false，让课块高亮与面板滑出并行恢复
     var detailSheetVisible by remember { mutableStateOf(false) }
@@ -158,7 +171,7 @@ fun ScheduleScreen(
             )
 
             if (emptyState) {
-                StaggerIn(index = 0, modifier = Modifier.fillMaxSize()) {
+                StaggerIn(index = 0, modifier = Modifier.fillMaxSize(), skip = !entranceOnce) {
                     EmptyScheduleCard(
                         onAdd = { onAddCourse(null, null) },
                         onImport = onOpenImport,
@@ -185,6 +198,7 @@ fun ScheduleScreen(
                             },
                             modifier = Modifier.fillMaxSize(),
                             selectedCourseId = selectedCourse?.id?.takeIf { detailSheetVisible },
+                            playEntrance = entranceOnce,
                         )
                     }
                 }
@@ -193,7 +207,8 @@ fun ScheduleScreen(
     }
 
     val fabSource = remember { MutableInteractionSource() }
-    var fabArrived by remember { mutableStateOf(false) }
+    // 首次入场才让加号弹出来；tab 切回时直接落位，与切到今日/我的保持同一套动作
+    var fabArrived by remember { mutableStateOf(!entranceOnce) }
     // 加号在 Compose 根坐标系里的位置：编辑页从这个圆里长出来
     var fabBounds by remember { mutableStateOf(Rect.Zero) }
     LaunchedEffect(Unit) { fabArrived = true }

@@ -175,6 +175,11 @@ fun WeekGrid(
     modifier: Modifier = Modifier,
     /** 弹起高亮中的课程（详情打开期间；面板一开始滑出即恢复，见 CourseDetailSheet） */
     selectedCourseId: Long? = null,
+    /**
+     * 是否播放课块级联入场。tab 切页已由整页横滑承担，切回课表时不再叠一层内容级联，
+     * 免得与切到今日/我的不是同一段运动（详见 ScheduleScreen 的同名参数）。
+     */
+    playEntrance: Boolean = true,
 ) {
     val sections = ui.sections
     if (sections.isEmpty()) return
@@ -230,6 +235,7 @@ fun WeekGrid(
                         selectedCourseId = selectedCourseId,
                         metrics = metrics,
                         onCourseClick = onCourseClick,
+                        playEntrance = playEntrance,
                     )
                 }
 
@@ -418,6 +424,7 @@ private fun CourseOverlay(
     selectedCourseId: Long?,
     metrics: GridMetrics,
     onCourseClick: (CourseEntity) -> Unit,
+    playEntrance: Boolean,
 ) {
     val sections = ui.sections
     val preset = LocalCoursePreset.current
@@ -457,8 +464,13 @@ private fun CourseOverlay(
                     isDark = isDark,
                     modifier = Modifier.fillMaxSize(),
                     selected = course.id == selectedCourseId,
-                    entranceDelayMs = (colIndex * ENTER_COL_STEP_MS + (startIndex - 1) * ENTER_ROW_STEP_MS)
-                        .coerceAtMost(ENTER_DELAY_CAP_MS),
+                    // < 0 = 不播级联、直接落位（tab 切回课表时走这条）
+                    entranceDelayMs = if (playEntrance) {
+                        (colIndex * ENTER_COL_STEP_MS + (startIndex - 1) * ENTER_ROW_STEP_MS)
+                            .coerceAtMost(ENTER_DELAY_CAP_MS)
+                    } else {
+                        -1L
+                    },
                     remainingMin = remainingMin,
                     metrics = metrics,
                     onClick = { onCourseClick(course) },

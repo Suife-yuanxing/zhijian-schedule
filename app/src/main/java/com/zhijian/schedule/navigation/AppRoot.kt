@@ -66,9 +66,11 @@ import com.zhijian.schedule.core.ui.glass.rememberGlassClock
 import com.zhijian.schedule.core.ui.glass.rememberGlassTilt
 import com.zhijian.schedule.core.ui.rememberRevealState
 import com.zhijian.schedule.feature.course_editor.CourseEditorScreen
+import com.zhijian.schedule.feature.exam.ExamScreen
 import com.zhijian.schedule.feature.grades.GradesScreen
 import com.zhijian.schedule.feature.importer.ImporterScreen
 import com.zhijian.schedule.feature.jw.JwImportScreen
+import com.zhijian.schedule.feature.jw.ScriptManageScreen
 import com.zhijian.schedule.feature.profile.PROFILE_ENTRY_HOLD_MS
 import com.zhijian.schedule.feature.profile.ProfileEntryExitOverlay
 import com.zhijian.schedule.feature.profile.ProfileEntryKeys
@@ -106,6 +108,8 @@ object Routes {
     const val PROFILE_JW_IMPORT = "profile_jw_import"
     const val PROFILE_SETTINGS = "profile_settings"
     const val PROFILE_GRADES = "profile_grades?entryKey={entryKey}"
+    const val PROFILE_EXAMS = "profile_exams"
+    const val PROFILE_JW_SCRIPTS = "profile_jw_scripts"
 
     fun profileGrades(entryKey: String = ProfileEntryKeys.GRADES): String =
         "profile_grades?entryKey=$entryKey"
@@ -156,8 +160,22 @@ private val tabPopExit: ExitTransition =
         scaleOut(tween(durationMillis = Motion.DurFast), targetScale = 0.98f)
 
 /**
- * 根 tab 按底栏顺序做方向性切换：往右切，新页从右整页滑入、旧页向左退 1/4；
+ * 根 tab 按底栏顺序做方向性切换：往右切，新页从右整页滑入、旧页向左整页滑出；
  * 往左切反向。页根都铺了不透明底色，滑动时不会透出旧页卡片。
+ *
+ * 两条约束都是被真机复现钉住的（连点底栏时才出问题）：
+ *
+ * 1) **旧页的滑出距离必须等于新页的滑入距离**。曾经旧页只退 1/4，而
+ *    AnimatedContent 是在「退出转场自己播完」时就把旧页content 摘掉的——
+ *    270px 的弹簧比 1080px 的先收尾，旧页被摘走时新页还差几十像素没盖过来，
+ *    左边缘会硬切一下（实测「今日→课表」会看到一条瞬间消失的旧页）。
+ *    两边同距同弹簧 ⇒ 同时收尾，且两页edges 始终相接，任何一帧都是满屏。
+ *
+ * 2) **这条转场不能碰 alpha**。旧版旧页带 fadeOut(150ms)、新页不带 fadeIn：
+ *    快速连点打断转场时，被重新指回目标的那一页 alpha 停在 0.1 左右，
+ *    而入场转场里没有 alpha 动画去把它拉回 1——连续快速切换实测能抓到
+ *    整页只剩 ~10% 不透明度的「幽灵帧」。两页都只做位移，alpha 恒为 1，
+ *    打断多少次都不会留下半透明的页面。
  */
 private fun NavBackStackEntry.tabIndex(): Int? = when {
     destination.hierarchy.any { it.route == Routes.TODAY_TAB } -> 0
@@ -198,8 +216,8 @@ private fun tabSlideExit(
     val toLeft = tabSwitchForward(initialState, targetState)
     return slideOutHorizontally(
         animationSpec = Motion.SlideSpring,
-        targetOffsetX = { if (toLeft) -it / 4 else it / 4 },
-    ) + fadeOut(tween(durationMillis = Motion.DurFast, easing = Motion.EaseOut))
+        targetOffsetX = { if (toLeft) -it else it },
+    )
 }
 
 // ---------- 「我的」入口卡 ↔ 二级页：共享容器变换 ----------
@@ -207,6 +225,7 @@ private fun tabSlideExit(
 private val profileEntryRoutes = setOf(
     Routes.PROFILE_IMPORTER,
     Routes.PROFILE_GRADES,
+    Routes.PROFILE_EXAMS,
     Routes.PROFILE_SETTINGS,
 )
 
@@ -289,10 +308,23 @@ private fun AppScaffold(
 ) {
     val navController = rememberNavController()
     val entryTransitions = remember { ProfileEntryTransitions() }
-    // 每次从其他 tab 进入「我的」自增，触发该页重播分段级联；二级页返回不自增
+    // 「我的」的分段级联只在本次进程**第一次**进入时播一次，之后切回来直接落位。
+    // 每次重播的话页面会先空一帧（全部区块 alpha=0）再从上往下长出来；这一页又是从右边
+    // 滑入的，空帧 + 顶部先出现，读起来就是「整页从右上角打开」（连续快速切换时实测抓到了
+    // 整屏只剩底色的空帧）。与课表页的 scheduleEntrancePlayed 用同一套节奏：切 tab 只做位移。
     var profileEntranceEpoch by remember { mutableIntStateOf(0) }
+    var profileEntrancePlayed by remember { mutableStateOf(false) }
+    val playProfileEntranceOnce = {
+        if (!profileEntrancePlayed) {
+            profileEntrancePlayed = true
+            profileEntranceEpoch++
+        }
+    }
     // 从加号进课程编辑页时记下加号的位置：返回时页面要反向收回这里
     var fabOrigin by remember { mutableStateOf<Rect?>(null) }
+    // 课表页的「课块级联 + 加号弹出」只播一次（冷启动那一次）。
+    // 不这么做的话，切回课表会比切到今日/我的多一段内容收尾，两个方向读起来不是同一条曲线。
+    var scheduleEntrancePlayed by remember { mutableStateOf(false) }
     // 二级页持续录进这个图层，返回时浮层直接重绘它（无位图读回）
     val entryLayer = rememberGraphicsLayer()
     val colors = LocalCourseColors.current
@@ -379,6 +411,11 @@ private fun AppScaffold(
                         ) {
                             TodayScreen(
                                 onEditCourse = { id -> navController.navigate(Routes.todayEditor(courseId = id)) },
+                                onOpenExams = {
+                                    playProfileEntranceOnce()
+                                    navController.navigateToTab(Routes.PROFILE_TAB)
+                                    navController.navigate(Routes.PROFILE_EXAMS) { launchSingleTop = true }
+                                },
                             )
                         }
                     }
@@ -461,10 +498,12 @@ private fun AppScaffold(
                                     navController.navigate(Routes.scheduleEditor(courseId = id))
                                 },
                                 onOpenSettings = {
-                                    profileEntranceEpoch++
+                                    playProfileEntranceOnce()
                                     navController.navigateToTab(Routes.PROFILE_TAB)
                                 },
                                 onOpenImport = { navController.navigate(Routes.SCHEDULE_IMPORTER) },
+                                playEntrance = !scheduleEntrancePlayed,
+                                onEntranceShown = { scheduleEntrancePlayed = true },
                             )
                         }
                     }
@@ -489,7 +528,12 @@ private fun AppScaffold(
                         popEnterTransition = { EnterTransition.None },
                         popExitTransition = { ExitTransition.None },
                     ) {
-                        JwImportScreen(onBack = { navController.popBackStack() })
+                        JwImportScreen(
+                            onBack = { navController.popBackStack() },
+                            onOpenScripts = {
+                                navController.navigate(Routes.PROFILE_JW_SCRIPTS) { launchSingleTop = true }
+                            },
+                        )
                     }
                     composable(
                         route = Routes.SCHEDULE_EDITOR,
@@ -609,6 +653,9 @@ private fun AppScaffold(
                                         launchSingleTop = true
                                     }
                                 },
+                                onOpenExams = {
+                                    navController.navigate(Routes.PROFILE_EXAMS) { launchSingleTop = true }
+                                },
                             )
                         }
                     }
@@ -639,7 +686,21 @@ private fun AppScaffold(
                         popEnterTransition = { EnterTransition.None },
                         popExitTransition = { ExitTransition.None },
                     ) {
-                        JwImportScreen(onBack = { navController.popBackStack() })
+                        JwImportScreen(
+                            onBack = { navController.popBackStack() },
+                            onOpenScripts = {
+                                navController.navigate(Routes.PROFILE_JW_SCRIPTS) { launchSingleTop = true }
+                            },
+                        )
+                    }
+                    composable(
+                        route = Routes.PROFILE_JW_SCRIPTS,
+                        enterTransition = { EnterTransition.None },
+                        exitTransition = { ExitTransition.None },
+                        popEnterTransition = { EnterTransition.None },
+                        popExitTransition = { ExitTransition.None },
+                    ) {
+                        ScriptManageScreen(onBack = { navController.popBackStack() })
                     }
                     composable(
                         route = Routes.PROFILE_SETTINGS,
@@ -687,6 +748,28 @@ private fun AppScaffold(
                             GradesScreen(
                                 onBack = handleBack,
                                 onOpenJwImport = { navController.navigate(Routes.PROFILE_JW_IMPORT) },
+                            )
+                        }
+                    }
+                    composable(
+                        route = Routes.PROFILE_EXAMS,
+                        enterTransition = { profileEntryHoldEnter },
+                        exitTransition = { ExitTransition.None },
+                        popEnterTransition = { EnterTransition.None },
+                        popExitTransition = { ExitTransition.None },
+                    ) {
+                        ProfileEntryPage(
+                            entryKey = ProfileEntryKeys.EXAMS,
+                            transitions = entryTransitions,
+                            captureLayer = entryLayer,
+                            isTop = currentDestination?.route == Routes.PROFILE_EXAMS,
+                            onPop = { navController.popBackStack() },
+                        ) { handleBack ->
+                            ExamScreen(
+                                onBack = handleBack,
+                                onNeedsLogin = {
+                                    navController.navigate(Routes.PROFILE_JW_IMPORT) { launchSingleTop = true }
+                                },
                             )
                         }
                     }
@@ -740,7 +823,9 @@ private fun AppScaffold(
                                 // 当前 tab：复点也弹跳一次；其他 tab：切换（切页本身也触发弹跳）
                                 bounceTrigger++
                                 if (tab.rootRoute != currentDestination?.route) {
-                                    if (tab.rootRoute == Routes.PROFILE_TAB) profileEntranceEpoch++
+                                    if (tab.rootRoute == Routes.PROFILE_TAB) {
+                                        playProfileEntranceOnce()
+                                    }
                                     navController.navigateToTab(tab.route)
                                 }
                             },
