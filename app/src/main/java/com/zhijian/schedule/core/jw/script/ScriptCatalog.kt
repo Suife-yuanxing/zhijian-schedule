@@ -69,7 +69,11 @@ class ScriptCatalog @Inject constructor(
             ).toOption(origin = it.origin, enabled = it.enabled)
         }
         return options
-            .map { it.copy(matched = it.matchedHost(pageHost), runnable = it.enabled && it.matchedHost(pageHost)) }
+            .map {
+                val matched = it.matchedHost(pageHost)
+                // hosts 为空 = 通用脚本，任何页面都可运行；matched 仅用于排序与站点徽章
+                it.copy(matched = matched, runnable = it.enabled && (it.hosts.isEmpty() || matched))
+            }
             .sortedWith(
                 compareByDescending<ScriptOption> { it.matched }
                     .thenBy { if (it.hosts.isEmpty()) 1 else 0 }
