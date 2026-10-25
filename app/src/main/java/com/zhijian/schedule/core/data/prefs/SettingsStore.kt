@@ -34,6 +34,8 @@ data class AppSettings(
     val capsuleAlarmFallbackEnabled: Boolean = true,
     val gradesFetchedAt: Long = 0L,
     val holidayFetchedAt: Long = 0L,
+    /** 课程脚本远程仓库地址（index.json）；空 = 未配置 */
+    val jwScriptIndexUrl: String = "",
     /** 「镜像加速」开关；默认开启 —— GitHub 直连在国内经常不可用，镜像作为自动退路 */
     val mirrorsEnabled: Boolean = true,
 )
@@ -59,6 +61,7 @@ class SettingsStore @Inject constructor(
         val CAPSULE_ALARM_FALLBACK = booleanPreferencesKey("capsule_alarm_fallback")
         val GRADES_FETCHED = longPreferencesKey("grades_fetched_at")
         val HOLIDAY_FETCHED = longPreferencesKey("holiday_fetched_at")
+        val JW_SCRIPT_INDEX = stringPreferencesKey("jw_script_index_url")
         val MIRRORS = booleanPreferencesKey("update_mirrors_enabled")
         val CALENDAR_FINGERPRINT = stringPreferencesKey("calendar_sync_fingerprint")
         val SETTINGS_SCHEMA = intPreferencesKey("settings_schema")
@@ -82,6 +85,7 @@ class SettingsStore @Inject constructor(
             capsuleAlarmFallbackEnabled = p[Keys.CAPSULE_ALARM_FALLBACK] ?: true,
             gradesFetchedAt = p[Keys.GRADES_FETCHED] ?: 0L,
             holidayFetchedAt = p[Keys.HOLIDAY_FETCHED] ?: 0L,
+            jwScriptIndexUrl = p[Keys.JW_SCRIPT_INDEX] ?: "",
             mirrorsEnabled = p[Keys.MIRRORS] ?: true,
         )
     }
@@ -109,6 +113,8 @@ class SettingsStore @Inject constructor(
     suspend fun setGradesFetchedAt(time: Long) = dataStore.edit { it[Keys.GRADES_FETCHED] = time }
     suspend fun setHolidayFetchedAt(time: Long) = dataStore.edit { it[Keys.HOLIDAY_FETCHED] = time }
     suspend fun setMirrorsEnabled(enabled: Boolean) = dataStore.edit { it[Keys.MIRRORS] = enabled }
+    suspend fun setJwScriptIndexUrl(url: String) =
+        dataStore.edit { it[Keys.JW_SCRIPT_INDEX] = url.trim() }
 
     /**
      * v1.0.6 及以前的镜像开关默认关闭，升级用户在直连不可用时完全无法下载更新。
