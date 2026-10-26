@@ -119,7 +119,7 @@ import kotlinx.serialization.json.Json
 
 /**
  * 教务脚本 manifest：脚本头部块注释中的 JSON（marker: PAPER_SCRIPT_MANIFEST）。
- * 详见 docs/superpowers/specs/2026-10-25-jw-script-engine-design.md §1.1。
+ * 详见 docs/specs/2026-10-25-jw-script-engine-design.md §1.1。
  */
 @Serializable
 data class JwScriptManifest(

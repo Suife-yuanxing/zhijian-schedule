@@ -653,19 +653,15 @@ flowchart TB
 
 ### 5.7 高保真 UI 设计稿
 
-以下为关键界面设计稿（图片位于同目录 `assets/` 文件夹）；线框布局对各风格通用，实际配色 / 字体 / 圆角由所选主题 Token 实时渲染：
+以下为关键界面的布局说明；线框布局对各风格通用，实际配色 / 字体 / 圆角由所选主题 Token 实时渲染。
+
+> 说明：本节原有 3 张高保真截图（`assets/ui-week-view.png`、`assets/ui-add-course.png`、`assets/ui-widget.png`）从未随仓库提交（`git log --all --diff-filter=A` 可复核），原引用为失效链接，故改为文字描述。若需附图，请把截图放入 `docs/assets/` 并在此处补回引用。
 
 **① 周视图主页**：时间轴 + 彩色课程块、当前星期高亮、周次切换、底部三 Tab、右下 FAB
 
-![周视图主页](assets/ui-week-view.png)
-
 **② 添加 / 编辑课程**：表单式录入，节次、周次、颜色一目了然
 
-![添加课程](assets/ui-add-course.png)
-
 **③ 桌面小组件**：今日课程 / 下一节，深色自适应
-
-![桌面小组件](assets/ui-widget.png)
 
 ---
 

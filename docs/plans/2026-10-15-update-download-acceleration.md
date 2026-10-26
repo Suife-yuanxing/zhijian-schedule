@@ -8,7 +8,7 @@
 
 **Tech Stack:** Kotlin 2.2.21 / Jetpack Compose / Hilt / OkHttp 4.12.0 / kotlinx.serialization 1.9.0 / kotlinx.coroutines（`coroutineScope` + `async` + `Channel`）/ JUnit4（无 Robolectric）/ minSdk 26, targetSdk 36
 
-**Spec:** [docs/superpowers/specs/2026-10-15-update-download-acceleration-design.md](../specs/2026-10-15-update-download-acceleration-design.md)（v1 背景见 [2026-10-15-in-app-update-download-design.md](../specs/2026-10-15-in-app-update-download-design.md)，v1 实现计划见 [2026-10-15-in-app-update-download.md](./2026-10-15-in-app-update-download.md)）
+**Spec:** [docs/specs/2026-10-15-update-download-acceleration-design.md](../specs/2026-10-15-update-download-acceleration-design.md)（v1 背景见 [2026-10-15-in-app-update-download-design.md](../specs/2026-10-15-in-app-update-download-design.md)，v1 实现计划见 [2026-10-15-in-app-update-download.md](./2026-10-15-in-app-update-download.md)）
 
 ---
 
@@ -30,7 +30,7 @@ cmd /c ".tmp\run-tests.bat :app:testDebugUnitTest --console=plain"
 git -C "D:\课程表" status --short
 ```
 
-预期：只有 `?? docs/`。本计划**所有提交都只 `git add` 明确列出的代码文件，永远不用 `git add -A` / `git add .` / `git add docs`** —— 用户明确要求 `docs/` 留在本地不提交，所以本文件（`docs/superpowers/plans/2026-10-15-update-download-acceleration.md`）本身也在任何一次 `git add` 之外。
+预期：只有 `?? docs/`。本计划**所有提交都只 `git add` 明确列出的代码文件，永远不用 `git add -A` / `git add .` / `git add docs`** —— 用户明确要求 `docs/` 留在本地不提交，所以本文件（`docs/plans/2026-10-15-update-download-acceleration.md`）本身也在任何一次 `git add` 之外。
 
 - [ ] **P3: 记住三条构建命令与输出噪音**
 
@@ -157,7 +157,7 @@ cmd /c ".tmp\run-tests.bat :app:assembleDebug --console=plain"
 同时在文件顶部的 import 区补上：
 
 ```kotlin
-import com.zhijian.schedule.update.Chunk
+import com.zhijian.schedule.core.update.Chunk
 ```
 
 - [ ] **Step 2: 跑测试确认失败**
@@ -379,8 +379,8 @@ git -C "D:\课程表" commit -m "新增加载分片规划：固定 4MiB 切片�
 同时在文件顶部的 import 区补上（`ChunkProgress` 与 `ResumePoint` 都被这批测试直接引用）：
 
 ```kotlin
-import com.zhijian.schedule.update.ChunkProgress
-import com.zhijian.schedule.update.ResumePoint
+import com.zhijian.schedule.core.update.ChunkProgress
+import com.zhijian.schedule.core.update.ResumePoint
 ```
 
 - [ ] **Step 2: 跑测试确认失败**
@@ -599,7 +599,7 @@ git -C "D:\课程表" commit -m "新增分片进度聚合、续传点判定与 .
 同时在文件顶部的 import 区补上：
 
 ```kotlin
-import com.zhijian.schedule.update.RangeSupport
+import com.zhijian.schedule.core.update.RangeSupport
 ```
 
 - [ ] **Step 2: 跑测试确认失败**
@@ -683,8 +683,8 @@ git -C "D:\课程表" commit -m "新增分片响应的降级判据：200 退回�
 ```kotlin
 package com.zhijian.schedule
 
-import com.zhijian.schedule.update.DownloadSourceSet
-import com.zhijian.schedule.update.UpdateSource
+import com.zhijian.schedule.core.update.DownloadSourceSet
+import com.zhijian.schedule.core.update.UpdateSource
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -780,7 +780,7 @@ cmd /c ".tmp\run-tests.bat :app:testDebugUnitTest --tests com.zhijian.schedule.D
 新建 `app/src/main/java/com/zhijian/schedule/update/DownloadSourceSet.kt`：
 
 ```kotlin
-package com.zhijian.schedule.update
+package com.zhijian.schedule.core.update
 
 /** 一个下载源；[id] 用于判重与日志，[label] 是给用户看的来源标签 */
 data class UpdateSource(val id: String, val label: String, val url: String)
@@ -1894,7 +1894,7 @@ git -C "D:\课程表" commit -m "新增「镜像加速」设置项（默认关�
 并在 import 区补：
 
 ```kotlin
-import com.zhijian.schedule.update.ResumableDownload
+import com.zhijian.schedule.core.update.ResumableDownload
 ```
 
 - [ ] **Step 4: 编译确认**
@@ -1924,7 +1924,7 @@ git -C "D:\课程表" commit -m "设置页接线镜像开关与无摘要时的�
 在 `SettingsScreen.kt` 的 import 区追加（保持现有分组顺序）：
 
 ```kotlin
-import com.zhijian.schedule.update.DownloadSourceSet
+import com.zhijian.schedule.core.update.DownloadSourceSet
 ```
 
 - [ ] **Step 2: 卡片里加「镜像加速」开关**

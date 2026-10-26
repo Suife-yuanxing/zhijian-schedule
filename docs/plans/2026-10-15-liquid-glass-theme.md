@@ -10,7 +10,7 @@
 
 **Tech Stack:** Compose UI 1.10.6（BOM 2026.03.01）、AGSL RuntimeShader（API 33+）、Gradle（`.tmp\run-tests.bat`）、JUnit4 单测。
 
-**设计文档:** `docs/superpowers/specs/2026-10-15-liquid-glass-theme-design.md`
+**设计文档:** `docs/specs/2026-10-15-liquid-glass-theme-design.md`
 
 ---
 

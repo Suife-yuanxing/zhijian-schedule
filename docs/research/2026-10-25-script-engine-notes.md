@@ -1,7 +1,7 @@
 # 教务脚本契约（给脚本作者的一页说明）
 
 - 日期：2026-10-25
-- 设计全文：[2026-10-25-jw-script-engine-design.md](../superpowers/specs/2026-10-25-jw-script-engine-design.md)
+- 设计全文：[2026-10-25-jw-script-engine-design.md](../specs/2026-10-25-jw-script-engine-design.md)
 - 范本：App 仓库 `app/src/main/assets/jw/scripts/`（强智 DOM 版 / 正方 fetch 版）
 
 ## 一个脚本 = 一个 .js 文件

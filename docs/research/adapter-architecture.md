@@ -26,14 +26,14 @@
 
 - [JwAdapter.kt](../../app/src/main/java/com/zhijian/schedule/core/jw/JwAdapter.kt)：`id/name/supports(url)/fetch(client, baseUrl, totalWeeks)`；`JwAdapterRegistry.forUrl()` 未命中**回退 ZhengFangAdapter**，而它的 `supports()` 恒 `true`。
 - 错误只有 3 类（`NeedsLogin/ParseFailed/NetworkFailed`），无「验证码/改版/错页面」区分 → UI 给不出可执行动作。
-- [ZhengFangAdapter.kt](../../app/src/main/java/com/zhijian/schedule/core/jw/ZhengFangAdapter.kt)：硬编码 3 个候选 URL、`DEFAULT_BASE = https://jw.dgpt.edu.cn/jsxsd/`、按 `kbtable`+`div.kbcontent`+`[01-02节]` 解析 → 学校改版即整体失效。
+- [ZhengFangAdapter.kt](../../app/src/main/java/com/zhijian/schedule/core/jw/QiangZhiAdapter.kt)（2026-10 后已按实际协议更名为 `QiangZhiAdapter.kt`）：硬编码 3 个候选 URL、`DEFAULT_BASE = https://jw.dgpt.edu.cn/jsxsd/`、按 `kbtable`+`div.kbcontent`+`[01-02节]` 解析 → 学校改版即整体失效。
 - [JwSessionRecovery.kt](../../app/src/main/java/com/zhijian/schedule/core/jw/JwSessionRecovery.kt)：不开 WebView，靠 CAS 票据 GET 链（`sso.jsp`→authserver→回跳，≤8 跳）静默重登 → **后台同步的关键资产，必须保留为能力位**。
 - [WebViewCookieJar.kt](../../app/src/main/java/com/zhijian/schedule/core/net/WebViewCookieJar.kt)：OkHttp ↔ 系统 `CookieManager` 双向共享。
-- [JwSyncManager.kt](../../app/src/main/java/com/zhijian/schedule/sync/JwSyncManager.kt)：自动=`buildPreview(syncMode=true)`→`applyImport(applyConflicts=false)`→通知。
+- [JwSyncManager.kt](../../app/src/main/java/com/zhijian/schedule/core/sync/JwSyncManager.kt)：自动=`buildPreview(syncMode=true)`→`applyImport(applyConflicts=false)`→通知。
 - [ScheduleRepository.buildPreview](../../app/src/main/java/com/zhijian/schedule/core/repository/ScheduleRepository.kt)：匹配键 `(name,day,startSection)`，退化 `(name,day)`；`conflict=manuallyEdited`；**syncMode 下未匹配且未手改的旧课直接 REMOVED** → 「自动同步改坏课表」的唯一入口。
 - 导入侧已统一 `CourseDraft`+`ImportPreview`，新架构**复用该管线，不另造模型**。
 
-**【事实】** 技术方案 4.6/4.10 已定：WebView 直连、脚本声明策略、HTTP 重放优先、密码默认不落盘、`IMPORT_SNAPSHOT`、`manuallyEdited` 不被覆盖（[课程表APP技术方案.md](../../课程表APP技术方案.md)）。
+**【事实】** 技术方案 4.6/4.10 已定：WebView 直连、脚本声明策略、HTTP 重放优先、密码默认不落盘、`IMPORT_SNAPSHOT`、`manuallyEdited` 不被覆盖（[课程表APP技术方案.md](../specs/课程表APP技术方案.md)）。
 
 ---
 
@@ -477,4 +477,4 @@ app/src/test/resources/fixtures/<adapterId>/
 - WorkManager 周期任务：<https://developer.android.google.cn/reference/androidx/work/PeriodicWorkRequest>
 - minisign：<https://jedisct1.github.io/minisign/> ｜ RFC 8032：<https://www.rfc-editor.org/rfc/rfc8032>
 - TUF（防回滚/防冻结）：<https://theupdateframework.github.io/specification/latest/>
-- 本项目：`课程表APP技术方案.md`（4.6 导入 / 4.10 自动同步）→ [打开](../../课程表APP技术方案.md)
+- 本项目：`课程表APP技术方案.md`（4.6 导入 / 4.10 自动同步）→ [打开](../specs/课程表APP技术方案.md)

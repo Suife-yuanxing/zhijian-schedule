@@ -8,7 +8,7 @@
 
 **Tech Stack:** Kotlin 2.2.21 / Jetpack Compose / Hilt / OkHttp 4.12.0 / kotlinx.serialization 1.9.0 / JUnit4（无 Robolectric）/ minSdk 26, targetSdk 36
 
-**Spec:** [docs/superpowers/specs/2026-10-15-in-app-update-download-design.md](../specs/2026-10-15-in-app-update-download-design.md)
+**Spec:** [docs/specs/2026-10-15-in-app-update-download-design.md](../specs/2026-10-15-in-app-update-download-design.md)
 
 ---
 
@@ -104,10 +104,10 @@ cmd /c ".tmp\build-release.bat :app:assembleRelease --console=plain"
 ```kotlin
 package com.zhijian.schedule
 
-import com.zhijian.schedule.update.ContentRange
-import com.zhijian.schedule.update.PartMeta
-import com.zhijian.schedule.update.RangeDecision
-import com.zhijian.schedule.update.ResumableDownload
+import com.zhijian.schedule.core.update.ContentRange
+import com.zhijian.schedule.core.update.PartMeta
+import com.zhijian.schedule.core.update.RangeDecision
+import com.zhijian.schedule.core.update.ResumableDownload
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -261,7 +261,7 @@ cmd /c ".tmp\run-tests.bat :app:testDebugUnitTest --tests com.zhijian.schedule.R
 新建 `app/src/main/java/com/zhijian/schedule/update/ResumableDownload.kt`：
 
 ```kotlin
-package com.zhijian.schedule.update
+package com.zhijian.schedule.core.update
 
 import java.io.File
 import java.io.InputStream
@@ -491,7 +491,7 @@ git -C "D:\课程表" commit -m "新增更新下载的断点续传判定与元�
 同时在文件顶部的 import 区补上：
 
 ```kotlin
-import com.zhijian.schedule.update.VerifyResult
+import com.zhijian.schedule.core.update.VerifyResult
 import java.io.File
 ```
 
@@ -678,8 +678,8 @@ git -C "D:\课程表" commit -m "新增下载校验与展示的纯逻辑：SHA-2
 ```kotlin
 package com.zhijian.schedule
 
-import com.zhijian.schedule.update.ProgressThrottle
-import com.zhijian.schedule.update.SpeedMeter
+import com.zhijian.schedule.core.update.ProgressThrottle
+import com.zhijian.schedule.core.update.SpeedMeter
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -1075,7 +1075,7 @@ git -C "D:\课程表" commit -m "为更新下载提供独立的 OkHttpClient（�
 新建 `app/src/main/java/com/zhijian/schedule/update/UpdateStore.kt`：
 
 ```kotlin
-package com.zhijian.schedule.update
+package com.zhijian.schedule.core.update
 
 import android.content.Context
 import android.os.StatFs
@@ -1206,7 +1206,7 @@ git -C "D:\课程表" commit -m "新增 UpdateStore：更新安装包的目录�
 新建 `app/src/main/java/com/zhijian/schedule/update/ApkDownloader.kt`：
 
 ```kotlin
-package com.zhijian.schedule.update
+package com.zhijian.schedule.core.update
 
 import android.content.Context
 import com.zhijian.schedule.BuildConfig
@@ -1606,7 +1606,7 @@ git -C "D:\课程表" commit -m "新增 ApkDownloader：下载状态唯一来源
 新建 `app/src/main/java/com/zhijian/schedule/update/UpdateNotification.kt`：
 
 ```kotlin
-package com.zhijian.schedule.update
+package com.zhijian.schedule.core.update
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -1628,7 +1628,7 @@ object UpdateNotification {
     const val CH_UPDATE = "update"
     const val NOTIFICATION_ID_PROGRESS = 3101
     const val NOTIFICATION_ID_DONE = 3102
-    const val ACTION_CANCEL = "com.zhijian.schedule.update.action.CANCEL"
+    const val ACTION_CANCEL = "com.zhijian.schedule.core.update.action.CANCEL"
 
     /** IMPORTANCE_LOW：不响铃不震动，只在通知栏安静走进度 */
     fun ensureChannel(context: Context) {
@@ -1731,7 +1731,7 @@ object UpdateNotification {
 新建 `app/src/main/java/com/zhijian/schedule/update/ApkDownloadService.kt`：
 
 ```kotlin
-package com.zhijian.schedule.update
+package com.zhijian.schedule.core.update
 
 import android.app.Notification
 import android.app.Service
@@ -1961,7 +1961,7 @@ git -C "D:\课程表" commit -m "新增下载通知与 dataSync 前台服务（�
 新建 `app/src/main/java/com/zhijian/schedule/update/ApkInstaller.kt`：
 
 ```kotlin
-package com.zhijian.schedule.update
+package com.zhijian.schedule.core.update
 
 import android.content.Context
 import android.content.Intent
@@ -2074,7 +2074,7 @@ git -C "D:\课程表" commit -m "接入 FileProvider 与「安装未知应用」
 并补 import：
 
 ```kotlin
-import com.zhijian.schedule.update.ApkDownloader
+import com.zhijian.schedule.core.update.ApkDownloader
 ```
 
 把 `onCreate` 里的 `appScope.launch { ... }` 改成：
@@ -2166,11 +2166,11 @@ class SettingsViewModel @Inject constructor(
 补 import：
 
 ```kotlin
-import com.zhijian.schedule.update.ApkDownloadService
-import com.zhijian.schedule.update.ApkDownloader
-import com.zhijian.schedule.update.ApkInstaller
-import com.zhijian.schedule.update.DownloadRequest
-import com.zhijian.schedule.update.DownloadState
+import com.zhijian.schedule.core.update.ApkDownloadService
+import com.zhijian.schedule.core.update.ApkDownloader
+import com.zhijian.schedule.core.update.ApkInstaller
+import com.zhijian.schedule.core.update.DownloadRequest
+import com.zhijian.schedule.core.update.DownloadState
 ```
 
 - [ ] **Step 3: 观察下载状态**
@@ -2309,9 +2309,9 @@ git -C "D:\课程表" commit -m "设置页接线应用内下载：开始/取消/
 ```kotlin
 import androidx.compose.material3.LinearProgressIndicator
 import com.zhijian.schedule.BuildConfig
-import com.zhijian.schedule.update.DownloadState
-import com.zhijian.schedule.update.ResumableDownload
-import com.zhijian.schedule.update.UpdateChecker
+import com.zhijian.schedule.core.update.DownloadState
+import com.zhijian.schedule.core.update.ResumableDownload
+import com.zhijian.schedule.core.update.UpdateChecker
 ```
 
 - [ ] **Step 2: 返回设置页时一并刷新安装权限**
@@ -2607,4 +2607,4 @@ git -C "D:\课程表" log --oneline -13
 
 **4. 执行期增补（2026-10-15，执行中发现）**
 
-Task 12 Step 1 原先要求 `import com.zhijian.schedule.update.etaText` 与 `...formatBytes`，但这两个函数是 `object ResumableDownload` 的**成员**（`ResumableDownload.kt:144`、`:158`），不是顶层函数 —— 那两行 import 解析不了，Step 4 里 9 处未限定调用也过不了编译。执行子代理在 Step 5 编译期抓到这个缺陷，按约定停下且未提交。现已改为 `import com.zhijian.schedule.update.ResumableDownload` + 9 处限定调用 `ResumableDownload.formatBytes(...)` / `ResumableDownload.etaText(...)`，与 Task 7（`ApkDownloader.kt`）和 Task 8（`UpdateNotification.kt`）里既有的写法保持一致。
+Task 12 Step 1 原先要求 `import com.zhijian.schedule.core.update.etaText` 与 `...formatBytes`，但这两个函数是 `object ResumableDownload` 的**成员**（`ResumableDownload.kt:144`、`:158`），不是顶层函数 —— 那两行 import 解析不了，Step 4 里 9 处未限定调用也过不了编译。执行子代理在 Step 5 编译期抓到这个缺陷，按约定停下且未提交。现已改为 `import com.zhijian.schedule.core.update.ResumableDownload` + 9 处限定调用 `ResumableDownload.formatBytes(...)` / `ResumableDownload.etaText(...)`，与 Task 7（`ApkDownloader.kt`）和 Task 8（`UpdateNotification.kt`）里既有的写法保持一致。

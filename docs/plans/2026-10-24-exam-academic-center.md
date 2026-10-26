@@ -8,7 +8,7 @@
 
 **Tech Stack:** Kotlin 2.2.21 / Compose / Hilt / Room 2.8.5 / OkHttp / Jsoup / kotlinx.serialization / JUnit4（无 Robolectric）
 
-**Spec:** [docs/superpowers/specs/2026-10-24-exam-academic-center-design.md](../specs/2026-10-24-exam-academic-center-design.md)
+**Spec:** [docs/specs/2026-10-24-exam-academic-center-design.md](../specs/2026-10-24-exam-academic-center-design.md)
 
 **与规格的命名偏差：** 规格里的 `GradeStats.kt` 与既有 `GradeParser.kt` 中的 `data class GradeStats` 同名冲突，实现命名为 `GradeTrend`（core/jw/GradeTrend.kt），职责不变。
 
@@ -542,7 +542,7 @@ object ExamFetcher {
 ```kotlin
 package com.zhijian.schedule
 
-import com.zhijian.schedule.alarm.ExamAlarms
+import com.zhijian.schedule.core.notifications.ExamAlarms
 import com.zhijian.schedule.core.data.db.ExamEntity
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -588,7 +588,7 @@ class ExamAlarmsTest {
 - [ ] **Step 3: 实现 ExamAlarms**
 
 ```kotlin
-package com.zhijian.schedule.alarm
+package com.zhijian.schedule.core.notifications
 
 import com.zhijian.schedule.core.data.db.ExamEntity
 import java.time.Instant
@@ -631,7 +631,7 @@ object ExamAlarms {
 - [ ] **Step 5: ExamAlarmScheduler**
 
 ```kotlin
-package com.zhijian.schedule.alarm
+package com.zhijian.schedule.core.notifications
 
 import android.app.AlarmManager
 import android.app.PendingIntent
@@ -739,7 +739,7 @@ class ExamAlarmScheduler @Inject constructor(
 - [ ] **Step 7: ExamReminderReceiver**
 
 ```kotlin
-package com.zhijian.schedule.alarm
+package com.zhijian.schedule.core.notifications
 
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -776,7 +776,7 @@ class ExamReminderReceiver : BroadcastReceiver() {
 - [ ] **Step 8: ExamReminderCoordinator**
 
 ```kotlin
-package com.zhijian.schedule.alarm
+package com.zhijian.schedule.core.notifications
 
 import com.zhijian.schedule.core.repository.ScheduleRepository
 import javax.inject.Inject

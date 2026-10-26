@@ -1,0 +1,69 @@
+# 文档索引 · 纸间课表
+
+[纸间课表](../README.md)（PaperTimetable）的工程文档总入口。文档随代码一起提交在仓库内，不依赖任何外部网盘。
+
+## 分类约定
+
+| 目录 | 放什么 | 命名 | 生命周期 |
+| --- | --- | --- | --- |
+| [`research/`](research/) | 调研笔记：教务厂商、同类产品、技术可行性。结论带证据分级（【事实】/【建议】/【估算】） | 主题名，必要时加 `YYYY-MM-DD-` 前缀 | 只追加，不改历史结论 |
+| [`plans/`](plans/) | 某个变更的**实施计划**：任务拆解、验收标准、构建与测试命令 | `YYYY-MM-DD-主题.md` | 该变更交付后归档，不再修改 |
+| [`specs/`](specs/) | **设计规格**：项目总体技术方案 + 各变更的设计文档 | 变更设计为 `YYYY-MM-DD-主题-design.md`，与 `plans/` 成对 | 总体方案随版本修订；变更设计归档 |
+| [`testing/`](testing/) | 本地测试夹具说明与手工 E2E 步骤 | 按夹具名 | 随夹具代码同步更新 |
+| [`adr/`](adr/) | **架构决策记录**（ADR）：不可逆或高成本的取舍 | `NNNN-动词短语.md`，规则见 [ADR 使用说明](adr/README.md) | 只追加，历史条目不改 |
+
+两条稳定约定：
+
+1. **日期取首稿完成日**，不是提交日；`plans/X.md` 对应 `specs/X-design.md`。
+2. **路径一经发布即视为稳定契约**：改名会让提交信息、issue 与代码注释里的引用失配。除目录分类迁移外不要移动或重命名文档。
+
+配套的仓库级文档：[README](../README.md) · [CONTRIBUTING](../CONTRIBUTING.md) · [CHANGELOG](../CHANGELOG.md)。
+
+---
+
+## research/ — 调研笔记
+
+- [adapter-architecture.md](research/adapter-architecture.md) — 教务适配器架构 v1.1：主张「原生 Kotlin 为骨架、JS 脚本只取数、解析留在设备端、远程只分发脚本与元数据」，并定下主线（HTTP 重放）与兜底（前台 WebView 注入）双执行模型。
+- [industry-import-practices.md](research/industry-import-practices.md) — WakeUp / 小爱 / 拾光 / 下节啥课 / ClassIsland / 超级课程表 的多教务导入做法对比，结论是业界一致采用「学校列表 + 通用教务兜底 + 文件与手动兜底」三层结构，且解析必须跑在已登录的 WebView 上下文里。
+- [jw-vendor-landscape.md](research/jw-vendor-landscape.md) — 教务厂商覆盖与抓取可行性：公开的 4140 条学校目录中有约 1470 条可判协议（正方新版 562、强智 292、青果 164、超星 135…），并指出当时的 `ZhengFangAdapter` 实际实现的是强智 jsxsd。
+- [2026-10-19-multi-jw-import.md](research/2026-10-19-multi-jw-import.md) — 多教务导入的落地方案：首批只做正方新版 / 强智 / 金智 URP / 青果四家，给出适配器分层、兜底策略与排期。
+- [2026-10-25-script-engine-notes.md](research/2026-10-25-script-engine-notes.md) — 给脚本作者的一页契约说明：`PAPER_SCRIPT_MANIFEST` 头部格式与 `fetchSchedule(ctx)` 的返回值信封字段。
+
+## plans/ — 实施计划
+
+- [2026-10-15-in-app-update-download.md](plans/2026-10-15-in-app-update-download.md) — 应用内更新下载 v1：把「跳到浏览器自己找 APK」改成应用内点击即下载，`ApkDownloader` 做状态唯一来源、`UpdateStore` 管目录与断点元数据、dataSync 前台服务渲染进度通知。
+- [2026-10-15-update-download-acceleration.md](plans/2026-10-15-update-download-acceleration.md) — 下载加速 v2：8 路并发分片 + 镜像源链，服务端不支持 Range 时自动退回单连接路径；分片规划、降级判据与续传点全部收进可单测的纯逻辑。
+- [2026-10-15-liquid-glass-theme.md](plans/2026-10-15-liquid-glass-theme.md) — 第 6 套主题「液态玻璃」实现计划：解析式极光背景 + 零模糊玻璃材质，A13+ 机型叠加 AGSL 真折射，旧机走渐变光影档。
+- [2026-10-24-exam-academic-center.md](plans/2026-10-24-exam-academic-center.md) — 学业中心一期实施计划：考试列表与编辑、强智考试抓取、手动项保护的合并决策、考前 24h/1h 两档闹钟、今日页倒计时卡、胶囊伪课程与学期绩点趋势。
+- [2026-10-25-jw-script-engine.md](plans/2026-10-25-jw-script-engine.md) — 教务脚本引擎 12 任务实施计划：WebView 页面上下文注入执行器、manifest 契约、内置/本地导入/远程仓库三件套分发。
+
+## specs/ — 设计规格
+
+- [课程表APP技术方案.md](specs/课程表APP技术方案.md) — **项目技术总纲（10 章）**：产品定位、总体架构、数据模型、课表渲染、导入方案、提醒与胶囊、小组件、合规与商业化、后续路线。新同学从这里开始读。
+- [2026-10-15-in-app-update-download-design.md](specs/2026-10-15-in-app-update-download-design.md) — 应用内下载 v1 设计：下载状态机、断点续传、通知栏进度与取消、安装交付链路与降级退路。
+- [2026-10-15-update-download-acceleration-design.md](specs/2026-10-15-update-download-acceleration-design.md) — 下载加速 v2 设计：并发数取 8 的实测依据、镜像源链候选与探测排序；含 2026-10-17「镜像开关改默认开启」的修订。
+- [2026-10-15-liquid-glass-theme-design.md](specs/2026-10-15-liquid-glass-theme-design.md) — 液态玻璃主题设计：禁模糊（blur）的材质定义、折射与高光算法、自适应双档的性能边界。
+- [2026-10-24-exam-academic-center-design.md](specs/2026-10-24-exam-academic-center-design.md) — 学业中心一期设计：已拍板的决策表（数据来源、合并口径、提醒档位）、Room v2→v3 迁移与 UI 层级。
+- [2026-10-25-jw-script-engine-design.md](specs/2026-10-25-jw-script-engine-design.md) — 教务脚本引擎设计：页面上下文注入模型、最小契约（manifest + `fetchSchedule` 信封）、分发三件套与安全模型。
+
+## testing/ — 测试夹具
+
+- [mock-jw.md](testing/mock-jw.md) — 本地模拟教务服务的使用说明：`node tools/mock-jw/server.mjs` 起服，模拟正方新版与强智 jsxsd，覆盖 WebView → 共享 Cookie → 适配器 → 预览 → 落库整条客户端链路，无需真实学校账号。
+
+## adr/ — 架构决策记录
+
+- [ADR 索引与使用说明](adr/README.md)
+- [0001 本地优先、无云同步的数据架构](adr/0001-local-first-data-architecture.md)
+- [0002 教务导入采用可下载 JS 脚本引擎](adr/0002-jw-import-script-engine.md)
+- [0003 应用内更新走 GitHub Releases 自分发](adr/0003-github-releases-self-distribution.md)
+- [0004 更新下载采用并发分片与镜像源链](adr/0004-concurrent-chunked-download.md)
+
+---
+
+## 怎么加一篇新文档
+
+1. **先判断类型**：不确定能不能做、别人怎么做的 → `research/`；要做但没定怎么做 → `specs/`；定了要分几步做 → `plans/`；做完了且取舍不可逆 → `adr/`。
+2. 按上表命名，日期用首稿完成日。
+3. 在本文件对应分类下追加一行：**一句话摘要 + 相对链接**，摘要写清结论而不是主题。
+4. 若文档改变了既有架构约定，补一篇 ADR，不要改写历史 ADR。
+5. 检查改动后仍无失效链接（见 [CONTRIBUTING](../CONTRIBUTING.md#8-提交前检查清单)）。
