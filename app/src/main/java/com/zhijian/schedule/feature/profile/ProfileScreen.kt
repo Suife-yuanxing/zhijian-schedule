@@ -477,7 +477,13 @@ private fun SemesterOverviewCard(
             .cardTilt(state = tilt, shape = shape, style = tiltStyle, enabled = motionAllowed)
             .clip(shape)
             .background(heroBrush)
-            .cardTiltGlare(state = tilt, shape = shape, style = tiltStyle)
+            .cardTiltGlare(
+                state = tilt,
+                shape = shape,
+                style = tiltStyle,
+                // 暗面掺主题强调色而不是纯黑：这张卡是"暖白纸"，纯黑压边会发灰发脏
+                shade = lerp(Color.Black, colors.accent, 0.35f),
+            )
             .padding(20.dp),
     ) {
         Row(verticalAlignment = Alignment.Top) {
@@ -485,7 +491,7 @@ private fun SemesterOverviewCard(
             Column(
                 Modifier
                     .weight(1f)
-                    .cardTiltParallax(state = tilt, style = tiltStyle, depth = 4.dp),
+                    .cardTiltParallax(state = tilt, style = tiltStyle, depth = 12.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(

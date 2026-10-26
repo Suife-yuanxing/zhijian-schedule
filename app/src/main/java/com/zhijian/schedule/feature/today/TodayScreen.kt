@@ -55,6 +55,8 @@ import com.zhijian.schedule.core.data.db.CourseEntity
 import com.zhijian.schedule.core.data.db.ExamEntity
 import com.zhijian.schedule.core.data.db.HolidayEntity
 import com.zhijian.schedule.core.theme.LocalCourseColors
+import com.zhijian.schedule.core.theme.LocalIsDark
+import com.zhijian.schedule.core.theme.courseTone
 import com.zhijian.schedule.core.ui.HolidayColors
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.StaggerIn
@@ -379,14 +381,17 @@ private fun EmptyToday(ui: TodayUiState) {
 
 @Composable
 private fun CurrentClassCard(item: TodayCourseItem, now: LocalTime) {
-    val colors = LocalCourseColors.current
     val start = item.startTime ?: return
     val end = item.endTime ?: return
     val total = Duration.between(start, end).seconds.coerceAtLeast(1)
     val passed = Duration.between(start, now).seconds.coerceIn(0, total)
     val remaining = 1f - passed.toFloat() / total
     val remainMin = (total - passed) / 60
-    val courseColor = Color(item.course.color)
+    // 与课表色块共用**同一套派生**：container 铺底 / line 描边 / ink 正文 / inkMuted 次要。
+    // 旧实现直接拿源色加 7% 透明度铺底，饱和色被 α 洗成同一种灰白，
+    // 而且和课表里那块（OKLCH 派生、色相保留）对不上色——同一门课两个页面两种颜色。
+    val isDark = LocalIsDark.current
+    val tone = remember(item.course.color, isDark) { courseTone(Color(item.course.color), isDark) }
     val shape = RoundedCornerShape(18.dp)
     // 「我的」页学期概览卡那套交互原样复刻到这张焦点卡上：指腹透视倾动 + 径向流光 +
     // 前景视差 + 按下抬升，两者共用同一份取值（rememberFocusCardTiltStyle），手感是同一块纸片
@@ -423,26 +428,33 @@ private fun CurrentClassCard(item: TodayCourseItem, now: LocalTime) {
             // 倾动/抬升在最外层图层：clip 之后的背景与流光都跟着卡面一起转
             .cardTilt(state = tilt, shape = shape, style = tiltStyle, enabled = motionAllowed)
             .clip(shape)
-            .background(lerp(colors.surface, courseColor, 0.07f), shape)
-            // 流光必须压在背景之后、文字之前：只提亮卡面，不洗淡课名与倒计时
-            .cardTiltGlare(state = tilt, shape = shape, style = tiltStyle)
-            .border(1.dp, courseColor.copy(alpha = 0.28f), shape)
+            .background(tone.container, shape)
+            // 流光必须压在背景之后、文字之前：只提亮卡面，不洗淡课名与倒计时。
+            // 高光/暗面取本课的同色相色调：白光会把绿色卡面洗成白斑，黑罩会把绿色压成脏橄榄
+            .cardTiltGlare(
+                state = tilt,
+                shape = shape,
+                style = tiltStyle,
+                highlight = tone.highlight,
+                shade = tone.shade,
+            )
+            .border(1.dp, tone.line, shape)
             .padding(horizontal = 18.dp, vertical = 16.dp),
     ) {
         Row(
-            Modifier.cardTiltParallax(state = tilt, style = tiltStyle, depth = 4.dp),
+            Modifier.cardTiltParallax(state = tilt, style = tiltStyle, depth = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
                 Modifier
                     .size(10.dp)
                     .clip(RoundedCornerShape(3.dp))
-                    .background(courseColor.copy(alpha = dotPulse))
+                    .background(tone.ink.copy(alpha = dotPulse))
             )
             Spacer(Modifier.width(8.dp))
             Text(
                 text = "正在上课",
-                color = courseColor,
+                color = tone.ink,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -450,12 +462,12 @@ private fun CurrentClassCard(item: TodayCourseItem, now: LocalTime) {
             sectionText?.let {
                 Text(
                     text = it,
-                    color = courseColor,
+                    color = tone.ink,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Medium,
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
-                        .background(courseColor.copy(alpha = 0.12f))
+                        .background(tone.ink.copy(alpha = 0.12f))
                         .padding(horizontal = 8.dp, vertical = 3.dp),
                 )
             }
@@ -465,9 +477,9 @@ private fun CurrentClassCard(item: TodayCourseItem, now: LocalTime) {
         Text(
             text = item.course.name,
             style = MaterialTheme.typography.titleLarge,
-            color = colors.text,
+            color = tone.ink,
             fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.cardTiltParallax(state = tilt, style = tiltStyle, depth = 4.dp),
+            modifier = Modifier.cardTiltParallax(state = tilt, style = tiltStyle, depth = 12.dp),
         )
         val info = listOf(item.course.room, item.course.teacher)
             .filter { it.isNotBlank() }
@@ -477,17 +489,17 @@ private fun CurrentClassCard(item: TodayCourseItem, now: LocalTime) {
             Text(
                 text = info,
                 style = MaterialTheme.typography.bodyMedium,
-                color = colors.textMuted,
+                color = tone.inkMuted,
             )
         }
         Spacer(Modifier.height(14.dp))
         Row(
-            Modifier.cardTiltParallax(state = tilt, style = tiltStyle, depth = 4.dp),
+            Modifier.cardTiltParallax(state = tilt, style = tiltStyle, depth = 12.dp),
             verticalAlignment = Alignment.Bottom,
         ) {
             Text(
                 text = remainMin.toString(),
-                color = courseColor,
+                color = tone.ink,
                 fontSize = 40.sp,
                 lineHeight = 40.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -496,7 +508,7 @@ private fun CurrentClassCard(item: TodayCourseItem, now: LocalTime) {
             Text(
                 text = "分钟后下课",
                 fontSize = 13.sp,
-                color = colors.textMuted,
+                color = tone.inkMuted,
                 modifier = Modifier.padding(bottom = 5.dp),
             )
         }
@@ -507,21 +519,21 @@ private fun CurrentClassCard(item: TodayCourseItem, now: LocalTime) {
                 .fillMaxWidth()
                 .height(4.dp)
                 .clip(RoundedCornerShape(2.dp)),
-            color = courseColor,
-            trackColor = colors.border.copy(alpha = 0.4f),
+            color = tone.ink,
+            trackColor = tone.line.copy(alpha = 0.5f),
         )
         Spacer(Modifier.height(6.dp))
         Row {
             Text(
                 text = "${TimeUtils.formatTime(start)} 开始",
                 fontSize = 11.sp,
-                color = colors.textMuted,
+                color = tone.inkMuted,
             )
             Spacer(Modifier.weight(1f))
             Text(
                 text = "${TimeUtils.formatTime(end)} 下课",
                 fontSize = 11.sp,
-                color = colors.textMuted,
+                color = tone.inkMuted,
             )
         }
     }
@@ -533,14 +545,16 @@ private fun NextClassCard(item: TodayCourseItem, now: LocalTime) {
     val start = item.startTime ?: return
     val end = item.endTime
     val minutes = Duration.between(now, start).toMinutes()
-    val courseColor = Color(item.course.color)
+    // 与 CurrentClassCard / 课表色块同一套派生，这门课的"身份色"两处必然一致
+    val isDark = LocalIsDark.current
+    val tone = remember(item.course.color, isDark) { courseTone(Color(item.course.color), isDark) }
     val shape = RoundedCornerShape(14.dp)
 
     Row(
         Modifier
             .fillMaxWidth()
-            .background(colors.surface, shape)
-            .border(1.dp, colors.border, shape)
+            .background(tone.container, shape)
+            .border(1.dp, tone.line, shape)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -549,14 +563,14 @@ private fun NextClassCard(item: TodayCourseItem, now: LocalTime) {
                 .width(3.dp)
                 .height(34.dp)
                 .clip(RoundedCornerShape(2.dp))
-                .background(courseColor)
+                .background(tone.ink)
         )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
                 text = "下一节 · ${item.course.name}",
                 style = MaterialTheme.typography.titleSmall,
-                color = colors.text,
+                color = tone.ink,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
             )
@@ -571,7 +585,7 @@ private fun NextClassCard(item: TodayCourseItem, now: LocalTime) {
                     append(range)
                 },
                 style = MaterialTheme.typography.bodySmall,
-                color = colors.textMuted,
+                color = tone.inkMuted,
                 maxLines = 1,
             )
         }
@@ -663,7 +677,9 @@ private fun CourseRow(
     val colors = LocalCourseColors.current
     val finished = item.endTime != null && now.isAfter(item.endTime)
     val alpha = if (finished) 0.45f else 1f
-    val courseColor = Color(item.course.color)
+    // 行也用课表色块的派生色：整页「这门课是什么颜色」只有一套算法
+    val isDark = LocalIsDark.current
+    val tone = remember(item.course.color, isDark) { courseTone(Color(item.course.color), isDark) }
     val pressSource = remember { MutableInteractionSource() }
     val pressed by pressSource.collectIsPressedAsState()
     val tapHaptic = rememberTapHaptic()
@@ -695,14 +711,16 @@ private fun CourseRow(
             }
             .background(
                 lerp(
-                    if (isCurrent) colors.surfaceVariant else colors.surface,
-                    colors.surfaceVariant,
-                    ring,
+                    // 底色一律用原色：课表里的色块不随时间褪色，今日页也得是同一个色
+                    // （「已结束」只靠文字透明度和角标表达，不去改底色，否则同一门课两处两种颜色）
+                    tone.container,
+                    tone.line,
+                    0.45f * ring,
                 ),
                 shape,
             )
-            .border(1.dp, colors.border.copy(alpha = 0.5f), shape)
-            .border(2.dp, courseColor.copy(alpha = 0.9f * ring), shape)
+            .border(1.dp, tone.line.copy(alpha = 0.7f), shape)
+            .border(2.dp, tone.ink.copy(alpha = 0.9f * ring), shape)
             .clickable(
                 interactionSource = pressSource,
                 indication = LocalIndication.current,
@@ -718,7 +736,7 @@ private fun CourseRow(
             Modifier
                 .size(10.dp)
                 .clip(RoundedCornerShape(3.dp))
-                .background(courseColor.copy(alpha = alpha))
+                .background(tone.ink.copy(alpha = alpha))
         )
         Spacer(Modifier.width(10.dp))
         Column(Modifier.width(80.dp)) {
@@ -765,8 +783,8 @@ private fun CourseRow(
         } else if (isCurrent) {
             StatusPill(
                 text = "进行中",
-                color = courseColor,
-                background = courseColor.copy(alpha = 0.12f),
+                color = tone.ink,
+                background = tone.ink.copy(alpha = 0.12f),
             )
         }
     }

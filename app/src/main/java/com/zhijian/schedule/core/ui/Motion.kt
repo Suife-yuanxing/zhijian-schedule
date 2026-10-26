@@ -202,22 +202,35 @@ object Motion {
      * 为什么不是直接 snapTo：触摸事件是一帧一跳的离散采样，直接赋值等于把采样抖动原样
      * 交给画面；拖动越快，跳越大。业界无一例外都在这一层加阻尼——vanilla-tilt 用
      * 300ms 的 CSS transition（`speed`），beUI/Framer 用 `SPRING_MOUSE`
-     * （stiffness 200 / mass 0.3 ⇒ ω ≈ 26 rad/s，damping 15 ⇒ ζ ≈ 0.97）。
+     * （stiffness 200 / mass 0.3 ⇒ ω ≈ 26 rad/s，damping 15 ⇒ ζ ≈ 0.97），
+     * Atropos 的 `duration` 也是 300ms。
      *
-     * 为什么取 1200 / 0.95：Compose 的 stiffness 就是 ω²，1200 ⇒ ω ≈ 34.6 rad/s，
-     * 时间常数约 29ms——够快，手感仍是「指哪打哪」，只把一帧一跳抹平；
-     * 阻尼比 0.95 接近临界，拖动过程中不过冲、不震荡（过冲留给松手时的 [TiltReturn]）。
+     * 为什么取 900 / 0.88：Compose 的 stiffness 就是 ω²，900 ⇒ ω = 30 rad/s，
+     * 时间常数约 33ms——仍是「指哪打哪」，但一帧一跳被抹平的同时留了一点追手感
+     * （ζ 0.88 的过冲约 0.3%，肉眼读不到抖动，只读得到"软"）。
      */
-    val TiltFollow = spring<Float>(dampingRatio = 0.95f, stiffness = 1200f)
+    val TiltFollow = spring<Float>(dampingRatio = 0.88f, stiffness = 900f)
 
-    /** 触摸倾动回正：松手后带一次轻微过冲再落位，阻尼比低于 1 才有「纸片弹回」的手感 */
-    val TiltReturn = spring<Float>(dampingRatio = 0.55f, stiffness = 420f)
+    /**
+     * 触摸倾动回正：松手后带一次明显过冲再落位，阻尼比低于 1 才有「纸片弹回」的手感。
+     *
+     * 0.38 / 460：ω ≈ 21.4 rad/s，过冲约 27%、周期约 0.33s，约 0.5s 落定——
+     * 比最初 0.55 / 420（过冲约 12%）在 17° 的大卡上肉眼可见地更"弹"。
+     * 这是"夸张"最省力也最有效的来源：角度再大，回正太干脆就还是块平板。
+     */
+    val TiltReturn = spring<Float>(dampingRatio = 0.38f, stiffness = 460f)
 
-    /** 倾动高光淡入：按下即亮，快于水波纹 */
-    const val DurTiltGlareIn = 90
+    /**
+     * 按下进度（反光不透明度与抬升高度**共用**）的加压弹簧：0 → 1 带一次小鼓胀。
+     *
+     * 用弹簧而不是 tween：tween 是"匀速爬到 1"，读成一次状态变化；
+     * 弹簧约 110ms（峰值时刻 π/ω_d）冲到 1.095 再收口，读成"被指腹压了一下"。
+     * 过冲量与 [PressSpring] 接近（9.5% vs 8.4%），不会看起来像在抖。
+     */
+    val PressIn = spring<Float>(dampingRatio = 0.60f, stiffness = 1200f)
 
-    /** 倾动高光淡出：松手后留一点余晖，但不要拖住回正 */
-    const val DurTiltGlareOut = 150
+    /** 倾动高光淡出：松手后留一点余晖，但不要拖住回正（比旧版 150ms 更"余韵"） */
+    const val DurTiltGlareOut = 200
 }
 
 /**

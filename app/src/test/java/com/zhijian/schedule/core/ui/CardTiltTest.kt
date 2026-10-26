@@ -85,26 +85,40 @@ class CardTiltTest {
     @Test
     fun `focus card amplifies tilt, glare and lift over the base style`() {
         val base = CardTiltStyle(
-            maxTiltDegrees = 8f,
+            maxTiltDegrees = 13f,
             glareAlpha = 0.4f,
-            liftScale = 0.01f,
-            liftElevation = 12.dp,
-            glareShade = 0.05f,
+            liftScale = 0.028f,
+            liftElevation = 24.dp,
+            glareShade = 0.13f,
+            perspectiveScale = 1.45f,
         )
         val focus = focusTiltStyle(base)
-        assertEquals(10f, focus.maxTiltDegrees, 1e-5f)
-        assertEquals(0.44f, focus.glareAlpha, 1e-5f)
-        assertEquals(0.012f, focus.liftScale, 1e-5f)
-        assertEquals(16.dp, focus.liftElevation)
+        assertEquals(17f, focus.maxTiltDegrees, 1e-5f)
+        assertEquals(0.42f, focus.glareAlpha, 1e-5f)
+        assertEquals(0.0336f, focus.liftScale, 1e-5f)
+        assertEquals(34.dp, focus.liftElevation)
         // 与倾动无关的通道原样继承，别顺手改掉浅色纸面的背光压暗
-        assertEquals(0.05f, focus.glareShade, 1e-5f)
+        assertEquals(0.13f, focus.glareShade, 1e-5f)
+        // 焦点卡反而把相机放**远**：960px 宽的大卡左右各只剩 60px，17° 下相机太近，
+        // 近边会顶出屏幕被裁。大卡的戏剧性靠更大的倾角补，不靠更近的相机。
+        assertEquals(1.70f, focus.perspectiveScale, 1e-5f)
+        assertTrue(focus.perspectiveScale > base.perspectiveScale)
     }
 
     @Test
-    fun `focus card glare stays under the ceiling on bright themes`() {
-        // 玻璃浅色主题的基准反光最高（0.82 → ×1.1 = 0.902），必须被 0.9 截住
-        val bright = CardTiltStyle(8f, glareAlpha = 0.82f, liftScale = 0.014f, liftElevation = 16.dp, glareShade = 0.05f)
-        assertEquals(0.9f, focusTiltStyle(bright).glareAlpha, 1e-5f)
+    fun `focus card glare is clamped to full opacity`() {
+        // 玻璃浅色主题的基准反光已经是满不透明；×1.05 之后必须被 1.0 截住，
+        // 否则 Color.copy(alpha = 1.05f) 会溢出成非法通道值
+        val brightest = CardTiltStyle(14f, 1f, 0.034f, 30.dp, 0.13f, 1.45f)
+        assertEquals(1f, focusTiltStyle(brightest).glareAlpha, 1e-5f)
+    }
+
+    @Test
+    fun `perspective scale stays in the safe band`() {
+        // 相机距离低于约 1.1 倍卡长时远端会被压到相机后面（z > P），卡片撕裂
+        val base = CardTiltStyle(13f, 0.95f, 0.028f, 24.dp, 0.13f, 1.45f)
+        assertTrue(focusTiltStyle(base).perspectiveScale >= 1.1f)
+        assertTrue(base.perspectiveScale >= 1.1f)
     }
 
     // ---- 反光几何（业界取法：farthest-corner 半径 + 过指腹的定向扫光带）----

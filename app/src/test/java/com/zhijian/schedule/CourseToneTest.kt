@@ -95,4 +95,53 @@ class CourseToneTest {
             assertTrue("line 应比正文浅: $src", ll > li)
         }
     }
+
+    // ---- 交互用的高光 / 暗面：同色相，而不是纯白 + 纯黑 ----
+
+    private fun spread(c: Color): Float =
+        maxOf(c.red, c.green, c.blue) - minOf(c.red, c.green, c.blue)
+
+    /** 主通道：色相在 sRGB 里最直接的表现就是这个索引没变 */
+    private fun dominant(c: Color): Int {
+        val v = floatArrayOf(c.red, c.green, c.blue)
+        return v.indices.maxByOrNull { v[it] } ?: 0
+    }
+
+    /** 中性源（灰）走中性分支、色相本就无意义，这组约束只对有色课程成立 */
+    private val chromatic = sources.filter { spread(it) > 0.1f }
+
+    @Test
+    fun `highlight is brighter than the card and shade is darker`() {
+        listOf(false, true).forEach { dark ->
+            chromatic.forEach { src ->
+                val tone = courseTone(src, dark)
+                val lc = luminance(tone.container)
+                assertTrue("highlight 应亮于卡面 (dark=$dark): $src", luminance(tone.highlight) > lc)
+                assertTrue("shade 应暗于卡面 (dark=$dark): $src", luminance(tone.shade) < lc)
+            }
+        }
+    }
+
+    @Test
+    fun `highlight and shade keep the course hue instead of going pure white or black`() {
+        listOf(false, true).forEach { dark ->
+            chromatic.forEach { src ->
+                val tone = courseTone(src, dark)
+                // 纯白/纯黑的通道差为 0 —— 一旦被"洗白"或"压黑"，这条就会挂
+                assertTrue("highlight 褪成纯白 (dark=$dark): $src", spread(tone.highlight) > 0.004f)
+                assertTrue("shade 抽成纯黑 (dark=$dark): $src", spread(tone.shade) > 0.01f)
+                // 色相守恒：最亮的那个通道必须还是同一个
+                assertEquals(
+                    "highlight 换色相 (dark=$dark): $src",
+                    dominant(tone.container),
+                    dominant(tone.highlight),
+                )
+                assertEquals(
+                    "shade 换色相 (dark=$dark): $src",
+                    dominant(tone.container),
+                    dominant(tone.shade),
+                )
+            }
+        }
+    }
 }

@@ -82,9 +82,25 @@ data class CardTiltStyle(
      * 而不是把白再叠加到白上。
      *
      * 所以这里补一层随距离加深的柔和压暗（Multiply），让光斑"浮"起来。
-     * 深色主题不用（Screen 在暗底上本来就够亮，再压暗只会显脏），故取 0f。
+     * 深色主题取一个很小的值（Screen 在暗底上本来就够亮，压重了显脏）。
      */
     val glareShade: Float,
+    /**
+     * 透视强度：**有效相机距离 = 卡片最长边 × 本值**。
+     *
+     * **越小透视越猛**——react-parallax-tilt 的文档原话是
+     * "perspective ... The lower the more extreme the tilt gets"。
+     *
+     * 关键坑：Compose 的 `cameraDistance` 单位**不是像素**。本机实测
+     * （1080×2376 @480dpi，`.tmp/cal_sweep.sh`）：传入值 v 对应的有效相机距离约为
+     * `v × 64`。早期版本按「像素」直接传 `最长边 × 1.6 = 1536`，等效相机距离约 98,000px，
+     * 等于正交投影——实测近边外溢只有 0%，画面只有"斜切 + 缩小"，读不出任何立体。
+     * 这才是"倾动不够夸张"的真正原因。现在按 [CameraDistanceUnit] 换算，
+     * 本值直接读作「相机距离是卡片最长边的几倍」。
+     *
+     * 别低于 1.1：再小远端会被压到相机后面，卡片会撕裂。
+     */
+    val perspectiveScale: Float,
 )
 
 @Composable
@@ -103,24 +119,28 @@ fun rememberCardTiltStyle(): CardTiltStyle {
     val dark = LocalIsDark.current
     return remember(glass, dark) {
         CardTiltStyle(
-            // 9° 足够看出透视，又不至于把大字号周次拉斜得难读。
-            // 业界网页卡片常用 12°(beUI 默认) / 15°(vanilla-tilt 默认)，那是几百像素的小卡；
-            // 这里动的是整宽 ~400dp 的焦点卡，等角度的透视畸变远大于小卡，故收敛到 8~9°。
-            maxTiltDegrees = if (glass) 9f else 8f,
+            // 业界网页卡片的默认倾角：beUI 12°、vanilla-tilt 15°、react-parallax-tilt 20°。
+            // 那些是几百像素的小卡；本项目动的是整宽约 320dp 的焦点卡，同角度畸变更大，
+            // 取 13°（玻璃 14°）——落在业界区间中下段，但比最初那版 8~9° 明显"活"得多。
+            maxTiltDegrees = if (glass) 14f else 13f,
+            // 反光强度：不必顶到 1.0。实测 1.0 时近指腹处被推到 (248,251,245)，
+            // 等于把课程色洗成白纸——"被照亮"应该看得见底色，而不是把底色擦掉。
             glareAlpha = when {
-                glass && dark -> 0.44f
-                glass -> 0.82f
-                dark -> 0.38f
-                else -> 0.72f
+                glass && dark -> 0.52f
+                glass -> 0.70f
+                dark -> 0.45f
+                else -> 0.62f
             },
-            // 抬升对齐 Apple FOCUS-01（聚焦项放大 1.05~1.1 + 投影抬升）。
-            // 那个量级是给 10 英尺外的大屏卡片；手机上取 1.2%，读成"活了"而不是"长大了"。
-            liftScale = if (glass) 0.014f else 0.010f,
-            liftElevation = if (glass) 16.dp else 12.dp,
-            // 浅色卡面靠"背光压暗"把光斑托出来；深色卡面 Screen 已经够亮，压暗只会显脏。
-            // 数值按实测校准：近白底(≈250/255)上 0.05 的 Multiply 最深处约压 12 级，
-            // 足够读出明暗落差又不至于像污渍（0.16 会压到 40 级，实测明显偏重）。
-            glareShade = if (dark) 0f else 0.05f,
+            // 抬升对齐 Apple FOCUS-01（聚焦项放大 1.05~1.1 + 投影抬升）。那个量级是给
+            // 10 英尺外的大屏卡片；手机上压到 2.8~3.4%，是"被指腹抬起来"里偏夸张的一档。
+            liftScale = if (glass) 0.034f else 0.028f,
+            liftElevation = if (glass) 30.dp else 24.dp,
+            // 暗面强度：同色相的深调比纯黑压得"轻"，所以从这里补回来。
+            // 明暗落差是「光浮起来」的关键（拾色器实测约 30 级）。
+            glareShade = if (dark) 0.10f else 0.18f,
+            // 相机距离取 1.45 倍卡长：网页惯例是 perspective 1000px 配 300px 小卡（3.3 倍），
+            // 这里更近，倾斜时四角"翘"得更狠。见字段 kdoc 的换算说明。
+            perspectiveScale = 1.45f,
         )
     }
 }
@@ -131,9 +151,13 @@ fun rememberCardTiltStyle(): CardTiltStyle {
  * 「我的」页学期概览卡与今日页「正在上课」卡共用这一份取值——两块卡面积接近、
  * 可动范围接近，只有共用一个工厂，「复刻」才是同一套手感而不是两次调参的相似值。
  *
- * 相对 [rememberCardTiltStyle] 的课块/小卡基准：倾角 +2°（面积越大越吃角度，
- * 8° 在大卡上几乎读不出透视）、反光 ×1.1（卡面越宽，光斑越要够亮才铺得开）、
- * 抬升 ×1.2 且多 4dp（大卡的投影半径更大，同样的高度在大卡上会显得没抬起来）。
+ * 相对 [rememberCardTiltStyle] 的课块/小卡基准：倾角 13~14° → 17°（面积越大越吃角度）、
+ * 反光 ×1.05（上限顶到 1.0 满不透明）、抬升 ×1.2 且多 10dp（大卡的投影半径更大，
+ * 同样的高度在大卡上会显得没抬起来）。
+ *
+ * 透视反而**放宽**到 1.70 倍卡长（比基准的 1.45 更远）：本卡宽 960px、屏宽 1080px，
+ * 左右各只剩 60px 余量，17° 下相机再近一点近边就会顶出屏幕被裁。
+ * 所以大卡靠"更大的倾角"补戏剧性，不靠"更近的相机"——两者在这里是互斥的。
  */
 @Composable
 fun rememberFocusCardTiltStyle(): CardTiltStyle {
@@ -143,10 +167,11 @@ fun rememberFocusCardTiltStyle(): CardTiltStyle {
 
 /** [rememberFocusCardTiltStyle] 的纯函数内核：取值可单测，两块焦点卡不可能各调各的。 */
 internal fun focusTiltStyle(base: CardTiltStyle): CardTiltStyle = base.copy(
-    maxTiltDegrees = 10f,
-    glareAlpha = (base.glareAlpha * 1.1f).coerceAtMost(0.9f),
+    maxTiltDegrees = 17f,
+    glareAlpha = (base.glareAlpha * 1.05f).coerceAtMost(1f),
     liftScale = base.liftScale * 1.2f,
-    liftElevation = base.liftElevation + 4.dp,
+    liftElevation = base.liftElevation + 10.dp,
+    perspectiveScale = 1.70f,
 )
 
 /**
@@ -182,7 +207,7 @@ fun Modifier.cardTilt(
                 val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                 state.touch.value = down.position
                 followTilt(state, tiltFor(down.position, size, style.maxTiltDegrees), scope)
-                scope.launch { state.press.animateTo(1f, tween(durationMillis = Motion.DurTiltGlareIn)) }
+                scope.launch { state.press.animateTo(1f, Motion.PressIn) }
 
                 var dragging = false
                 while (true) {
@@ -218,12 +243,11 @@ fun Modifier.cardTilt(
         .graphicsLayer {
             rotationX = state.rotationX.value
             rotationY = state.rotationY.value
-            // 相机距离必须大于卡片自身尺寸，否则宽卡片旋转时远端会跑到相机后面，
-            // 透视被压平甚至出现撕裂。按「最长边 × 1.6」取景，大小卡片观感一致。
-            //
-            // 这个系数与业界网页的 `perspective: 1000px` 等价：1000px 配 ~300px 的小卡是
-            // 3.3 倍短边；本式对 960×380 的卡给出 1536px = 4.0 倍短边，同一档观感。
-            cameraDistance = max(size.width, size.height) * 1.6f
+            // 有效相机距离 = 最长边 × perspectiveScale。**相机越近透视越猛**
+            // （react-parallax-tilt 文档："perspective ... The lower the more extreme the tilt gets"）。
+            // Compose 的单位不是像素，须除以 CameraDistanceUnit 换算，否则会退化成正交投影。
+            cameraDistance =
+                max(size.width, size.height) * style.perspectiveScale / CameraDistanceUnit
             transformOrigin = TransformOrigin.Center
             // 抬升：按下时整卡微微放大并离面，投影随之变浓，读成"被指腹抬起来"
             val lift = state.press.value
@@ -275,14 +299,24 @@ fun Modifier.cardTiltParallax(
  *
  * 必须排在 `.background(...)` 之后、`.border(...)` / 文字之前：
  * 这样亮斑只提亮卡面，不会盖在课名上影响可读性。
+ *
+ * **颜色不是纯白 + 纯黑**：彩色卡面上，白光会把色相洗成一团白斑（像过曝），
+ * 黑罩会把颜色抽干发灰（绿色底压成脏橄榄）。所以 [highlight] 与 [shade] 由调用方
+ * 传入**同色相**的明暗色调（见 `CourseTone.highlight` / `CourseTone.shade`）：
+ * 反射的是这张纸自己的颜色，暗面是同一张纸的暗面。中性卡面传默认值即可。
  */
 fun Modifier.cardTiltGlare(
     state: CardTiltState,
     shape: Shape,
     style: CardTiltStyle,
-    color: Color = Color.White,
+    /** 受光侧的颜色；默认纯白，彩色卡面传该卡片的同色相浅调 */
+    highlight: Color = Color.White,
+    /** 背光侧的颜色；默认纯黑，彩色卡面传该卡片的同色相深调 */
+    shade: Color = Color.Black,
 ): Modifier = drawBehind {
-    val intensity = state.press.value
+    // press 用弹簧加压，会冲过 1 再收口（见 Motion.PressIn）；这里夹住，
+    // 免得 alpha 越界（>1 的 alpha 在部分混合模式下会被截断成 1，但语义上仍是错的）。
+    val intensity = state.press.value.coerceIn(0f, 1f)
     if (intensity <= 0.01f) return@drawBehind
     val position = state.touch.value
     if (!position.isSpecified) return@drawBehind
@@ -298,13 +332,13 @@ fun Modifier.cardTiltGlare(
         //    浅色卡面（≈0.98）上 Screen 叠白最多只能 +3 级亮度，肉眼读不出；
         //    业界全息卡（pokemon-cards-css 的 .card__glare）正是靠渐变尾巴的黑色做出落差。
         //    Multiply 只压暗、不染色，卡面底色与文字对比不会被改歪。
-        val shade = style.glareShade * intensity
-        if (shade > 0.005f) {
+        val shadeAlpha = style.glareShade * intensity
+        if (shadeAlpha > 0.005f) {
             drawCircle(
                 brush = Brush.radialGradient(
                     0f to Color.Transparent,
                     0.45f to Color.Transparent,
-                    1f to Color.Black.copy(alpha = shade),
+                    1f to shade.copy(alpha = shadeAlpha),
                     center = glare.center,
                     radius = glare.broadRadius,
                 ),
@@ -317,8 +351,8 @@ fun Modifier.cardTiltGlare(
         // 1) 外层柔光：半径刚好到最远角，铺满卡面
         drawCircle(
             brush = Brush.radialGradient(
-                0f to color.copy(alpha = peak * BroadPeak),
-                0.5f to color.copy(alpha = peak * BroadMid),
+                0f to highlight.copy(alpha = peak * BroadPeak),
+                0.5f to highlight.copy(alpha = peak * BroadMid),
                 1f to Color.Transparent,
                 center = glare.center,
                 radius = glare.broadRadius,
@@ -335,7 +369,7 @@ fun Modifier.cardTiltGlare(
                 brush = Brush.linearGradient(
                     SheenOuter to Color.Transparent,
                     SheenInner to Color.Transparent,
-                    SheenCenter to color.copy(alpha = sheen),
+                    SheenCenter to highlight.copy(alpha = sheen),
                     SheenInnerMirror to Color.Transparent,
                     SheenOuterMirror to Color.Transparent,
                     start = glare.sheenStart,
@@ -350,9 +384,9 @@ fun Modifier.cardTiltGlare(
         // 3) 内层亮核：贴着指腹的镜面高光
         drawCircle(
             brush = Brush.radialGradient(
-                0f to color.copy(alpha = peak * CorePeak),
-                0.25f to color.copy(alpha = peak * CoreMid),
-                0.6f to color.copy(alpha = peak * CoreTail),
+                0f to highlight.copy(alpha = peak * CorePeak),
+                0.25f to highlight.copy(alpha = peak * CoreMid),
+                0.6f to highlight.copy(alpha = peak * CoreTail),
                 1f to Color.Transparent,
                 center = glare.center,
                 radius = glare.coreRadius,
@@ -363,6 +397,19 @@ fun Modifier.cardTiltGlare(
         )
     }
 }
+
+/**
+ * `cameraDistance` → 有效相机距离（像素）的换算系数，**实测标定值**。
+ *
+ * Compose 的 `cameraDistance` 单位既不是像素也不是 dp：本机（1080×2376 @480dpi）
+ * 用 `.tmp/cal_sweep.sh` 扫了两点——传入 19.2 时实测近边外溢 +56px（等效 P≈1230），
+ * 传入 336 时外溢 ≈0（等效 P≈21,500），两点都落在 `P ≈ v × 64` 上。
+ *
+ * 换设备/换 Compose 版本后若观感变得"很平"或"撕裂"，重跑那个脚本重新标定本值。
+ * 之所以要除以它：[perspectiveScale] 想表达的是「相机距离是几倍卡长」，
+ * 直接乘进去会被放大 64 倍，效果等于没有透视（历史 bug 即如此）。
+ */
+private const val CameraDistanceUnit = 64f
 
 // 三层光的峰值系数：卡心处只有柔光 + 亮核（合计 0.94·peak，与单层实现同亮度），
 // 越靠边扫光越强，最亮处约 1.4·peak——倾斜越狠反射越亮，是物理上也讲得通的走向。

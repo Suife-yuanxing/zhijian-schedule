@@ -24,6 +24,24 @@ data class CourseTone(
     val line: Color,
     val ink: Color,
     val inkMuted: Color,
+    /**
+     * 受光高光：卡面被照亮时用的颜色。
+     *
+     * 不用纯白：Screen 混合下白光会把色相洗平，卡面变成"一团白斑"——实测旧实现近指腹处
+     * 被推到 (248,251,245)、通道比趋向 1.0，绿色课直接褪成灰白，像过曝而不像反光。
+     * 这里取**同色相的浅调**。注意：浅色卡面的高光本就带不动多少彩度（L 0.97 处几乎没有
+     * 可用色域，物理上浅纸面的镜面反射也接近白色），所以真正治"过曝"的是
+     * `CardTiltStyle.glareAlpha` 的强度上限，色调只是让它不发灰。
+     */
+    val highlight: Color,
+    /**
+     * 暗面：卡面背光侧压暗时用的颜色。
+     *
+     * 不用纯黑：黑色乘在彩色底上会把颜色抽干、发灰发脏（绿色卡面直接变"脏橄榄"）。
+     * Material 3 的立场是明暗层级应该走**同色相的色调阶梯**而不是叠黑，
+     * 设计系统里也普遍采用「带彩的阴影」。所以这里取同色相的深色调。
+     */
+    val shade: Color,
 )
 
 private fun srgbToLinear(c: Float): Float =
@@ -95,6 +113,8 @@ fun courseTone(source: Color, isDark: Boolean): CourseTone {
                 line = tonal(0.400f, 0f, 0f),
                 ink = tonal(0.935f, 0f, 0f),
                 inkMuted = tonal(0.800f, 0f, 0f),
+                highlight = tonal(0.980f, 0f, 0f),
+                shade = tonal(0.170f, 0f, 0f),
             )
         } else {
             CourseTone(
@@ -102,6 +122,8 @@ fun courseTone(source: Color, isDark: Boolean): CourseTone {
                 line = tonal(0.855f, 0f, 0f),
                 ink = tonal(0.400f, 0f, 0f),
                 inkMuted = tonal(0.475f, 0f, 0f),
+                highlight = tonal(1.000f, 0f, 0f),
+                shade = tonal(0.300f, 0f, 0f),
             )
         }
     }
@@ -115,6 +137,11 @@ fun courseTone(source: Color, isDark: Boolean): CourseTone {
             line = tonal(0.400f, 0.060f * scale, hue),
             ink = tonal(0.935f, 0.035f * scale, hue),
             inkMuted = tonal(0.800f, 0.040f * scale, hue),
+            // 暗色主题：卡面本身够暗（L 0.285），受光侧还有彩度可用，
+            // 光斑是"这张卡自己的亮面"，不是叠上去的一块白
+            highlight = tonal(0.960f, 0.050f * scale, hue),
+            // 暗面必须比 0.285 的卡面更暗，否则 Multiply 压不下去
+            shade = tonal(0.170f, 0.070f * scale, hue),
         )
     } else {
         CourseTone(
@@ -122,6 +149,13 @@ fun courseTone(source: Color, isDark: Boolean): CourseTone {
             line = tonal(0.855f, 0.060f * scale, hue),
             ink = tonal(0.400f, 0.110f * scale, hue),
             inkMuted = tonal(0.475f, 0.085f * scale, hue),
+            // 亮色主题：高光取 0.97 明度的同色相浅调。
+            // 不追求"受光侧更饱和"——那个量级在浅色卡面上取不到（见字段 kdoc）；
+            // 它保证的是光斑不变成一块中性白，与卡片是同一个色族。
+            highlight = tonal(0.970f, 0.055f * scale, hue),
+            // 暗面用同色相的**深饱和**调，而不是把 ink 掺黑：
+            // 掺黑会连彩度一起降下去，压在彩色卡面上仍然是一片灰
+            shade = tonal(0.300f, 0.095f * scale, hue),
         )
     }
 }
