@@ -13,11 +13,25 @@ import kotlinx.serialization.json.jsonPrimitive
 /**
  * JSON 课程导入：兼容标准格式与常见字段别名（含中文 key）。
  */
-object JsonParser {
+object JsonParser : TimetableParser {
 
-    fun parse(text: String, totalWeeks: Int): TableMapping.Result {
+    override val format = TimetableFormat.JSON
+
+    override val channels = setOf(ParserChannel.FILE)
+
+    /** 头部（去 BOM 与前导空白）以 { 或 [ 开头即视为 JSON。 */
+    override fun canParse(input: ParserInput): Boolean {
+        val head = input.sniffHead()
+        return head.startsWith("{") || head.startsWith("[")
+    }
+
+    override fun parse(input: ParserInput, context: ParseContext): ParseResult =
+        parse(input.text, context.totalWeeks)
+
+    /** 直连入口：JSON 文本 + 总周数。 */
+    fun parse(text: String, totalWeeks: Int): ParseResult {
         val root = runCatching { Json.parseToJsonElement(text) }.getOrElse {
-            return TableMapping.Result(emptyList(), 0, listOf("JSON 解析失败：${it.message}"))
+            return ParseResult.error("JSON 解析失败：${it.message}")
         }
         val array: JsonArray = when (root) {
             is JsonArray -> root
@@ -32,7 +46,7 @@ object JsonParser {
             val draft = (element as? JsonObject)?.let { mapObject(it, totalWeeks) }
             if (draft != null) drafts += draft else skipped++
         }
-        return TableMapping.Result(drafts, skipped)
+        return ParseResult(drafts, skipped)
     }
 
     private fun mapObject(obj: JsonObject, totalWeeks: Int): CourseDraft? {

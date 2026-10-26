@@ -1,0 +1,95 @@
+# =============================================================================
+#  纸间课表 PaperTimetable — detekt 配置（增量式）
+#
+#  加载方式见 app/build.gradle.kts：
+#      detekt {
+#          buildUponDefaultConfig = true
+#          config.setFrom(rootProject.file("config/detekt/detekt.yml"))
+#          baseline = rootProject.file("config/detekt/baseline.xml")
+#      }
+#  ⇒ 本文件**只写与官方默认不同的部分**，规则强度不打折：未列出的规则
+#     全部沿用 detekt 1.23.8 官方默认值（版本随 Gradle 插件在
+#     gradle/libs.versions.toml 里固定）。官方默认全文可查：
+#     detekt-core-1.23.8.jar!/default-detekt-config.yml 或 https://detekt.dev/configurations.html
+#
+#  为什么是增量而不是整份拷贝？
+#     整份 800 行默认配置入库后，规则到底是"我们改过的"还是"官方默认"没人分得清，
+#     升级 detekt 时也无法 review 差异。增量文件让每条放宽都带理由、可审计。
+#
+#  放宽的唯一动机：Compose 声明式 UI 与 Android 惯用写法会和"命令式 Kotlin"规则打架。
+#  每条都标注了 default 值，方便对照"我们到底松了多少"。
+#
+#  存量违例冻结在 config/detekt/baseline.xml。
+#  在所有重构冻结后重新生成：./gradlew detektBaseline
+#
+#  【已知限制】本仓库未启用 detekt 类型解析（不注入 compileClasspath + 已编译输出），
+#  因此所有标注 @RequiresTypeResolution 的规则（UnusedParameter、IgnoreReturnValue 等）
+#  自动不生效。这是刻意的取舍：单模块 Android 工程启用类型解析需要挂在 AGP variant 上，
+#  会让 CI 多付一次完整编译，收益不抵成本。若要开启，见 detekt 文档
+#  "Run detekt using the Detekt Gradle Plugin" → type resolution 一节。
+# =============================================================================
+
+config:
+  # 配置校验保持开启：yml 里写错规则名/属性名会在构建期直接报错，而不是静默失效。
+  validation: true
+  warningsAsErrors: false
+  # 保持 false：本文件是"增量"配置，要求它把 800 行默认配置穷举一遍没有意义。
+  checkExhaustiveness: false
+
+complexity:
+  # default: 60。Compose 屏幕函数是一整屏声明的堆叠，拆成 5 个私有函数反而更难读。
+  LongMethod:
+    threshold: 100
+  # default: functionThreshold 6 / constructorThreshold 7。
+  # Compose 的 (state..., modifier...) 参数列表天然长，放宽到 8 并要求默认参数不计入。
+  LongParameterList:
+    functionThreshold: 8
+    constructorThreshold: 8
+    ignoreDefaultParameters: true
+  # default: 各 11。一个 Screen 文件里放十几个小 Composable 是常态，不是坏味道。
+  TooManyFunctions:
+    thresholdInFiles: 30
+    thresholdInClasses: 20
+    thresholdInInterfaces: 20
+    thresholdInObjects: 20
+    thresholdInEnums: 20
+    # @Composable 函数不计入统计
+    ignoreAnnotatedFunctions:
+      - 'Composable'
+  # default: 15。UI 条件分支（周次 × 节次 × 状态）本就分支密集。
+  CyclomaticComplexMethod:
+    threshold: 20
+
+naming:
+  # 【必须放宽的一条，理由充分】Compose 约定 @Composable 函数用 PascalCase
+  # （TodayScreen / WeekGrid / CourseBlock…），而 Kotlin 常规是 lowerCamelCase。
+  # detekt 1.23 的 FunctionNaming **没有** ignoreAnnotated 开关
+  # （官方默认配置里该规则只有 functionPattern / excludeClassPattern 两个属性），
+  # 所以只能把首字母放宽为大小写皆可：
+  #   default: '[a-z][a-zA-Z0-9]*'  →  这里: '[a-zA-Z][a-zA-Z0-9]*'
+  # 注意这仍然禁止下划线/数字开头，常规函数依旧必须是驼峰命名。
+  # 将来若升级到提供"按注解豁免"的 detekt 版本，应把 pattern 收回严格版。
+  FunctionNaming:
+    functionPattern: '[a-zA-Z][a-zA-Z0-9]*'
+
+style:
+  # default: maxLineLength 120 —— 与 .editorconfig 的 max_line_length 保持一致，
+  # 两个工具不能各说各话。这里显式写出来，是为了让"120"这个数字只在一个地方可被质疑。
+  MaxLineLength:
+    maxLineLength: 120
+  # default: 全部 false。UI 层到处是 16.dp / 0.5f / 0.3f 这类尺寸与透明度常量，
+  # 强行提取成命名常量只会制造噪音（它们本身就是可读的）。局部声明与属性声明放行，
+  # 但**函数体内的裸数字**（如 if (x > 37)）仍然会被拦。
+  MagicNumber:
+    ignorePropertyDeclaration: true
+    ignoreLocalVariableDeclaration: true
+    ignoreAnnotation: true
+  # default: max 2。状态机/解析代码里 guard clause 很常见，
+  # 允许 3 个返回点并豁免守卫子句（哨兵式提前返回）。
+  ReturnCount:
+    max: 3
+    excludeGuardClauses: true
+  # default: allowedNames ''。Compose 的 @Preview 函数只被 IDE 预览调用，
+  # 在编译器看来是"私有且未被使用"，属于误报，按命名惯例 *Preview 放行。
+  UnusedPrivateMember:
+    allowedNames: '_|.*Preview'

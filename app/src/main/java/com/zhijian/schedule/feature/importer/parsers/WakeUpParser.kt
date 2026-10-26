@@ -9,11 +9,22 @@ import java.util.zip.Inflater
  * 口令 / 粘贴文本的容错解析：
  * 1) 直接是 JSON；2) 直接是表格文本（CSV/制表符）；3) 内嵌 Base64 段（zlib/deflate/gzip）解压后再试。
  */
-object WakeUpParser {
+object WakeUpParser : TimetableParser {
 
-    fun parse(text: String, totalWeeks: Int): TableMapping.Result {
+    override val format = TimetableFormat.WAKEUP
+
+    /** 兜底解析器：粘贴文本通道的最后手段，内部依次尝试 JSON / 表格 / Base64。 */
+    override val channels = setOf(ParserChannel.PASTED_TEXT)
+
+    override fun canParse(input: ParserInput): Boolean = true
+
+    override fun parse(input: ParserInput, context: ParseContext): ParseResult =
+        parse(input.text, context.totalWeeks)
+
+    /** 直连入口：粘贴口令 / 文本 + 总周数。 */
+    fun parse(text: String, totalWeeks: Int): ParseResult {
         val trimmed = text.trim()
-        if (trimmed.isEmpty()) return TableMapping.Result(emptyList(), 0, listOf("内容为空"))
+        if (trimmed.isEmpty()) return ParseResult.error("内容为空")
 
         // 1. 直接 JSON
         if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
@@ -40,7 +51,7 @@ object WakeUpParser {
             }
         }
 
-        return TableMapping.Result(
+        return ParseResult(
             emptyList(), 0,
             listOf("无法识别的口令格式，请改用「文件导入」或粘贴标准表格文本"),
         )

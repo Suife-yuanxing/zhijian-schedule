@@ -8,6 +8,9 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
+    // 代码质量基建（2026-10 新增）
+    alias(libs.plugins.ktlint)
+    alias(libs.plugins.detekt)
 }
 
 android {
@@ -106,6 +109,63 @@ ksp {
 tasks.withType<Test>().configureEach {
     // 项目路径含中文（D:\课程表）：确保测试 Worker 以 UTF-8 解析类路径
     jvmArgs("-Dfile.encoding=UTF-8", "-Dsun.jnu.encoding=UTF-8")
+}
+
+// =============================================================================
+// 代码质量基建（2026-10 新增）：ktlint + detekt
+//
+// 设计要点：
+//  · 本项目是单模块 Android 应用，插件直接 apply 在 :app 上；从仓库根执行
+//    `./gradlew ktlintCheck detekt` 会命中本模块的同名任务。
+//  · 规则强度不打折，存量违例全部冻结在 baseline 里（存量放行、增量拦截）：
+//    新增或被修改的文件一旦违规，对应任务立即 fail。
+//      - ktlint baseline：config/ktlint/baseline.xml  重新生成：./gradlew ktlintGenerateBaseline
+//      - detekt baseline：config/detekt/baseline.xml  重新生成：./gradlew detektBaseline
+//  · 规则全量与阈值：.editorconfig（ktlint）与 config/detekt/detekt.yml（detekt）。
+// =============================================================================
+
+ktlint {
+    // 版本显式钉死，避免将来升级 Gradle 插件时 ktlint 规则集跟着漂移：
+    // 插件升级与规则升级必须分成两次可 review 的改动（14.2.0 的默认值就是 1.5.0）。
+    version.set("1.5.0")
+    // 现有 180 个 .kt 的历史违例冻结在 baseline 中；新增代码违规会 fail。
+    baseline.set(rootProject.file("config/ktlint/baseline.xml"))
+    // 报告与 baseline 里的文件路径一律用"相对仓库根"的形式。
+    // 这一行是跨机器可用的前提：本机仓库路径是 D:\课程表（含中文），
+    // 若写绝对路径，baseline 在 CI（/home/runner/work/...）上必然整体失配，
+    // 而且中文路径在不同编码下会让 baseline XML 直接解析失败。
+    relative.set(true)
+    outputToConsole.set(true)
+    ignoreFailures.set(false)
+    // 只检查手写源码：排除 build/ 下的 KSP / Compose 编译器 / Hilt 生成物
+    filter {
+        exclude("**/build/**")
+        exclude("**/generated/**")
+    }
+}
+
+detekt {
+    // 以 detekt 官方默认规则集为底（版本随插件固定 = 1.23.8），
+    // config/detekt/detekt.yml 只写"差异部分"（对 Compose/Android 的合理放宽），
+    // 避免把 800 行官方默认整份入库导致规则变更无人可审。
+    buildUponDefaultConfig = true
+    parallel = true
+    config.setFrom(rootProject.file("config/detekt/detekt.yml"))
+    baseline = rootProject.file("config/detekt/baseline.xml")
+    // 同上：baseline 里的路径相对仓库根，保证本地/CI 两份 baseline 语义一致。
+    basePath = rootProject.projectDir.absolutePath
+}
+
+tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
+    // 与 ktlint 一致：不扫 build/ 下的生成物
+    exclude("**/build/**")
+    reports {
+        html.required.set(true)
+        xml.required.set(true)
+        txt.required.set(false)
+        sarif.required.set(false)
+        md.required.set(false)
+    }
 }
 
 dependencies {

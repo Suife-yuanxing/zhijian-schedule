@@ -15,21 +15,18 @@ import com.zhijian.schedule.core.util.TimeUtils
 import com.zhijian.schedule.feature.importer.ocr.ImageOcr
 import com.zhijian.schedule.feature.importer.ocr.OcrLine
 import com.zhijian.schedule.feature.importer.ocr.OcrTimetableParser
-import com.zhijian.schedule.feature.importer.parsers.CsvParser
-import com.zhijian.schedule.feature.importer.parsers.IcsParser
-import com.zhijian.schedule.feature.importer.parsers.JsonParser
-import com.zhijian.schedule.feature.importer.parsers.TableMapping
-import com.zhijian.schedule.feature.importer.parsers.WakeUpParser
-import com.zhijian.schedule.feature.importer.parsers.XlsxParser
+import com.zhijian.schedule.feature.importer.parsers.ParseContext
+import com.zhijian.schedule.feature.importer.parsers.ParseResult
+import com.zhijian.schedule.feature.importer.parsers.ParserChannel
+import com.zhijian.schedule.feature.importer.parsers.ParserInput
+import com.zhijian.schedule.feature.importer.parsers.TextDecoding
+import com.zhijian.schedule.feature.importer.parsers.TimetableFormat
+import com.zhijian.schedule.feature.importer.parsers.TimetableParsers
 import com.zhijian.schedule.feature.importer.qr.QrPayload
 import com.zhijian.schedule.feature.importer.qr.QrShareState
 import com.zhijian.schedule.feature.importer.qr.renderQrBitmap
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
-import java.io.ByteArrayInputStream
-import java.nio.ByteBuffer
-import java.nio.charset.Charset
-import java.nio.charset.CodingErrorAction
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -205,12 +202,13 @@ class ImporterViewModel @Inject constructor(
         viewModelScope.launch {
             state = ImportUiState.Parsing
             parsingNote = ""
-            val totalWeeks = repository.activeTimetable.first()?.totalWeeks ?: 20
-            val isIcs = looksLikeIcs(text)
-            val result = withContext(Dispatchers.Default) {
-                if (isIcs) parseIcs(text, totalWeeks) else WakeUpParser.parse(text, totalWeeks)
+            val ctx = parseContext()
+            val parsed = withContext(Dispatchers.Default) {
+                TimetableParsers.parse(ParserInput.ofText(text), ctx, ParserChannel.PASTED_TEXT)
             }
-            handleResult(result, if (isIcs) ImportSource.ICS else ImportSource.WAKEUP)
+            // 粘贴通道只有两种来源：日历文本记 ICS，其余归入口令
+            val source = if (parsed.format == TimetableFormat.ICS) ImportSource.ICS else ImportSource.WAKEUP
+            handleResult(parsed.result, source)
         }
     }
 
@@ -218,21 +216,16 @@ class ImporterViewModel @Inject constructor(
         viewModelScope.launch {
             state = ImportUiState.Parsing
             parsingNote = ""
-            val totalWeeks = repository.activeTimetable.first()?.totalWeeks ?: 20
+            val ctx = parseContext()
             val source = sourceOf(uri)
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                        ?: return@runCatching TableMapping.Result(emptyList(), 0, listOf("无法读取文件"))
-                    val text = decodeText(bytes)
-                    when {
-                        looksLikeIcs(text) -> parseIcs(text, totalWeeks)
-                        isZip(bytes) -> XlsxParser.parse(ByteArrayInputStream(bytes), totalWeeks)
-                        looksLikeJson(bytes) -> JsonParser.parse(text, totalWeeks)
-                        else -> CsvParser.parse(text, totalWeeks)
-                    }
+                        ?: return@runCatching ParseResult.error("无法读取文件")
+                    val input = ParserInput.ofFile(bytes, TextDecoding.decode(bytes), uri.lastPathSegment)
+                    TimetableParsers.parse(input, ctx, ParserChannel.FILE).result
                 }.getOrElse { e ->
-                    TableMapping.Result(emptyList(), 0, listOf("读取失败：${e.message}"))
+                    ParseResult.error("读取失败：${e.message}")
                 }
             }
             handleResult(result, source)
@@ -247,18 +240,17 @@ class ImporterViewModel @Inject constructor(
         }
     }
 
-    private suspend fun parseIcs(text: String, totalWeeks: Int): TableMapping.Result {
+    /** 解析上下文：一次取齐总周数、开学日期与作息节次，各解析器按需取用。 */
+    private suspend fun parseContext(): ParseContext {
         val timetable = repository.activeTimetable.first()
-        val sections = repository.activeSections.first()
-        return IcsParser.parse(
-            text = text,
-            totalWeeks = totalWeeks,
+        return ParseContext(
+            totalWeeks = timetable?.totalWeeks ?: 20,
             semesterStart = TimeUtils.parseDate(timetable?.startDate),
-            sections = sections,
+            sections = repository.activeSections.first(),
         )
     }
 
-    private suspend fun handleResult(result: TableMapping.Result, source: ImportSource) {
+    private suspend fun handleResult(result: ParseResult, source: ImportSource) {
         if (result.drafts.isEmpty()) {
             state = ImportUiState.Error(result.warnings.firstOrNull() ?: "未解析到课程数据")
             return
@@ -274,32 +266,6 @@ class ImporterViewModel @Inject constructor(
             name.endsWith(".json") -> ImportSource.JSON
             name.endsWith(".ics") -> ImportSource.ICS
             else -> ImportSource.CSV
-        }
-    }
-
-    private fun looksLikeIcs(text: String): Boolean =
-        text.trimStart('\uFEFF', ' ', '\n', '\r', '\t')
-            .startsWith("BEGIN:VCALENDAR", ignoreCase = true)
-
-    private fun isZip(bytes: ByteArray): Boolean =
-        bytes.size > 2 && bytes[0] == 0x50.toByte() && bytes[1] == 0x4B.toByte()
-
-    private fun looksLikeJson(bytes: ByteArray): Boolean {
-        val head = String(bytes.copyOfRange(0, minOf(64, bytes.size)), Charsets.UTF_8).trimStart('\uFEFF', ' ', '\n', '\r', '\t')
-        return head.startsWith("{") || head.startsWith("[")
-    }
-
-    /** UTF-8 优先，失败回退 GBK（国内 Excel 导出常见编码） */
-    private fun decodeText(bytes: ByteArray): String {
-        return try {
-            Charset.forName("UTF-8").newDecoder()
-                .onMalformedInput(CodingErrorAction.REPORT)
-                .onUnmappableCharacter(CodingErrorAction.REPORT)
-                .decode(ByteBuffer.wrap(bytes))
-                .toString()
-        } catch (_: Exception) {
-            runCatching { Charset.forName("GBK").decode(ByteBuffer.wrap(bytes)).toString() }
-                .getOrElse { String(bytes, Charsets.UTF_8) }
         }
     }
 }

@@ -12,7 +12,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
-import com.zhijian.schedule.capsule.LiveCapsuleService
+import com.zhijian.schedule.core.capsule.LiveCapsuleService
 import com.zhijian.schedule.core.data.prefs.SettingsStore
 import com.zhijian.schedule.core.holiday.HolidayRepository
 import com.zhijian.schedule.navigation.AppRoot

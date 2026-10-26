@@ -7,12 +7,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.zhijian.schedule.alarm.AlarmScheduler
-import com.zhijian.schedule.calendar.CalendarSyncManager
-import com.zhijian.schedule.capsule.CapsuleCoordinator
-import com.zhijian.schedule.capsule.CapsuleNotifier
-import com.zhijian.schedule.capsule.CapsuleReliability
-import com.zhijian.schedule.capsule.LiveCapsuleService
+import com.zhijian.schedule.core.notifications.AlarmScheduler
+import com.zhijian.schedule.core.calendar.CalendarSyncManager
+import com.zhijian.schedule.core.capsule.CapsuleCoordinator
+import com.zhijian.schedule.core.capsule.CapsuleNotifier
+import com.zhijian.schedule.core.capsule.CapsuleReliability
+import com.zhijian.schedule.core.capsule.LiveCapsuleService
 import com.zhijian.schedule.core.data.BackupManager
 import com.zhijian.schedule.core.data.db.SectionTimeEntity
 import com.zhijian.schedule.core.data.db.TimetableEntity
@@ -145,10 +145,6 @@ class SettingsViewModel @Inject constructor(
 
     fun refreshAlarmPermission() {
         uiState = uiState.copy(exactAlarmOk = alarmScheduler.canScheduleExact())
-    }
-
-    fun clearMessage() {
-        uiState = uiState.copy(message = null)
     }
 
     // ---------- 课表信息 ----------

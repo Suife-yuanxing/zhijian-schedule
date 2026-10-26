@@ -1,40 +1,17 @@
 package com.zhijian.schedule.feature.today
-
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.LocalIndication
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,126 +19,89 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.zhijian.schedule.core.data.db.CourseEntity
-import com.zhijian.schedule.core.data.db.ExamEntity
-import com.zhijian.schedule.core.data.db.HolidayEntity
 import com.zhijian.schedule.core.theme.LocalCourseColors
-import com.zhijian.schedule.core.theme.LocalIsDark
-import com.zhijian.schedule.core.theme.courseTone
-import com.zhijian.schedule.core.ui.HolidayColors
-import com.zhijian.schedule.core.ui.Motion
+import com.zhijian.schedule.core.ui.LocalClock
 import com.zhijian.schedule.core.ui.StaggerIn
-import com.zhijian.schedule.feature.exam.ExamCountdown
-import com.zhijian.schedule.core.ui.cardTilt
-import com.zhijian.schedule.core.ui.cardTiltGlare
-import com.zhijian.schedule.core.ui.cardTiltParallax
-import com.zhijian.schedule.core.ui.rememberCardTiltState
-import com.zhijian.schedule.core.ui.rememberFocusCardTiltStyle
-import com.zhijian.schedule.core.ui.rememberMotionAllowed
-import com.zhijian.schedule.core.ui.rememberTapHaptic
-import com.zhijian.schedule.core.util.TimeUtils
 import com.zhijian.schedule.feature.schedule.CourseDetailSheet
+import com.zhijian.schedule.core.ui.island.IslandCollapseState
+import com.zhijian.schedule.core.ui.island.IslandScrollToTop
+import com.zhijian.schedule.core.ui.island.islandScrollObserver
 import com.zhijian.schedule.navigation.IslandContentPadding
-import java.time.Duration
-import java.time.LocalDateTime
-import java.time.LocalTime
-import kotlinx.coroutines.delay
 
 @Composable
 fun TodayScreen(
     onEditCourse: (Long) -> Unit = {},
     onOpenExams: () -> Unit = {},
+    islandCollapse: IslandCollapseState? = null,
+    scrollToTopTick: Int = 0,
+    /**
+     * 是否播放整页的分段入场。
+     *
+     * tab 切页已经是一整屏横滑；若每次切回今日再叠一层 0~708ms 的 fade + 上浮，
+     * 页面在滑动过程里是半透明的（内容一边滑一边长出来），而"看起来快好了"的那
+     * 200ms 正好是三段动画同时收尾的窗口——这时再切走，图层连同页面一起被销毁重建，
+     * 观感就是闪一下。这里与「我的」页的 entranceEpoch 同一套节奏：切 tab 只做位移，
+     * 入场只在本次进程第一次进入时播。（课表页不一样：它按需求每次进入都重播级联，
+     * 因为课块本身是逐格涌入的，重播读起来是「又摊开一次」而不是整页半透明。）
+     */
+    playEntrance: Boolean = true,
+    /** 首次入场已经开始：宿主据此记住「已经播过」，下次切回不再重播 */
+    onEntranceShown: () -> Unit = {},
     viewModel: TodayViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
+    // 冻结成本次组合的常量：回调置位后入参会变成 false，但这一轮的入场已经起播，不能中途改
+    val entranceOnce = remember { playEntrance }
+    LaunchedEffect(Unit) { if (entranceOnce) onEntranceShown() }
     val colors = LocalCourseColors.current
-    var clock by remember { mutableStateOf(LocalDateTime.now()) }
     var selectedCourse by remember { mutableStateOf<CourseEntity?>(null) }
     // 面板目标可见性：关闭动作一开始即置回 false，让行高亮与面板滑出并行恢复
     var detailSheetVisible by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(15_000)
-            clock = LocalDateTime.now()
+    // 「现在」来自 AppRoot 的那根整分时钟。这里**不读 .value**：读了整页就会每分钟
+    // 重组一次（改前每 15s 一次，实测静置 35s 一帧都没有，纯白烧 CPU）。
+    // 只有当前课 / 下一节课的判定走 derivedStateOf——结果是课程对象，只有上/下课这种
+    // 边界才会变；真正要跟着分钟变的四处（两张卡、行状态徽章、考试倒计时）自己订阅。
+    val clock = LocalClock.current
+    val current by remember(ui.courses) {
+        derivedStateOf {
+            val now = clock.value.toLocalTime()
+            ui.courses.firstOrNull { item ->
+                val s = item.startTime; val e = item.endTime
+                s != null && e != null && !now.isBefore(s) && !now.isAfter(e)
+            }
+        }
+    }
+    val next by remember(ui.courses) {
+        derivedStateOf {
+            val now = clock.value.toLocalTime()
+            ui.courses.firstOrNull { item -> item.startTime != null && now.isBefore(item.startTime) }
         }
     }
 
-    val now = clock.toLocalTime()
-    val current = ui.courses.firstOrNull { item ->
-        val s = item.startTime; val e = item.endTime
-        s != null && e != null && !now.isBefore(s) && !now.isAfter(e)
-    }
-    val next = ui.courses.firstOrNull { item ->
-        item.startTime != null && now.isBefore(item.startTime)
-    }
-
+    val scrollState = rememberScrollState()
+    // 复点「今日」回顶：由 AppRoot 的 tick 触发
+    IslandScrollToTop(state = islandCollapse, scroll = scrollState, signal = scrollToTopTick)
     Column(
         Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .islandScrollObserver(state = islandCollapse, scroll = scrollState)
+            .verticalScroll(scrollState)
             .padding(horizontal = 20.dp),
     ) {
         Spacer(Modifier.height(18.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = "今天 · ${TimeUtils.dayName(TimeUtils.dayOfWeek(ui.today))}",
-                style = MaterialTheme.typography.headlineMedium,
-                color = colors.text,
-                fontWeight = FontWeight.SemiBold,
-            )
-            ui.todayHoliday?.let { h ->
-                Spacer(Modifier.width(10.dp))
-                val tint = if (h.isOffDay) HolidayColors.REST else HolidayColors.WORK
-                Text(
-                    text = "${h.name} · ${if (h.isOffDay) "休" else "班"}",
-                    color = tint,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(tint.copy(alpha = 0.14f))
-                        .padding(horizontal = 8.dp, vertical = 3.dp),
-                )
-            }
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = buildString {
-                    append("${ui.today.monthValue}月${ui.today.dayOfMonth}日")
-                    if (ui.timetableName.isNotBlank()) append(" · ${ui.timetableName}")
-                },
-                style = MaterialTheme.typography.bodyMedium,
-                color = colors.textMuted,
-                modifier = Modifier.weight(1f),
-            )
-            ui.week?.let { week ->
-                Text(
-                    text = "第 $week 周",
-                    color = colors.accent,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(colors.accent.copy(alpha = 0.12f))
-                        .padding(horizontal = 8.dp, vertical = 3.dp),
-                )
-            }
-        }
+        TodayHeader(ui)
 
         Spacer(Modifier.height(18.dp))
 
         ui.todayHoliday?.takeIf { it.isOffDay && ui.courses.isNotEmpty() }?.let { h ->
-            StaggerIn(index = 0) {
+            StaggerIn(index = 0, skip = !entranceOnce) {
                 HolidayNoticeCard(h)
             }
             Spacer(Modifier.height(14.dp))
@@ -169,10 +109,10 @@ fun TodayScreen(
 
         when {
             ui.courses.isEmpty() -> {
-                StaggerIn(index = 0) { EmptyToday(ui) }
+                StaggerIn(index = 0, skip = !entranceOnce) { EmptyToday(ui) }
                 Spacer(Modifier.height(14.dp))
                 ui.nextExam?.let { exam ->
-                    StaggerIn(index = 1) {
+                    StaggerIn(index = 1, skip = !entranceOnce) {
                         ExamCountdownCard(exam, clock, onClick = onOpenExams)
                     }
                     Spacer(Modifier.height(14.dp))
@@ -180,19 +120,19 @@ fun TodayScreen(
             }
             else -> {
                 current?.let { item ->
-                    StaggerIn(index = 0) {
-                        CurrentClassCard(item, now)
+                    StaggerIn(index = 0, skip = !entranceOnce) {
+                        CurrentClassCard(item, clock, sweepOnce = entranceOnce)
                     }
                     Spacer(Modifier.height(14.dp))
                 }
                 next?.let { item ->
-                    StaggerIn(index = 1) {
-                        NextClassCard(item, now)
+                    StaggerIn(index = 1, skip = !entranceOnce) {
+                        NextClassCard(item, clock)
                     }
                     Spacer(Modifier.height(18.dp))
                 }
                 ui.nextExam?.let { exam ->
-                    StaggerIn(index = 1) {
+                    StaggerIn(index = 1, skip = !entranceOnce) {
                         ExamCountdownCard(exam, clock, onClick = onOpenExams)
                     }
                     Spacer(Modifier.height(14.dp))
@@ -203,7 +143,7 @@ fun TodayScreen(
                     if (entries.isEmpty()) null else part to entries
                 }
                 var staggerIndex = 2
-                StaggerIn(index = staggerIndex++) {
+                StaggerIn(index = staggerIndex++, skip = !entranceOnce) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = "今日课程",
@@ -221,14 +161,14 @@ fun TodayScreen(
                 }
                 Spacer(Modifier.height(2.dp))
                 groups.forEach { (part, entries) ->
-                    StaggerIn(index = staggerIndex++) {
+                    StaggerIn(index = staggerIndex++, skip = !entranceOnce) {
                         DayPartHeader(part, entries.size)
                     }
                     entries.forEach { (_, item) ->
-                        StaggerIn(index = staggerIndex++) {
+                        StaggerIn(index = staggerIndex++, skip = !entranceOnce) {
                             CourseRow(
                                 item = item,
-                                now = now,
+                                clock = clock,
                                 isCurrent = item == current,
                                 selected = detailSheetVisible && item.course.id == selectedCourse?.id,
                                 onClick = {
@@ -241,6 +181,7 @@ fun TodayScreen(
                 }
             }
         }
+        // 恒定留白（同 WeekGrid）：不在组合期读收敛值，避免浮岛每帧动画都让整页重新测量
         Spacer(Modifier.height(IslandContentPadding))
     }
 
@@ -258,534 +199,5 @@ fun TodayScreen(
                 selectedCourse = null
             },
         )
-    }
-}
-
-/** 最近考试倒计时卡：14 天内出现在「下一节」之后，点击进考试页 */
-@Composable
-private fun ExamCountdownCard(exam: ExamEntity, now: LocalDateTime, onClick: () -> Unit) {
-    val colors = LocalCourseColors.current
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(colors.accent.copy(alpha = 0.08f))
-            .clickable(onClick = onClick)
-            .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            Modifier
-                .size(38.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(colors.accent.copy(alpha = 0.13f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = Icons.Filled.DateRange,
-                contentDescription = null,
-                tint = colors.accent,
-                modifier = Modifier.size(19.dp),
-            )
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                ExamCountdown.cardTitle(exam.name, exam.examTime, now),
-                color = colors.text,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-            )
-            val where = listOf(
-                exam.room.takeIf { it.isNotBlank() },
-                exam.seat.takeIf { it.isNotBlank() }?.let { "$it 号座" },
-            ).filterNotNull().joinToString(" · ")
-            Text(
-                listOfNotNull(ExamCountdown.detailLine(exam.examTime), where.ifBlank { null })
-                    .joinToString(" · "),
-                color = colors.textMuted,
-                fontSize = 11.sp,
-                maxLines = 1,
-            )
-        }
-        Icon(
-            imageVector = Icons.Filled.KeyboardArrowRight,
-            contentDescription = null,
-            tint = colors.textMuted.copy(alpha = 0.7f),
-            modifier = Modifier.size(20.dp),
-        )
-    }
-}
-
-@Composable
-private fun HolidayNoticeCard(holiday: HolidayEntity) {
-    val colors = LocalCourseColors.current
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .background(HolidayColors.REST.copy(alpha = 0.10f), RoundedCornerShape(14.dp))
-            .padding(14.dp),
-    ) {
-        Text(
-            text = "「${holiday.name}」法定假期",
-            color = HolidayColors.REST,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Spacer(Modifier.height(2.dp))
-        Text(
-            text = "今日课表课程按停课处理，补课安排以学校通知为准",
-            color = colors.textMuted,
-            fontSize = 12.sp,
-        )
-    }
-}
-
-@Composable
-private fun EmptyToday(ui: TodayUiState) {
-    val colors = LocalCourseColors.current
-    val holiday = ui.todayHoliday
-    Spacer(Modifier.height(40.dp))
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .background(colors.surface, RoundedCornerShape(16.dp))
-            .padding(28.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(
-            text = when {
-                ui.week == null -> "假期中"
-                holiday?.isOffDay == true -> "「${holiday.name}」放假中"
-                holiday != null -> "调休上班日"
-                else -> "今天没有课"
-            },
-            style = MaterialTheme.typography.titleMedium,
-            color = colors.text,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Spacer(Modifier.height(6.dp))
-        Text(
-            text = when {
-                ui.week == null -> "不在学期周次范围内"
-                holiday?.isOffDay == true -> "今日课表课程按停课处理"
-                holiday != null -> "补课安排以学校通知为准"
-                else -> "好好休息一下"
-            },
-            style = MaterialTheme.typography.bodyMedium,
-            color = colors.textMuted,
-        )
-    }
-}
-
-@Composable
-private fun CurrentClassCard(item: TodayCourseItem, now: LocalTime) {
-    val start = item.startTime ?: return
-    val end = item.endTime ?: return
-    val total = Duration.between(start, end).seconds.coerceAtLeast(1)
-    val passed = Duration.between(start, now).seconds.coerceIn(0, total)
-    val remaining = 1f - passed.toFloat() / total
-    val remainMin = (total - passed) / 60
-    // 与课表色块共用**同一套派生**：container 铺底 / line 描边 / ink 正文 / inkMuted 次要。
-    // 旧实现直接拿源色加 7% 透明度铺底，饱和色被 α 洗成同一种灰白，
-    // 而且和课表里那块（OKLCH 派生、色相保留）对不上色——同一门课两个页面两种颜色。
-    val isDark = LocalIsDark.current
-    val tone = remember(item.course.color, isDark) { courseTone(Color(item.course.color), isDark) }
-    val shape = RoundedCornerShape(18.dp)
-    // 「我的」页学期概览卡那套交互原样复刻到这张焦点卡上：指腹透视倾动 + 径向流光 +
-    // 前景视差 + 按下抬升，两者共用同一份取值（rememberFocusCardTiltStyle），手感是同一块纸片
-    val tilt = rememberCardTiltState()
-    val tiltStyle = rememberFocusCardTiltStyle()
-    val motionAllowed = rememberMotionAllowed()
-    val sectionText = when {
-        item.course.startSection <= 0 -> null
-        item.course.startSection == item.course.endSection -> "第${item.course.startSection}节"
-        else -> "第${item.course.startSection}-${item.course.endSection}节"
-    }
-
-    // 全亮起步、从右端往左被吃掉；此后每 15s 时钟刷新时平滑推进
-    val progressAnim = remember { Animatable(1f) }
-    LaunchedEffect(remaining) {
-        progressAnim.animateTo(remaining, tween(durationMillis = 900, easing = Motion.EaseOut))
-    }
-
-    // 「正在上课」色点呼吸脉冲：在动的才叫进行中
-    val live = rememberInfiniteTransition(label = "liveClass")
-    val dotPulse by live.animateFloat(
-        initialValue = 0.4f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1100),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "liveDot",
-    )
-
-    Column(
-        Modifier
-            .fillMaxWidth()
-            // 倾动/抬升在最外层图层：clip 之后的背景与流光都跟着卡面一起转
-            .cardTilt(state = tilt, shape = shape, style = tiltStyle, enabled = motionAllowed)
-            .clip(shape)
-            .background(tone.container, shape)
-            // 流光必须压在背景之后、文字之前：只提亮卡面，不洗淡课名与倒计时。
-            // 高光/暗面取本课的同色相色调：白光会把绿色卡面洗成白斑，黑罩会把绿色压成脏橄榄
-            .cardTiltGlare(
-                state = tilt,
-                shape = shape,
-                style = tiltStyle,
-                highlight = tone.highlight,
-                shade = tone.shade,
-            )
-            .border(1.dp, tone.line, shape)
-            .padding(horizontal = 18.dp, vertical = 16.dp),
-    ) {
-        Row(
-            Modifier.cardTiltParallax(state = tilt, style = tiltStyle, depth = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                Modifier
-                    .size(10.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(tone.ink.copy(alpha = dotPulse))
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = "正在上课",
-                color = tone.ink,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.weight(1f))
-            sectionText?.let {
-                Text(
-                    text = it,
-                    color = tone.ink,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(tone.ink.copy(alpha = 0.12f))
-                        .padding(horizontal = 8.dp, vertical = 3.dp),
-                )
-            }
-        }
-        Spacer(Modifier.height(10.dp))
-        // 前景文字按 Apple 图层位移表动得最多；下面的进度条是"事实"（真实时间），不参与视差
-        Text(
-            text = item.course.name,
-            style = MaterialTheme.typography.titleLarge,
-            color = tone.ink,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.cardTiltParallax(state = tilt, style = tiltStyle, depth = 12.dp),
-        )
-        val info = listOf(item.course.room, item.course.teacher)
-            .filter { it.isNotBlank() }
-            .joinToString(" · ")
-        if (info.isNotBlank()) {
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = info,
-                style = MaterialTheme.typography.bodyMedium,
-                color = tone.inkMuted,
-            )
-        }
-        Spacer(Modifier.height(14.dp))
-        Row(
-            Modifier.cardTiltParallax(state = tilt, style = tiltStyle, depth = 12.dp),
-            verticalAlignment = Alignment.Bottom,
-        ) {
-            Text(
-                text = remainMin.toString(),
-                color = tone.ink,
-                fontSize = 40.sp,
-                lineHeight = 40.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.width(5.dp))
-            Text(
-                text = "分钟后下课",
-                fontSize = 13.sp,
-                color = tone.inkMuted,
-                modifier = Modifier.padding(bottom = 5.dp),
-            )
-        }
-        Spacer(Modifier.height(12.dp))
-        LinearProgressIndicator(
-            progress = { progressAnim.value },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(4.dp)
-                .clip(RoundedCornerShape(2.dp)),
-            color = tone.ink,
-            trackColor = tone.line.copy(alpha = 0.5f),
-        )
-        Spacer(Modifier.height(6.dp))
-        Row {
-            Text(
-                text = "${TimeUtils.formatTime(start)} 开始",
-                fontSize = 11.sp,
-                color = tone.inkMuted,
-            )
-            Spacer(Modifier.weight(1f))
-            Text(
-                text = "${TimeUtils.formatTime(end)} 下课",
-                fontSize = 11.sp,
-                color = tone.inkMuted,
-            )
-        }
-    }
-}
-
-@Composable
-private fun NextClassCard(item: TodayCourseItem, now: LocalTime) {
-    val colors = LocalCourseColors.current
-    val start = item.startTime ?: return
-    val end = item.endTime
-    val minutes = Duration.between(now, start).toMinutes()
-    // 与 CurrentClassCard / 课表色块同一套派生，这门课的"身份色"两处必然一致
-    val isDark = LocalIsDark.current
-    val tone = remember(item.course.color, isDark) { courseTone(Color(item.course.color), isDark) }
-    val shape = RoundedCornerShape(14.dp)
-
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .background(tone.container, shape)
-            .border(1.dp, tone.line, shape)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            Modifier
-                .width(3.dp)
-                .height(34.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(tone.ink)
-        )
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = "下一节 · ${item.course.name}",
-                style = MaterialTheme.typography.titleSmall,
-                color = tone.ink,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-            )
-            Text(
-                text = buildString {
-                    if (item.course.room.isNotBlank()) append(item.course.room)
-                    val range = buildString {
-                        append(TimeUtils.formatTime(start))
-                        end?.let { append("–").append(TimeUtils.formatTime(it)) }
-                    }
-                    if (isNotEmpty()) append(" · ")
-                    append(range)
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = tone.inkMuted,
-                maxLines = 1,
-            )
-        }
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text = if (minutes > 0) "${TimeUtils.minutesText(minutes)}后" else "即将开始",
-            color = colors.accent,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            modifier = Modifier
-                .clip(RoundedCornerShape(9.dp))
-                .background(colors.accent.copy(alpha = 0.12f))
-                .padding(horizontal = 9.dp, vertical = 5.dp),
-        )
-    }
-}
-
-private enum class DayPart(val label: String) {
-    MORNING("上午"),
-    AFTERNOON("下午"),
-    EVENING("晚上"),
-}
-
-private fun dayPartOf(time: LocalTime?): DayPart = when {
-    time != null && time.hour < 12 -> DayPart.MORNING
-    time != null && time.hour >= 18 -> DayPart.EVENING
-    else -> DayPart.AFTERNOON
-}
-
-/** 上午 / 下午 / 晚上分隔：小标题 + 细线，让长列表有呼吸和节奏 */
-@Composable
-private fun DayPartHeader(part: DayPart, count: Int) {
-    val colors = LocalCourseColors.current
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(top = 12.dp, bottom = 3.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = part.label,
-            color = colors.textMuted,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Spacer(Modifier.width(9.dp))
-        Box(
-            Modifier
-                .weight(1f)
-                .height(1.dp)
-                .background(colors.border.copy(alpha = 0.55f))
-        )
-        Spacer(Modifier.width(9.dp))
-        Text(
-            text = "$count 节",
-            color = colors.textMuted.copy(alpha = 0.8f),
-            fontSize = 11.sp,
-        )
-    }
-}
-
-@Composable
-private fun StatusPill(
-    text: String,
-    color: Color,
-    background: Color,
-) {
-    Text(
-        text = text,
-        color = color,
-        fontSize = 10.sp,
-        fontWeight = FontWeight.Medium,
-        modifier = Modifier
-            .clip(RoundedCornerShape(7.dp))
-            .background(background)
-            .padding(horizontal = 7.dp, vertical = 3.dp),
-    )
-}
-
-@Composable
-private fun CourseRow(
-    item: TodayCourseItem,
-    now: LocalTime,
-    isCurrent: Boolean,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    val colors = LocalCourseColors.current
-    val finished = item.endTime != null && now.isAfter(item.endTime)
-    val alpha = if (finished) 0.45f else 1f
-    // 行也用课表色块的派生色：整页「这门课是什么颜色」只有一套算法
-    val isDark = LocalIsDark.current
-    val tone = remember(item.course.color, isDark) { courseTone(Color(item.course.color), isDark) }
-    val pressSource = remember { MutableInteractionSource() }
-    val pressed by pressSource.collectIsPressedAsState()
-    val tapHaptic = rememberTapHaptic()
-    val shape = RoundedCornerShape(12.dp)
-
-    // 详情打开期间「弹起 + 描边 + 填充加深」；关闭动作一开始即快速回落（与面板滑出并行）
-    val lift by animateFloatAsState(
-        targetValue = if (selected) 1f else 0f,
-        animationSpec = if (selected) Motion.SelectionEnter else Motion.SelectionExit,
-        label = "rowLift",
-    )
-    val press by animateFloatAsState(
-        targetValue = if (pressed) 0.97f else 1f,
-        animationSpec = Motion.PressSpring,
-        label = "rowPress",
-    )
-    val ring = lift.coerceIn(0f, 1f)
-
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp)
-            .graphicsLayer {
-                val scale = press * (1f + 0.02f * lift)
-                scaleX = scale
-                scaleY = scale
-                this.shape = shape
-                clip = true
-            }
-            .background(
-                lerp(
-                    // 底色一律用原色：课表里的色块不随时间褪色，今日页也得是同一个色
-                    // （「已结束」只靠文字透明度和角标表达，不去改底色，否则同一门课两处两种颜色）
-                    tone.container,
-                    tone.line,
-                    0.45f * ring,
-                ),
-                shape,
-            )
-            .border(1.dp, tone.line.copy(alpha = 0.7f), shape)
-            .border(2.dp, tone.ink.copy(alpha = 0.9f * ring), shape)
-            .clickable(
-                interactionSource = pressSource,
-                indication = LocalIndication.current,
-                onClick = {
-                    tapHaptic()
-                    onClick()
-                },
-            )
-            .padding(horizontal = 13.dp, vertical = 11.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            Modifier
-                .size(10.dp)
-                .clip(RoundedCornerShape(3.dp))
-                .background(tone.ink.copy(alpha = alpha))
-        )
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.width(80.dp)) {
-            Text(
-                text = item.startTime?.let { TimeUtils.formatTime(it) } ?: "—",
-                fontSize = 12.sp,
-                color = colors.text.copy(alpha = alpha),
-                fontWeight = FontWeight.Medium,
-            )
-            item.endTime?.let {
-                Text(
-                    text = TimeUtils.formatTime(it),
-                    fontSize = 11.sp,
-                    color = colors.textMuted.copy(alpha = alpha),
-                )
-            }
-        }
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = item.course.name,
-                style = MaterialTheme.typography.bodyLarge,
-                color = colors.text.copy(alpha = alpha),
-                fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
-                maxLines = 1,
-            )
-            val sub = listOf(item.course.room, item.course.teacher)
-                .filter { it.isNotBlank() }
-                .joinToString(" · ")
-            if (sub.isNotBlank()) {
-                Text(
-                    text = sub,
-                    fontSize = 12.sp,
-                    color = colors.textMuted.copy(alpha = alpha),
-                    maxLines = 1,
-                )
-            }
-        }
-        if (finished) {
-            StatusPill(
-                text = "已结束",
-                color = colors.textMuted,
-                background = colors.border.copy(alpha = 0.18f),
-            )
-        } else if (isCurrent) {
-            StatusPill(
-                text = "进行中",
-                color = tone.ink,
-                background = tone.ink.copy(alpha = 0.12f),
-            )
-        }
     }
 }

@@ -10,16 +10,28 @@ import org.xmlpull.v1.XmlPullParser
  * 轻量 xlsx 读取：直接解 zip 读取 sheet XML（sharedStrings + 首个 worksheet），
  * 避免引入 Apache POI 的体积与 Android 兼容问题。支持 t="s"/inlineStr/str/数值。
  */
-object XlsxParser {
+object XlsxParser : TimetableParser {
 
-    fun parse(input: InputStream, totalWeeks: Int): TableMapping.Result {
+    override val format = TimetableFormat.XLSX
+
+    override val channels = setOf(ParserChannel.FILE)
+
+    override fun canParse(input: ParserInput): Boolean = input.isZip
+
+    override fun parse(input: ParserInput, context: ParseContext): ParseResult {
+        val bytes = requireNotNull(input.bytes) { "xlsx 解析需要文件字节" }
+        return parse(ByteArrayInputStream(bytes), context.totalWeeks)
+    }
+
+    /** 直连入口：xlsx 字节流 + 总周数。 */
+    fun parse(input: InputStream, totalWeeks: Int): ParseResult {
         val entries = readEntries(input)
         val sharedStrings = entries["xl/sharedStrings.xml"]?.let { parseSharedStrings(it) } ?: emptyList()
         val sheetKey = entries.keys
             .filter { it.startsWith("xl/worksheets/") && it.endsWith(".xml") }
             .sorted()
             .firstOrNull()
-            ?: return TableMapping.Result(emptyList(), 0, listOf("未找到工作表"))
+            ?: return ParseResult.error("未找到工作表")
         val rows = parseSheet(entries.getValue(sheetKey), sharedStrings)
         return TableMapping.map(rows, totalWeeks)
     }

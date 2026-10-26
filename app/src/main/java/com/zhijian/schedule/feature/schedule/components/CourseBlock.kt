@@ -55,6 +55,8 @@ fun CourseBlock(
     selected: Boolean = false,
     /** 级联入场延迟（毫秒）；< 0 关闭，用于非课表网格场景 */
     entranceDelayMs: Long = -1L,
+    /** 入场回合标识：变了就重播级联。tab 快速往返时页面留在组合里，只能靠它重新起播 */
+    entranceKey: Any = Unit,
     /** 正在上的课剩余分钟数；null 表示不显示 */
     remainingMin: Int? = null,
     /** 网格节奏：系统字体放大时块会一起长高，行数按剩余空间收敛 */
@@ -91,7 +93,7 @@ fun CourseBlock(
     Column(
         modifier = modifier
             .zIndex(if (selected) 1f else 0f)
-            .cascadeIn(entranceDelayMs)
+            .cascadeIn(entranceDelayMs, restartKey = entranceKey)
             .graphicsLayer {
                 val scale = press * (1f + 0.045f * lift)
                 scaleX = scale

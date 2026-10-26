@@ -14,8 +14,8 @@ import com.zhijian.schedule.core.jw.script.ScriptOption
 import com.zhijian.schedule.core.model.ImportPreview
 import com.zhijian.schedule.core.model.ImportSource
 import com.zhijian.schedule.core.repository.ScheduleRepository
-import com.zhijian.schedule.sync.JwSyncManager
-import com.zhijian.schedule.sync.SyncScheduler
+import com.zhijian.schedule.core.sync.JwSyncManager
+import com.zhijian.schedule.core.sync.SyncScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.first
@@ -68,24 +68,15 @@ class JwImportViewModel @Inject constructor(
 
     /** WebView 当前停在登录页（动态引导文案用） */
     val onLoginPage: Boolean
-        get() {
-            val u = pageUrl
-            if (u.isBlank()) return false
-            return u.contains("LoginToXk", true) ||
-                u.contains("login_slogin", true) ||
-                u.trimEnd('/').endsWith("/jsxsd") ||
-                u.contains("login", true)
-        }
+        get() = isJwLoginPage(pageUrl)
 
     /** 登录后进入主框架 / 课表页（动态引导文案用） */
     val onLoggedInPage: Boolean
-        get() = pageUrl.contains("xsMain", true) ||
-            pageUrl.contains("xskb", true) ||
-            pageUrl.contains("index_initMenu", true)
+        get() = isJwLoggedInPage(pageUrl)
 
     /** 停在统一身份认证登录页（sso.jsp 自动跳转而来） */
     val onAuthserverPage: Boolean
-        get() = pageUrl.contains("authserver", true)
+        get() = isJwAuthserverPage(pageUrl)
 
     /** 地址栏当前识别出的教务类型；未识别为 null */
     val detectedAdapterName: String?
@@ -121,15 +112,7 @@ class JwImportViewModel @Inject constructor(
     }
 
     /** 用户可能只输入裸域名；WebView 需要完整 scheme 才能当网址加载 */
-    private fun withScheme(value: String): String {
-        val trimmed = value.trim()
-        return when {
-            trimmed.isEmpty() -> ""
-            trimmed.startsWith("http", ignoreCase = true) -> trimmed
-            trimmed == BLANK_PAGE -> trimmed
-            else -> "https://$trimmed"
-        }
-    }
+    private fun withScheme(value: String): String = normalizeJwUrl(value, BLANK_PAGE)
 
     fun onUrlChange(value: String) {
         url = value

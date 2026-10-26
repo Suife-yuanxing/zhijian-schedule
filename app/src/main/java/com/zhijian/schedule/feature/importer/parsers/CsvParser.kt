@@ -3,9 +3,20 @@ package com.zhijian.schedule.feature.importer.parsers
 /**
  * CSV / 制表符文本解析（支持引号转义），并按表头映射为课程。
  */
-object CsvParser {
+object CsvParser : TimetableParser {
 
-    fun parse(text: String, totalWeeks: Int): TableMapping.Result {
+    override val format = TimetableFormat.CSV
+
+    /** 兜底解析器：文件通道认不出其它格式时一律按表格文本处理。 */
+    override val channels = setOf(ParserChannel.FILE)
+
+    override fun canParse(input: ParserInput): Boolean = true
+
+    override fun parse(input: ParserInput, context: ParseContext): ParseResult =
+        parse(input.text, context.totalWeeks)
+
+    /** 直连入口：CSV / 制表符文本 + 总周数。 */
+    fun parse(text: String, totalWeeks: Int): ParseResult {
         val cleaned = text.removePrefix("\uFEFF")
         val delimiter = detectDelimiter(cleaned)
         val rows = parseRows(cleaned, delimiter)
@@ -24,7 +35,7 @@ object CsvParser {
         }
     }
 
-    fun parseRows(text: String, delimiter: Char): List<List<String>> {
+    private fun parseRows(text: String, delimiter: Char): List<List<String>> {
         val rows = mutableListOf<List<String>>()
         val current = mutableListOf<String>()
         val field = StringBuilder()

@@ -9,12 +9,6 @@ import com.zhijian.schedule.core.util.WeekMask
  */
 object TableMapping {
 
-    data class Result(
-        val drafts: List<CourseDraft>,
-        val skipped: Int,
-        val warnings: List<String> = emptyList(),
-    )
-
     private val HEADERS_NAME = listOf("课程名称", "课程名", "课程", "名称", "course", "name")
     private val HEADERS_DAY = listOf("星期", "周几", "上课日", "day", "weekday")
     private val HEADERS_START = listOf("开始节", "起始节", "开始", "起节", "start")
@@ -25,9 +19,9 @@ object TableMapping {
     private val HEADERS_SECTION = listOf("节次", "节", "section")
     private val HEADERS_TIME = listOf("时间", "上课时间", "time")
 
-    fun map(rows: List<List<String>>, totalWeeks: Int): Result {
+    internal fun map(rows: List<List<String>>, totalWeeks: Int): ParseResult {
         val nonEmpty = rows.filter { row -> row.any { it.isNotBlank() } }
-        if (nonEmpty.isEmpty()) return Result(emptyList(), 0, listOf("表格为空"))
+        if (nonEmpty.isEmpty()) return ParseResult.error("表格为空")
 
         var headerRow: List<String>? = null
         var dataStart = 0
@@ -49,7 +43,7 @@ object TableMapping {
             else mapPositional(row, totalWeeks)
             if (draft != null) drafts += draft else skipped++
         }
-        return Result(drafts, skipped)
+        return ParseResult(drafts, skipped)
     }
 
     private data class Columns(
@@ -131,7 +125,7 @@ object TableMapping {
         )
     }
 
-    fun parseDay(text: String): Int? {
+    internal fun parseDay(text: String): Int? {
         val t = text.trim()
         if (t.isEmpty()) return null
         t.toIntOrNull()?.let { if (it in 1..7) return it }
@@ -141,7 +135,7 @@ object TableMapping {
         return null
     }
 
-    fun parseSection(text: String): Int? {
+    internal fun parseSection(text: String): Int? {
         val t = text.trim()
         if (t.isEmpty()) return null
         t.toIntOrNull()?.let { return it.coerceIn(1, 12) }

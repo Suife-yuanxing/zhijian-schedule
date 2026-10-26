@@ -1,80 +1,34 @@
 package com.zhijian.schedule.feature.schedule
-
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.LocalIndication
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Button
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.zhijian.schedule.core.data.db.CourseEntity
-import com.zhijian.schedule.core.theme.LocalCourseColors
-import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.StaggerIn
-import com.zhijian.schedule.core.ui.TapButton
-import com.zhijian.schedule.core.ui.TapIconButton
-import com.zhijian.schedule.core.ui.TapTextButton
-import com.zhijian.schedule.core.ui.buttonFeedback
-import com.zhijian.schedule.core.ui.pressScale
-import com.zhijian.schedule.core.util.TimeUtils
 import com.zhijian.schedule.feature.schedule.components.WeekGrid
 import com.zhijian.schedule.feature.schedule.components.WeekHeader
 import com.zhijian.schedule.feature.schedule.components.rememberGridDensity
 import com.zhijian.schedule.feature.schedule.components.rememberGridMetrics
-import com.zhijian.schedule.navigation.IslandContentPadding
+import com.zhijian.schedule.core.ui.island.IslandCollapseState
+import com.zhijian.schedule.core.ui.LocalClock
 import java.time.LocalDate
-import java.time.LocalDateTime
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -85,23 +39,20 @@ fun ScheduleScreen(
     onEditCourse: (Long) -> Unit = {},
     onOpenSettings: () -> Unit = {},
     onOpenImport: () -> Unit = {},
+    islandCollapse: IslandCollapseState? = null,
+    scrollToTopTick: Int = 0,
     /**
-     * 是否播放「课块级联入场 + 加号弹出」。
+     * 入场回合：每次进入课表由宿主自增（见 AppRoot 的 scheduleEntryEpoch）。
      *
-     * tab 切页本身已经是一整屏横滑（tabSlideEnter/tabSlideExit），若每次切回课表
-     * 再叠一层内容级联，就会比切到今日/我的多出一段收尾动作——两个方向的运动曲线
-     * 于是不一样。所以只在首次进入课表时播放，之后切回直接落位。
+     * 为什么不能只靠「组合重新创建」：navigation-compose 的转场按 entry id 复用内容槽，
+     * 而 saveState/restoreState 恢复的 entry 还是原来那个 id。于是在上一段转场收尾前
+     * 切回来时，这一页根本没离开组合，`remember` 不重跑、级联不重播——真机上就是
+     * 「慢慢切有入场动画、快速切没有」。
      */
-    playEntrance: Boolean = true,
-    /** 首次入场已经开始：宿主据此记住「已经播过」，下次切回不再重播 */
-    onEntranceShown: () -> Unit = {},
+    entryEpoch: Int = 0,
     viewModel: ScheduleViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
-    val colors = LocalCourseColors.current
-    // 冻结成本次组合的常量：回调置位后入参会变成 false，但这一轮的入场已经起播，不能中途改
-    val entranceOnce = remember { playEntrance }
-    LaunchedEffect(Unit) { if (entranceOnce) onEntranceShown() }
     var selectedCourse by remember { mutableStateOf<CourseEntity?>(null) }
     // 面板目标可见性：关闭动作一开始即置回 false，让课块高亮与面板滑出并行恢复
     var detailSheetVisible by remember { mutableStateOf(false) }
@@ -109,14 +60,16 @@ fun ScheduleScreen(
     var weekPickerShown by remember { mutableStateOf(false) }
     var weekPickerOpen by remember { mutableStateOf(false) }
     var dayDetail by remember { mutableStateOf<LocalDate?>(null) }
-    var clock by remember { mutableStateOf(LocalDateTime.now()) }
-
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(30_000)
-            clock = LocalDateTime.now()
-        }
-    }
+    // 「现在」来自 AppRoot 的全局整分时钟：不再自己起 30s 循环（那条会在相位上和
+    // 今日页错开，同一屏两处时间对不上）。
+    //
+    // 这里**只拿到 State，不解包**：一旦在页面级写 clock.value，每分钟整页（含 pager
+    // 预组合的邻页、几十个课块）就要跟着重组一次。订阅点全部下沉到真正需要分钟的叶子——
+    // 表头只订阅「今天」，课块的「剩 X 分」只在今天那一列订阅，现在线自己订阅。
+    // 这一页真正的常驻重绘不是时钟，是 NowMarker 的呼吸灯，见 WeekGrid。
+    val clock = LocalClock.current
+    // 「今天」：跨零点才变，表头与课块层共用这一份
+    val today = remember(clock) { derivedStateOf { clock.value.toLocalDate() } }
 
     // 调休补班周：即使关着「显示周末」也强制显示周末列（补班日在该周）
     val visibleDays = if (ui.settings.showWeekend || ui.weekHasMakeupWorkday(ui.selectedWeek)) {
@@ -162,7 +115,7 @@ fun ScheduleScreen(
                 ui = ui,
                 week = ui.selectedWeek,
                 visibleDays = visibleDays,
-                today = clock.toLocalDate(),
+                today = today,
                 alignToTimeAxis = !emptyState,
                 onDayClick = { day ->
                     dayDetail = ui.dateOf(ui.selectedWeek, day)
@@ -171,11 +124,14 @@ fun ScheduleScreen(
             )
 
             if (emptyState) {
-                StaggerIn(index = 0, modifier = Modifier.fillMaxSize(), skip = !entranceOnce) {
-                    EmptyScheduleCard(
-                        onAdd = { onAddCourse(null, null) },
-                        onImport = onOpenImport,
-                    )
+                // key(entryEpoch)：空状态卡片也按「回合」重播，和课块同一拍
+                key(entryEpoch) {
+                    StaggerIn(index = 0, modifier = Modifier.fillMaxSize()) {
+                        EmptyScheduleCard(
+                            onAdd = { onAddCourse(null, null) },
+                            onImport = onOpenImport,
+                        )
+                    }
                 }
             } else {
                 Box(Modifier.weight(1f)) {
@@ -188,7 +144,7 @@ fun ScheduleScreen(
                             ui = ui,
                             week = page + 1,
                             visibleDays = visibleDays,
-                            now = clock,
+                            clock = clock,
                             onCourseClick = { course ->
                                 selectedCourse = course
                                 detailSheetVisible = true
@@ -198,7 +154,15 @@ fun ScheduleScreen(
                             },
                             modifier = Modifier.fillMaxSize(),
                             selectedCourseId = selectedCourse?.id?.takeIf { detailSheetVisible },
-                            playEntrance = entranceOnce,
+                            entranceEpoch = entryEpoch,
+                            islandCollapse = islandCollapse,
+                            // 只有落定的那一页才算浮岛的持有者：beyondViewportPageCount=1 时邻页是
+                            // 提前组合的，而每周 grid 各自 remember 一份新的 ScrollState（初始为 0），
+                            // 不区分活跃页的话，浮岛收起后一翻周就会被邻页当成「回到顶部」顶开。
+                            islandActive = page == pagerState.settledPage,
+                            // 翻周动画期间冻结：横向 pager 与纵向 scroll 会在边界抢同一次手势
+                            frozen = { pagerState.isScrollInProgress },
+                            scrollToTopTick = scrollToTopTick,
                         )
                     }
                 }
@@ -206,39 +170,7 @@ fun ScheduleScreen(
         }
     }
 
-    val fabSource = remember { MutableInteractionSource() }
-    // 首次入场才让加号弹出来；tab 切回时直接落位，与切到今日/我的保持同一套动作
-    var fabArrived by remember { mutableStateOf(!entranceOnce) }
-    // 加号在 Compose 根坐标系里的位置：编辑页从这个圆里长出来
-    var fabBounds by remember { mutableStateOf(Rect.Zero) }
-    LaunchedEffect(Unit) { fabArrived = true }
-    val fabScale by animateFloatAsState(
-        targetValue = if (fabArrived) 1f else 0f,
-        animationSpec = Motion.PopSpring,
-        label = "fabEntrance",
-    )
-    Box(Modifier.fillMaxSize()) {
-        FloatingActionButton(
-            onClick = { onAddCourseFromFab(fabBounds) },
-            interactionSource = fabSource,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 20.dp, bottom = IslandContentPadding)
-                .size(48.dp)
-                .onGloballyPositioned { fabBounds = it.boundsInRoot() }
-                .buttonFeedback(fabSource, pressedScale = 0.9f)
-                .graphicsLayer {
-                    scaleX = fabScale
-                    scaleY = fabScale
-                    alpha = fabScale.coerceIn(0f, 1f)
-                },
-            containerColor = colors.accent,
-            contentColor = colors.onAccent,
-        ) {
-            Icon(Icons.Filled.Add, contentDescription = "添加课程")
-        }
-    }
-
+    ScheduleFab(entryEpoch = entryEpoch, onAddCourseFromFab = onAddCourseFromFab)
     selectedCourse?.let { course ->
         CourseDetailSheet(
             course = course,
@@ -259,7 +191,6 @@ fun ScheduleScreen(
         DayDetailSheet(
             ui = ui,
             date = date,
-            now = clock,
             onDateChange = { dayDetail = it },
             onDismiss = { dayDetail = null },
         )
@@ -272,131 +203,5 @@ fun ScheduleScreen(
             onTargetVisibilityChange = { weekPickerOpen = it },
             onDismiss = { weekPickerShown = false },
         )
-    }
-}
-
-@Composable
-private fun ScheduleTopBar(
-    ui: ScheduleUiState,
-    pickerOpen: Boolean,
-    onOpenWeekPicker: () -> Unit,
-    onOpenSettings: () -> Unit,
-) {
-    val colors = LocalCourseColors.current
-    val titleSource = remember { MutableInteractionSource() }
-    // 面板开合时箭头翻转（弹出带一点过冲，呼应全局动效语言）
-    val arrowAngle by animateFloatAsState(
-        targetValue = if (pickerOpen) 180f else 0f,
-        animationSpec = Motion.PopSpring,
-        label = "weekArrow",
-    )
-
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(start = 8.dp, end = 4.dp, top = 10.dp, bottom = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // 标题即开关：点按「日期区间」展开周选择
-        Column(
-            Modifier
-                .weight(1f)
-                .clip(RoundedCornerShape(12.dp))
-                .buttonFeedback(titleSource, pressedScale = 0.98f)
-                .clickable(
-                    interactionSource = titleSource,
-                    indication = LocalIndication.current,
-                    onClick = onOpenWeekPicker,
-                )
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-        ) {
-            AnimatedContent(
-                targetState = ui.selectedWeek,
-                transitionSpec = {
-                    val dir = if (targetState > initialState) 1 else -1
-                    (slideInVertically(
-                        animationSpec = tween(Motion.DurMedium, easing = Motion.EaseOut),
-                    ) { dir * it / 2 } + fadeIn(tween(Motion.DurMedium, easing = Motion.EaseOut))) togetherWith
-                        (slideOutVertically(
-                            animationSpec = tween(Motion.DurFast),
-                        ) { -dir * it / 2 } + fadeOut(tween(Motion.DurFast)))
-                },
-                label = "weekTitle",
-            ) { week ->
-                val start = ui.dateOf(week, 1)
-                val end = ui.dateOf(week, 7)
-                val subtitle = when {
-                    ui.currentWeek == null && ui.today.isBefore(ui.startDate) -> "第 $week 周 · 未开学"
-                    ui.currentWeek == null -> "第 $week 周 · 学期已结束"
-                    week == ui.currentWeek -> "本周 · 第 $week 周"
-                    else -> "第 $week 周 · 非本周"
-                }
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "${start.monthValue}月${start.dayOfMonth}日 - ${end.monthValue}月${end.dayOfMonth}日",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                // 日期数字用等宽，翻周时宽度不跳
-                                fontFeatureSettings = "tnum",
-                            ),
-                            color = colors.text,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Icon(
-                            Icons.Filled.ArrowDropDown,
-                            contentDescription = null,
-                            tint = colors.textMuted,
-                            modifier = Modifier
-                                .padding(start = 2.dp)
-                                .size(20.dp)
-                                .graphicsLayer { rotationZ = arrowAngle },
-                        )
-                    }
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.textMuted,
-                    )
-                }
-            }
-        }
-        TapIconButton(onClick = onOpenSettings) {
-            Icon(Icons.Filled.Settings, contentDescription = "设置", tint = colors.textMuted)
-        }
-    }
-}
-
-@Composable
-private fun EmptyScheduleCard(onAdd: () -> Unit, onImport: () -> Unit) {
-    val colors = LocalCourseColors.current
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(
-            Modifier
-                .padding(32.dp)
-                .fillMaxWidth()
-                .background(colors.surface, RoundedCornerShape(16.dp))
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Text(
-                text = "还没有课程",
-                style = MaterialTheme.typography.titleMedium,
-                color = colors.text,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = "手动添加，或从教务 / Excel / CSV 一键导入",
-                style = MaterialTheme.typography.bodyMedium,
-                color = colors.textMuted,
-            )
-            Spacer(Modifier.height(18.dp))
-            Row {
-                TapButton(onClick = onAdd) { Text("添加课程") }
-                Spacer(Modifier.width(12.dp))
-                TapTextButton(onClick = onImport) { Text("导入课表") }
-            }
-        }
     }
 }

@@ -1,0 +1,100 @@
+# =============================================================================
+#  纸间课表 PaperTimetable — 仓库级 EditorConfig
+#  一份规则，多方共用：Android Studio / IntelliJ / VS Code / ktlint 都读它。
+#  代码风格基准：ktlint 的 ktlint_official（≈ Kotlin 官方编码规范，4 空格缩进）。
+#  规范来源：https://kotlinlang.org/docs/coding-conventions.html
+#            https://pinterest.github.io/ktlint/latest/rules/code-styles/
+# =============================================================================
+root = true
+
+# -----------------------------------------------------------------------------
+# 通用默认：作用于本仓库所有文件（除非下面另有更具体的段落覆盖）
+# -----------------------------------------------------------------------------
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# max_line_length = 120 的取舍（实测数据，不是拍的）：
+#   · 现状：180 个 .kt 里，超 120 列的行 455 行（涉及 144 个文件），超 100 列的行 1679 行。
+#   · Kotlin 官方编码规范给的上限是 120；Android Studio 的 Android 风格建议 100。
+#     这里取 120，与 ktlint_official 的默认一致，避免"文档说 120、工具说 100"的双标准，
+#     也避免为了 100 去动 1200+ 行与逻辑无关的换行（那是另一种形式的噪音）。
+#   · 代价：120 列在双栏 diff / 窄屏审阅时偏长，长表达式仍可能截断阅读体验。
+#     若将来要收紧到 100：一次性跑 `./gradlew ktlintFormat` 并**重新生成 baseline**
+#     （见 config/ktlint/baseline.xml 顶部说明），不要留下半新半旧的缩进。
+max_line_length = 120
+
+# -----------------------------------------------------------------------------
+# end_of_line —— 故意「不设置」。这是取证后的决定，不是漏写：
+#
+#   1) 本仓库 git core.autocrlf=true（**仓库级**配置，不是全局）。检出时 git 把 index 里的
+#      LF 写成工作区 CRLF，入库时再把 CRLF 归一化回 LF。
+#      实测 `git ls-files --eol`：99 个文件 w/crlf、136 个 w/lf、1 个 w/mixed ——
+#      工作区里换行符本来就是混存的，而 index 侧 100% 是 i/lf，所以 `git status` 干净：
+#      "混存"在当前配置下是正常且零 diff 的状态。
+#   2) 一旦在这里写死 end_of_line = lf（或 crlf），编辑器与格式化器会按该值整体重写文件正文，
+#      产出成千上万行"只有换行符不同"的 diff，污染 blame、淹没真实改动。
+#      更糟的是它与 autocrlf 互相抵消后，同一份代码在 `git checkout` 前后会得到相反的
+#      lint 结论 —— 今天绿、明天红的抖动。baseline 也会随之反复失效。
+#   3) 仓库当前没有 .gitattributes。在不改 git 配置、也不做 `git add --renormalize` 的前提下，
+#      "不表态"是唯一既不批量改写工作区、也不污染历史的选项。
+#
+#   结论：换行符统一交给 git core.autocrlf 管理，EditorConfig 不越权。
+#   将来若要显式锁定，正确顺序是**另起一次改动**：
+#     先加 .gitattributes（* text=auto eol=lf）→ 跑一次 renormalize 提交 →
+#     再回到这里补 end_of_line = lf。别和本次基建混做（唯一的例外见下方 *.bat）。
+# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# Kotlin 源码
+# -----------------------------------------------------------------------------
+[*.{kt,kts}]
+# ktlint 代码风格：ktlint_official = Kotlin 官方规范（4 空格缩进 / 4 空格续行）
+ktlint_code_style = ktlint_official
+indent_size = 4
+max_line_length = 120
+# @Composable 函数按 Compose 约定用 PascalCase（TodayScreen / WeekGrid / CourseBlock…），
+# 与 Kotlin 常规的 lowerCamelCase 天然冲突：按 ktlint 官方开关放行被 @Composable 标注的函数。
+ktlint_function_naming_ignore_when_annotated_with = Composable
+
+# -----------------------------------------------------------------------------
+# 构建脚本 / 配置：4 空格（Gradle Kotlin DSL 与 Kotlin 保持一致）
+# -----------------------------------------------------------------------------
+[*.{gradle,kts,pro}]
+indent_size = 4
+
+# -----------------------------------------------------------------------------
+# 结构化数据文件：2 空格（YAML/JSON 的业界惯例，diff 更稳）
+# -----------------------------------------------------------------------------
+[*.{yml,yaml,json,jsonc}]
+indent_size = 2
+
+# -----------------------------------------------------------------------------
+# Markdown：显式裁掉行尾空格
+#   注意——Markdown 里"行尾两个空格"是硬换行语法，裁掉会改变渲染结果。
+#   本仓库约定：需要硬换行时用反斜杠 `\\` 或空行，不用行尾双空格（否则会被编辑器裁掉）。
+# -----------------------------------------------------------------------------
+[*.md]
+trim_trailing_whitespace = true
+
+# -----------------------------------------------------------------------------
+# Windows 批处理：end_of_line 唯一被允许写死的地方
+#   cmd.exe 解析 .bat 时对 LF-only 文件有已知坑（尤其带 label/goto 的脚本），
+#   所以 gradlew.bat 这类文件必须保持 CRLF。此处只影响 *.bat/*.cmd，
+#   不会波及 Kotlin/源码文件，也就不会产生换行符批量抖动。
+# -----------------------------------------------------------------------------
+[*.{bat,cmd}]
+end_of_line = crlf
+
+# -----------------------------------------------------------------------------
+# 数据/资源文件不做缩进与尾空格规整的外科手术式豁免
+# -----------------------------------------------------------------------------
+[*.{json,jsonc}]
+insert_final_newline = true
+
+[*.{png,jpg,jpeg,gif,webp,jar,zip,keystore,jks,apk,aab}]
+insert_final_newline = false
+trim_trailing_whitespace = false

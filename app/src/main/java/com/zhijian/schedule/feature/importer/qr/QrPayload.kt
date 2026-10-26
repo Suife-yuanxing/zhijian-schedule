@@ -3,7 +3,7 @@ package com.zhijian.schedule.feature.importer.qr
 import com.zhijian.schedule.core.data.db.CourseEntity
 import com.zhijian.schedule.core.model.CourseDraft
 import com.zhijian.schedule.core.util.WeekMask
-import com.zhijian.schedule.feature.importer.parsers.TableMapping
+import com.zhijian.schedule.feature.importer.parsers.ParseResult
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.util.zip.GZIPInputStream
@@ -46,18 +46,18 @@ object QrPayload {
         return PREFIX_BYTES + gzip(text.toByteArray(Charsets.UTF_8))
     }
 
-    fun decode(raw: ByteArray, totalWeeks: Int): TableMapping.Result {
+    fun decode(raw: ByteArray, totalWeeks: Int): ParseResult {
         if (raw.size <= PREFIX_BYTES.size ||
             !raw.copyOfRange(0, PREFIX_BYTES.size).contentEquals(PREFIX_BYTES)
         ) {
-            return TableMapping.Result(emptyList(), 0, listOf("这不是「纸间课表」的课程分享码"))
+            return ParseResult.error("这不是「纸间课表」的课程分享码")
         }
         val text = runCatching { gunzip(raw, PREFIX_BYTES.size).toString(Charsets.UTF_8) }
             .getOrElse {
-                return TableMapping.Result(emptyList(), 0, listOf("分享码数据不完整，请对准二维码重试"))
+                return ParseResult.error("分享码数据不完整，请对准二维码重试")
             }
         val root = runCatching { Json.parseToJsonElement(text) as? JsonArray }.getOrNull()
-            ?: return TableMapping.Result(emptyList(), 0, listOf("分享码内容无法识别"))
+            ?: return ParseResult.error("分享码内容无法识别")
         val drafts = mutableListOf<CourseDraft>()
         var skipped = 0
         root.forEach { element ->
@@ -65,9 +65,9 @@ object QrPayload {
             if (draft != null) drafts += draft else skipped++
         }
         if (drafts.isEmpty()) {
-            return TableMapping.Result(emptyList(), skipped, listOf("分享码里没有可用的课程"))
+            return ParseResult(emptyList(), skipped, listOf("分享码里没有可用的课程"))
         }
-        return TableMapping.Result(drafts, skipped)
+        return ParseResult(drafts, skipped)
     }
 
     private fun mapCourse(arr: JsonArray, totalWeeks: Int): CourseDraft? {

@@ -1,0 +1,70 @@
+name: CI
+
+# 触发：主干 push、所有 PR、以及手动触发
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+  workflow_dispatch:
+
+# 同一分支上的新提交取消仍在跑的旧任务，避免排队浪费额度
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# 为什么这里要显式设编码：
+#   · gradle.properties 里的 org.gradle.jvmargs 带 -Dfile.encoding=COMPAT —— 那是为了
+#     本地 Windows + 中文路径（D:\课程表）下的 @argfile 编码匹配（见该文件注释）。
+#   · CI 是纯 ASCII 路径，COMPAT 在 Linux 上等价于 UTF-8；这里再显式写一遍 UTF-8，
+#     是为了不依赖"平台默认"这个隐含前提，让同一份配置在任何 runner 上行为一致。
+env:
+  GRADLE_OPTS: >-
+    -Dfile.encoding=UTF-8
+    -Dsun.jnu.encoding=UTF-8
+
+jobs:
+  verify:
+    name: Build · Test · Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # 缓存 Gradle User Home（依赖 + 构建缓存），跨 job 复用
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+
+      # 任务顺序即失败优先级：先产物、再测试，最后静态检查。
+      # 注意：assembleDebug 在 keystore.properties 缺失时走 debug 签名回落
+      #      （见 app/build.gradle.kts 的 signingConfigs），因此 CI 不需要任何密钥。
+      # 注意：ktlintCheck / detekt 依赖仓库根的 config/*/baseline.xml 与 .editorconfig，
+      #      这三者都入库，CI 与本地判定完全一致。
+      - name: Build · Test · ktlint · detekt
+        run: ./gradlew assembleDebug testDebugUnitTest ktlintCheck detekt --console=plain
+
+      # 失败时把静态分析报告带出来，省得靠日志猜哪一行违规
+      - name: Upload static analysis reports (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: static-analysis-reports
+          path: |
+            **/build/reports/ktlint/**
+            **/build/reports/detekt/**
+            **/build/test-results/**
+          if-no-files-found: ignore
+          retention-days: 7

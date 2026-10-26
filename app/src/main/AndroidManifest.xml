@@ -78,7 +78,7 @@
 
         <!-- 课程实时胶囊（Android 16 Live Updates / ColorOS 流体云） -->
         <service
-            android:name=".capsule.LiveCapsuleService"
+            android:name=".core.capsule.LiveCapsuleService"
             android:exported="false"
             android:foregroundServiceType="specialUse"
             android:label="@string/capsule_service_label">
@@ -89,7 +89,7 @@
 
         <!-- 应用内更新下载（dataSync 前台服务 + 通知栏进度） -->
         <service
-            android:name=".update.ApkDownloadService"
+            android:name=".core.update.ApkDownloadService"
             android:exported="false"
             android:foregroundServiceType="dataSync"
             android:label="@string/update_service_label" />
@@ -107,21 +107,21 @@
 
         <!-- 课前提醒 -->
         <receiver
-            android:name=".alarm.ReminderReceiver"
+            android:name=".core.notifications.ReminderReceiver"
             android:exported="false" />
         <receiver
-            android:name=".alarm.NotificationActionReceiver"
+            android:name=".core.notifications.NotificationActionReceiver"
             android:exported="false" />
         <!-- 考前提醒（24h/1h 两档） -->
         <receiver
-            android:name=".alarm.ExamReminderReceiver"
+            android:name=".core.notifications.ExamReminderReceiver"
             android:exported="false" />
         <!-- 胶囊状态切换闹钟（提醒窗口/上课/下课/跨天） -->
         <receiver
-            android:name=".capsule.CapsuleTransitionReceiver"
+            android:name=".core.capsule.CapsuleTransitionReceiver"
             android:exported="false" />
         <receiver
-            android:name=".alarm.BootReceiver"
+            android:name=".core.notifications.BootReceiver"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
@@ -131,7 +131,7 @@
 
         <!-- 桌面小组件（Glance） -->
         <receiver
-            android:name=".widget.TodayWidgetReceiver"
+            android:name=".core.widget.TodayWidgetReceiver"
             android:exported="true"
             android:label="@string/widget_today_title">
             <intent-filter>
@@ -142,7 +142,7 @@
                 android:resource="@xml/widget_today_info" />
         </receiver>
         <receiver
-            android:name=".widget.NextCourseWidgetReceiver"
+            android:name=".core.widget.NextCourseWidgetReceiver"
             android:exported="true"
             android:label="@string/widget_next_title">
             <intent-filter>

@@ -1,37 +1,8 @@
 package com.zhijian.schedule.core.ui
-
-import android.content.ContentResolver
-import android.database.ContentObserver
-import android.os.Handler
-import android.os.Looper
-import android.provider.Settings
 import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.interaction.InteractionSource
-import androidx.compose.foundation.interaction.PressInteraction
-import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.padding
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.delay
 
 /**
  * 全局动效语言：灵动有弹性。
@@ -159,14 +130,40 @@ object Motion {
         visibilityThreshold = IntOffset(1, 1),
     )
 
-    /** 级联入场：课块随页面切换涌入的落位弹簧（轻微过冲、收尾干净） */
-    val CascadeEnter = spring<Float>(dampingRatio = 0.62f, stiffness = 460f)
+    /**
+     * 逐个入场：每个课块的落位弹簧（轻微过冲、收尾干净）。
+     *
+     * 0.7 / 900：ω ≈ 30 rad/s、ζ = 0.7 ⇒ 过冲约 4.6%、约 220ms 落位。
+     * 旧值 0.62 / 460 要约 345ms 才停——配上 70ms 的逐个节拍时，任何一帧都有五六个块
+     * 在飞，读起来是一整片涟漪；收紧到 220ms 之后，同一时刻只有两三个块在动，
+     * 每一次落位才数得清。
+     */
+    val CascadeEnter = spring<Float>(dampingRatio = 0.7f, stiffness = 900f)
 
-    /** 底部浮岛选中胶囊滑动：流体转移、轻微过冲后落位即稳 */
-    val FluidSlide = spring<Dp>(dampingRatio = 0.72f, stiffness = 480f)
-
-    /** 底部浮岛胶囊转移形变：行进中横向拉伸 / 纵向压缩，弹性回位（液体被吸走的顿挫感） */
-    val FluidStretch = spring<Float>(dampingRatio = 0.62f, stiffness = 480f)
+    /**
+     * 底部浮岛选中胶囊滑动：**无过冲、约 210ms 落位**。
+     *
+     * 这是被 NN/g 的可用性研究改掉的。旧值 0.72/480 有 3.8% 过冲、292ms 才停，
+     * 而切 tab 是全 App 最高频的交互之一；NN/g《Executing UX Animations》写着
+     * 「越常见的动效，越要短、越要克制」，高频交互动效目标区间是 100~200ms。
+     *
+     * 为什么选 0.9/600：
+     * - 过冲 e^(-πζ/√(1-ζ²)) ≈ 0.2%，肉眼读作「干净地停住」，不再有回弹余韵；
+     * - 落位 ≈ 210ms（4.6 个时间常数），落在 200ms 档，与 M3 选择类控件的
+     *   short2 = 200ms 同档；
+     * - 不再需要「过冲代表液体惯性」那套隐喻——胶囊本身已是液滴造型，
+     *   位移再带回弹就是同一件事说两遍。
+     *
+     * **单位是 tab 下标（0 / 1 / 2），不是 dp。** 这是果冻拉伸的前提：拉伸量要把速度折算成
+     * 「相对一次跨度」的比例，用下标才与屏宽、tab 数无关——平板上同样一下，不会因为走得远
+     * 就显得更急。逐帧积分复核：峰值速度 9.51 /s 出现在 50ms，过冲 0.10%，217ms 落到 1% 内。
+     *
+     * 形变不在这条弹簧里：它由速度实时折算（见 `island/IslandIndicator.kt`）。当年删掉形变
+     * 的三条理由——「与位移无关的独立关键帧」「把切换拖到 339ms」「边界被拉糊」——在这里
+     * 分别由「速度驱动」「不新增时间线」「16% 幅度 + 描边随形状重画」逐条消解，
+     * 所以这版不是把旧做法搬回来。
+     */
+    val FluidSlide = spring<Float>(dampingRatio = 0.9f, stiffness = 600f)
 
     /**
      * 果冻开关的滑行弹簧：阻尼比 0.55，单位行程上约 12.6% 过冲。
@@ -231,222 +228,4 @@ object Motion {
 
     /** 倾动高光淡出：松手后留一点余晖，但不要拖住回正（比旧版 150ms 更"余韵"） */
     const val DurTiltGlareOut = 200
-}
-
-/**
- * 按压缩放反馈。与 clickable 共用同一个 [interactionSource]，
- * 并放在 clickable 外层，使缩放同时作用于背景与水波纹。
- */
-@Composable
-fun Modifier.pressScale(
-    interactionSource: InteractionSource,
-    pressedScale: Float = 0.96f,
-    enabled: Boolean = true,
-): Modifier {
-    val pressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (pressed && enabled) pressedScale else 1f,
-        animationSpec = Motion.PressSpring,
-        label = "pressScale",
-    )
-    return graphicsLayer {
-        scaleX = scale
-        scaleY = scale
-    }
-}
-
-/**
- * 按钮统一反馈：按下回弹；触觉默认关闭。
- *
- * 只有「完成态 / 破坏性操作 / 长按」才显式传 [HapticFeedbackType]：
- * - 完成态：保存成功、导入完成、扫码识别成功；
- * - 破坏性操作：删除；
- * - 长按：长按菜单、拖拽起点。
- *
- * 普通导航、开关、选项、打开弹窗不要传 hapticType——全局每个按钮都震会让触感失去信息量。
- * 页面主体的卡片（课块、今日课程行）不用这个入口，改用 [rememberTapHaptic]。
- * 与 clickable 共用同一个 [interactionSource]，不改变水波纹。
- */
-@Composable
-fun Modifier.buttonFeedback(
-    interactionSource: InteractionSource,
-    pressedScale: Float = 0.96f,
-    enabled: Boolean = true,
-    hapticType: HapticFeedbackType? = null,
-): Modifier {
-    val haptics = LocalHapticFeedback.current
-    LaunchedEffect(interactionSource, hapticType, enabled) {
-        val type = hapticType
-        if (!enabled || type == null) return@LaunchedEffect
-        interactionSource.interactions.collect { interaction ->
-            if (interaction is PressInteraction.Release) {
-                haptics.performHapticFeedback(type)
-            }
-        }
-    }
-    return pressScale(interactionSource, pressedScale, enabled)
-}
-
-/**
- * 卡片轻点反馈：点「整块卡片本身」时的一下轻响（课表课块、今日课程行）。
- *
- * 这类卡片是页面主体，一次点击就换出一屏详情，值得给一次触觉；但它不是「完成态」，
- * 所以用 [HapticFeedbackType.ContextClick]（轻、短）而不是 Confirm——两者混用就分不出轻重了。
- *
- * 只在 click 回调里调用：一次手势最多响一次，滚动手势取消点击时也不会误震。
- */
-@Composable
-fun rememberTapHaptic(type: HapticFeedbackType = HapticFeedbackType.ContextClick): () -> Unit {
-    val haptics = LocalHapticFeedback.current
-    return remember(haptics, type) {
-        { haptics.performHapticFeedback(type) }
-    }
-}
-
-/** 选中弹跳：选中项放大少许并带弹性落点（FilterChip / 日期条 / 色板圆点）。 */
-@Composable
-fun Modifier.selectedPop(selected: Boolean, popScale: Float = 1.06f): Modifier {
-    val scale by animateFloatAsState(
-        targetValue = if (selected) popScale else 1f,
-        animationSpec = Motion.PopSpring,
-        label = "selectedPop",
-    )
-    return graphicsLayer {
-        scaleX = scale
-        scaleY = scale
-    }
-}
-
-/**
- * 交错登场：内容始终占位，只做透明度 + 上浮过渡，避免布局跳动。
- * [index] 越大登场越晚（步进 [stepMs]，封顶 [maxIndex]）。
- * 注意：内部是 Box，[content] 应只放单一子项；需要间距请在 StaggerIn 外层放 Spacer，
- * 写在 content 里只会与内容叠放、被静默吞掉。
- * [contentPadding]：在 alpha 图层内为内容垫一圈空间。alpha<1 的离屏层以自身 bounds 为界，
- * 子项的越界绘制（选中弹跳、投影溢出）会被裁掉；需要溢出时用它撑大图层，
- * 外层布局间距自行补偿。
- * [durationMs]：单段淡入上浮的时长；切页级联可缩短以压住整体节奏。
- * [skip]：首次组合时直接落位。用于「我的」页返回时避免入口卡重播入场，
- * 保证共享元素锚点从第一帧起就可见。
- */
-@Composable
-fun StaggerIn(
-    index: Int,
-    modifier: Modifier = Modifier,
-    stepMs: Long = 36,
-    maxIndex: Int = 8,
-    durationMs: Int = Motion.DurSlow,
-    contentPadding: PaddingValues = PaddingValues(),
-    skip: Boolean = false,
-    content: @Composable () -> Unit,
-) {
-    var arrived by remember { mutableFloatStateOf(if (skip) 1f else 0f) }
-    LaunchedEffect(Unit) {
-        if (!skip) {
-            delay(index.coerceAtMost(maxIndex) * stepMs)
-            arrived = 1f
-        }
-    }
-    val progress by animateFloatAsState(
-        targetValue = arrived,
-        animationSpec = tween(durationMillis = durationMs, easing = Motion.EaseOut),
-        label = "staggerIn",
-    )
-    Box(
-        modifier
-            .graphicsLayer {
-                alpha = progress
-                translationY = (1f - progress) * 20.dp.toPx()
-            }
-            .padding(contentPadding),
-    ) {
-        content()
-    }
-}
-
-/**
- * 级联入场：延迟 [delayMs] 后淡入 + 弹簧放大 + 自下而上落位（课块随 tab 切页涌入）。
- * [delayMs] < 0 表示不启用、直接落位；同一实例只播一次，页面重建时随新实例重播。
- */
-@Composable
-fun Modifier.cascadeIn(
-    delayMs: Long,
-    startScale: Float = 0.78f,
-    riseDp: Float = 10f,
-): Modifier {
-    var arrived by remember { mutableStateOf(delayMs < 0) }
-    LaunchedEffect(delayMs) {
-        if (delayMs >= 0) {
-            delay(delayMs)
-            arrived = true
-        }
-    }
-    val progress by animateFloatAsState(
-        targetValue = if (arrived) 1f else 0f,
-        animationSpec = Motion.CascadeEnter,
-        label = "cascadeIn",
-    )
-    return graphicsLayer {
-        alpha = progress.coerceIn(0f, 1f)
-        val scale = startScale + (1f - startScale) * progress
-        scaleX = scale
-        scaleY = scale
-        translationY = (1f - progress) * riseDp.dp.toPx()
-    }
-}
-
-/**
- * 系统是否允许播放动画。
- *
- * `Settings.Global.ANIMATOR_DURATION_SCALE == 0` 是 Android 表达「不要动画」的统一开关
- * （开发者选项的 Animator duration scale 关掉，以及无障碍里的「移除动画」都会写这个值）。
- *
- * 为什么纯装饰的动效必须查它：WCAG 2.3.3（AAA）把「由交互触发的运动」列为需要用户可控，
- * 并点名 **parallax**——卡片倾斜正是这一类；Apple tvOS 规范 ACCESS-04 同样是硬要求
- * （"Parallax effects and other animations must be reduced or disabled when the user
- * enables Reduce Motion"）。业界组件都照此办理：beUI 的 TiltCard 在 reduced motion 下
- * 「卡片保持平放、反光不绘制」。
- *
- * 用 ContentObserver 而不是只读一次：用户在系统设置里一改就立刻生效，无需重启 Activity。
- */
-@Composable
-fun rememberMotionAllowed(): Boolean {
-    val resolver = LocalContext.current.contentResolver
-    var allowed by remember(resolver) {
-        mutableStateOf(resolver.readAnimatorScale() > 0f)
-    }
-    DisposableEffect(resolver) {
-        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
-            override fun onChange(selfChange: Boolean) {
-                allowed = resolver.readAnimatorScale() > 0f
-            }
-        }
-        resolver.registerContentObserver(
-            Settings.Global.getUriFor(Settings.Global.ANIMATOR_DURATION_SCALE),
-            false,
-            observer,
-        )
-        onDispose { resolver.unregisterContentObserver(observer) }
-    }
-    return allowed
-}
-
-private fun ContentResolver.readAnimatorScale(): Float =
-    Settings.Global.getFloat(this, Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
-
-/**
- * 分段关键帧求值：把单一动画进度 [progress]（0..1）映射到多通道（缩放/位移/旋转），
- * 让一套弹跳的所有通道共享同一节拍；points 按时间升序，超出两端取端点值。
- */
-internal fun keyframed(progress: Float, vararg points: Pair<Float, Float>): Float {
-    val p = progress.coerceIn(0f, 1f)
-    if (p <= points.first().first) return points.first().second
-    for (i in 1 until points.size) {
-        val (t, v) = points[i]
-        if (p <= t) {
-            val (pt, pv) = points[i - 1]
-            return pv + (v - pv) * ((p - pt) / (t - pt))
-        }
-    }
-    return points.last().second
 }

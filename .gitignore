@@ -26,3 +26,35 @@ keystore/
 *.jks
 *.keystore
 keystore.properties
+
+# ============================================================================
+# 2026-10 代码质量基建补全
+#  目标：清掉 git status 里的工具噪音。上面已有的规则一律保留、未删改任何一条。
+#  已存在故不重复的：.gradle/ build/ local.properties *.apk *.aab *.ap_ *.dex
+#                   captures/ .cxx/ .idea/ *.iml .DS_Store .kotlin/ .tmp/
+#                   keystore/ *.jks *.keystore keystore.properties
+# ============================================================================
+
+# --- Agent / 脚手架工具的状态目录（会持续产生脏文件）---
+.mimosa/
+.zcode/
+.ralph/
+.superpowers/
+
+# --- 编辑器 / IDE 状态 ---
+.vscode/
+.fleet/
+*.hprof
+
+# --- Android / Gradle 构建产物 ---
+.externalNativeBuild/
+release/
+app/release/
+lint-results*.html
+lint-results*.xml
+
+# --- 崩溃与构建日志 ---
+*.log
+hs_err_pid*.log
+replay_pid*.log
+

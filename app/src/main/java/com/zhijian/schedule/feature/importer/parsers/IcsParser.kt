@@ -17,22 +17,34 @@ import kotlin.math.abs
  * 支持行折叠、TZID/UTC 时间、RRULE WEEKLY(BYDAY/UNTIL/COUNT/INTERVAL) 展开为周次掩码；
  * 时间按当前课表作息映射为节次；同一课程多次出现时周次取并集。
  */
-object IcsParser {
+object IcsParser : TimetableParser {
+
+    override val format = TimetableFormat.ICS
+
+    override val channels = setOf(ParserChannel.FILE, ParserChannel.PASTED_TEXT)
 
     private val TARGET_PROPS = setOf("SUMMARY", "DTSTART", "DTEND", "RRULE", "LOCATION", "DESCRIPTION")
 
+    /** 日历文件以 BEGIN:VCALENDAR 开头（允许 BOM 与前导空白）。 */
+    override fun canParse(input: ParserInput): Boolean =
+        input.trimmedText.startsWith("BEGIN:VCALENDAR", ignoreCase = true)
+
+    override fun parse(input: ParserInput, context: ParseContext): ParseResult =
+        parse(input.text, context.totalWeeks, context.semesterStart, context.sections)
+
+    /** 直连入口：.ics 文本 + 总周数 + 开学日期 + 作息节次。 */
     fun parse(
         text: String,
         totalWeeks: Int,
         semesterStart: LocalDate?,
         sections: List<SectionTimeEntity>,
-    ): TableMapping.Result {
+    ): ParseResult {
         val events = parseEvents(text)
         if (events.isEmpty()) {
-            return TableMapping.Result(emptyList(), 0, listOf("没有找到日历事件（VEVENT）"))
+            return ParseResult.error("没有找到日历事件（VEVENT）")
         }
         if (semesterStart == null) {
-            return TableMapping.Result(emptyList(), 0, listOf("课表开学日期无效，无法换算周次"))
+            return ParseResult.error("课表开学日期无效，无法换算周次")
         }
         val sortedSections = sections.sortedBy { it.sectionNo }
         val accList = mutableListOf<Acc>()
@@ -76,7 +88,7 @@ object IcsParser {
         }
 
         if (accList.isEmpty()) {
-            return TableMapping.Result(
+            return ParseResult(
                 emptyList(), skipped,
                 listOf("事件都没能匹配到学期周次，请检查开学日期是否与课表一致"),
             )
@@ -96,7 +108,7 @@ object IcsParser {
             .sortedWith(compareBy({ it.dayOfWeek }, { it.startSection }, { it.name }))
         val warnings = mutableListOf<String>()
         if (skipped > 0) warnings += "已跳过 $skipped 个无效事件（缺标题/全天事件等）"
-        return TableMapping.Result(drafts, skipped, warnings)
+        return ParseResult(drafts, skipped, warnings)
     }
 
     // ---------- 解析 ----------

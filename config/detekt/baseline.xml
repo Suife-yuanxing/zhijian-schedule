@@ -1,0 +1,446 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:ApkDownloader.kt$ApkDownloader$apk.isFile &amp;&amp; apk.length() &gt; 0L &amp;&amp; (sizeBytes == null || apk.length() == sizeBytes)</ID>
+    <ID>ComplexCondition:GradeParser.kt$GradeParser$iTerm &lt; 0 || iName &lt; 0 || iScore &lt; 0 || iCredit &lt; 0</ID>
+    <ID>ComplexCondition:ImporterScreen.kt$initialState is ImportUiState.QrScan || targetState is ImportUiState.QrScan || initialState is ImportUiState.QrShare || targetState is ImportUiState.QrShare</ID>
+    <ID>ComplexCondition:JsonParser.kt$JsonParser$rawMask != null &amp;&amp; rawMask.all { it == '0' || it == '1' } &amp;&amp; rawMask.isNotEmpty()</ID>
+    <ID>ComplexCondition:OcrTimetableParser.kt$OcrTimetableParser$(i &lt; a.length &amp;&amp; a[i] == '1') || (i &lt; b.length &amp;&amp; b[i] == '1')</ID>
+    <ID>ComplexCondition:WeekCourseOverlay.kt$startTime != null &amp;&amp; endTime != null &amp;&amp; !now.toLocalTime().isBefore(startTime) &amp;&amp; now.toLocalTime().isBefore(endTime)</ID>
+    <ID>CyclomaticComplexMethod:AppNavGraph.kt$@Composable internal fun AppNavHost( navController: NavHostController, state: AppNavHostState, currentDestination: NavDestination?, modifier: Modifier = Modifier, )</ID>
+    <ID>CyclomaticComplexMethod:CapsuleNotifier.kt$CapsuleNotifier$fun texts(plan: CapsulePlan): Pair&lt;String, String&gt;</ID>
+    <ID>CyclomaticComplexMethod:CapsulePlan.kt$fun buildCapsulePlan( timetable: TimetableEntity?, courses: List&lt;CourseEntity&gt;, sections: List&lt;SectionTimeEntity&gt;, now: LocalDateTime, /** 课前提醒提前量（分钟）；&lt;=0（课前提醒关闭）时不产生「即将上课」状态 */ reminderMinutes: Int, /** 今天是法定假日（休）时的节日名；调休补班日与平时传 null */ holidayName: String? = null, /** 教务/手动录入的考试；仅考试当天的参与状态机（伪课程，排同日最前） */ exams: List&lt;ExamEntity&gt; = emptyList(), ): CapsulePlan</ID>
+    <ID>CyclomaticComplexMethod:ChunkedTransfer.kt$private suspend fun DownloadSession.downloadChunk( request: DownloadRequest, source: UpdateSource, plan: ChunkPlan, index: Int, file: RandomAccessFile, written: LongArray, chunkCount: Int, done: MutableList&lt;Int&gt;, lock: Any, meter: SpeedMeter, ): ChunkOutcome</ID>
+    <ID>CyclomaticComplexMethod:ChunkedTransfer.kt$private suspend fun DownloadSession.parallelDownload( request: DownloadRequest, source: UpdateSource, plan: ChunkPlan, completed: List&lt;Int&gt;, partial: Map&lt;Int, Long&gt; = emptyMap(), ): Notice</ID>
+    <ID>CyclomaticComplexMethod:IcsParser.kt$IcsParser$fun parse( text: String, totalWeeks: Int, semesterStart: LocalDate?, sections: List&lt;SectionTimeEntity&gt;, ): ParseResult</ID>
+    <ID>CyclomaticComplexMethod:IcsParser.kt$IcsParser$private fun expandDates(start: LocalDate, rrule: String?): List&lt;LocalDate&gt;</ID>
+    <ID>CyclomaticComplexMethod:ImporterScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun ImporterScreen( onBack: () -&gt; Unit, onJwImport: () -&gt; Unit, viewModel: ImporterViewModel = hiltViewModel(), )</ID>
+    <ID>CyclomaticComplexMethod:JwImportScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun JwImportScreen( onBack: () -&gt; Unit, onOpenScripts: () -&gt; Unit = {}, viewModel: JwImportViewModel = hiltViewModel(), )</ID>
+    <ID>CyclomaticComplexMethod:OcrTimetableParser.kt$OcrTimetableParser$private fun parseChunk( texts: List&lt;String&gt;, day: Int, fallbackStart: Int, fallbackEnd: Int, totalWeeks: Int, totalSections: Int, ): CourseDraft?</ID>
+    <ID>CyclomaticComplexMethod:OcrTimetableParser.kt$OcrTimetableParser$private fun parseTextLines(lines: List&lt;OcrLine&gt;, totalWeeks: Int): List&lt;CourseDraft&gt;</ID>
+    <ID>CyclomaticComplexMethod:ProfileEntryPage.kt$@Composable fun ProfileEntryPage( entryKey: String, transitions: ProfileEntryTransitions, captureLayer: GraphicsLayer, isTop: Boolean, onPop: () -&gt; Unit, content: @Composable (onBack: () -&gt; Unit) -&gt; Unit, )</ID>
+    <ID>CyclomaticComplexMethod:SequentialTransfer.kt$private fun DownloadSession.handleSequential( request: DownloadRequest, source: UpdateSource, response: Response, part: File, fromScratch: Boolean, ): Notice</ID>
+    <ID>CyclomaticComplexMethod:TimetableImportService.kt$TimetableImportService$suspend fun buildPreview( drafts: List&lt;CourseDraft&gt;, source: ImportSource, syncMode: Boolean = false, ): ImportPreview</ID>
+    <ID>CyclomaticComplexMethod:WeekMask.kt$WeekMask$fun parseExpression(totalWeeks: Int, raw: String?): String?</ID>
+    <ID>CyclomaticComplexMethod:XlsxParser.kt$XlsxParser$private fun parseSheet(bytes: ByteArray, shared: List&lt;String&gt;): List&lt;List&lt;String&gt;&gt;</ID>
+    <ID>ForEachOnRange:ChunkedTransfer.kt$(0 until plan.chunkCount).filter { it !in completed }</ID>
+    <ID>ForEachOnRange:CourseEditorScreen.kt$1..7</ID>
+    <ID>ForEachOnRange:CourseEditorScreen.kt$1..ui.totalWeeks</ID>
+    <ID>ForEachOnRange:OcrDraftEditSheet.kt$1..12</ID>
+    <ID>ForEachOnRange:OcrDraftEditSheet.kt$1..7</ID>
+    <ID>ForEachOnRange:OcrDraftEditSheet.kt$1..totalWeeks</ID>
+    <ID>ForEachOnRange:WeekMask.kt$WeekMask$1..totalWeeks</ID>
+    <ID>InstanceOfCheckForException:ChunkedTransfer.kt$e is CancellationException</ID>
+    <ID>LongMethod:AppNavGraph.kt$@Composable internal fun AppNavHost( navController: NavHostController, state: AppNavHostState, currentDestination: NavDestination?, modifier: Modifier = Modifier, )</ID>
+    <ID>LongMethod:AppRoot.kt$@Composable private fun AppScaffold( openTodayCount: Int, openJwImportCount: Int, reveal: RevealState, )</ID>
+    <ID>LongMethod:CourseBlock.kt$@Composable fun CourseBlock( course: CourseEntity, preset: ThemePreset, isDark: Boolean, modifier: Modifier = Modifier, selected: Boolean = false, /** 级联入场延迟（毫秒）；&lt; 0 关闭，用于非课表网格场景 */ entranceDelayMs: Long = -1L, /** 入场回合标识：变了就重播级联。tab 快速往返时页面留在组合里，只能靠它重新起播 */ entranceKey: Any = Unit, /** 正在上的课剩余分钟数；null 表示不显示 */ remainingMin: Int? = null, /** 网格节奏：系统字体放大时块会一起长高，行数按剩余空间收敛 */ metrics: GridMetrics = GridMetrics.Default, onClick: () -&gt; Unit, )</ID>
+    <ID>LongMethod:CourseDetailSheet.kt$@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class) @Composable fun CourseDetailSheet( course: CourseEntity, onDismiss: () -&gt; Unit, onEdit: () -&gt; Unit, onDelete: () -&gt; Unit, /** * 面板「目标可见性」变化：点遮罩 / 返回 / 下滑越阈值让面板开始滑出的瞬间即为 false。 * onDismissRequest 要等滑出动画播完才回调，不能用于提前恢复选中高亮，改盯 targetValue * （与 M3 淡出遮罩同一时机）。 */ onTargetVisibilityChange: (Boolean) -&gt; Unit = {}, )</ID>
+    <ID>LongMethod:CourseEditorScreen.kt$@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class) @Composable fun CourseEditorScreen( onDone: () -&gt; Unit, viewModel: CourseEditorViewModel = hiltViewModel(), )</ID>
+    <ID>LongMethod:DayDetailSheet.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun DayDetailSheet( ui: ScheduleUiState, date: LocalDate, onDateChange: (LocalDate) -&gt; Unit, onDismiss: () -&gt; Unit, )</ID>
+    <ID>LongMethod:ExamScreen.kt$@Composable fun ExamScreen( onBack: () -&gt; Unit, onNeedsLogin: () -&gt; Unit = {}, viewModel: ExamViewModel = hiltViewModel(), )</ID>
+    <ID>LongMethod:GlassSurface.kt$@Composable fun Modifier.glassSurface( shape: RoundedCornerShape, tint: Color, bodyAlpha: Float, clock: State&lt;Float&gt;?, tilt: State&lt;Offset&gt;?, ): Modifier</ID>
+    <ID>LongMethod:ImporterScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun ImporterScreen( onBack: () -&gt; Unit, onJwImport: () -&gt; Unit, viewModel: ImporterViewModel = hiltViewModel(), )</ID>
+    <ID>LongMethod:JwImportScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun JwImportScreen( onBack: () -&gt; Unit, onOpenScripts: () -&gt; Unit = {}, viewModel: JwImportViewModel = hiltViewModel(), )</ID>
+    <ID>LongMethod:OcrDraftEditSheet.kt$@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class) @Composable internal fun DraftEditSheet( draft: CourseDraft, totalWeeks: Int, onDismiss: () -&gt; Unit, onSave: (CourseDraft) -&gt; Unit, onDelete: () -&gt; Unit, )</ID>
+    <ID>LongMethod:ProfileEntryPage.kt$@Composable fun ProfileEntryPage( entryKey: String, transitions: ProfileEntryTransitions, captureLayer: GraphicsLayer, isTop: Boolean, onPop: () -&gt; Unit, content: @Composable (onBack: () -&gt; Unit) -&gt; Unit, )</ID>
+    <ID>LongMethod:ProfileScreen.kt$@Composable fun ProfileScreen( entryTransitions: ProfileEntryTransitions, reveal: RevealState, entranceEpoch: Int = 0, islandCollapse: IslandCollapseState? = null, scrollToTopTick: Int = 0, onOpenImport: () -&gt; Unit = {}, onOpenSettings: () -&gt; Unit = {}, onOpenGrades: () -&gt; Unit = {}, onOpenGradesFromSummary: () -&gt; Unit = {}, onOpenExams: () -&gt; Unit = {}, viewModel: ProfileViewModel = hiltViewModel(), )</ID>
+    <ID>LongMethod:ProfileSemesterOverview.kt$@Composable internal fun SemesterOverviewCard( timetable: TimetableEntity, week: Int?, courseCount: Int, totalCredits: Double, weightedGpa: Double?, entryTransitions: ProfileEntryTransitions, onOpenGrades: () -&gt; Unit, )</ID>
+    <ID>LongMethod:RevealHost.kt$@Composable fun RevealHost( state: RevealState, modifier: Modifier = Modifier, content: @Composable () -&gt; Unit, )</ID>
+    <ID>LongMethod:ScheduleScreen.kt$@Composable fun ScheduleScreen( onAddCourse: (day: Int?, section: Int?) -&gt; Unit = { _, _ -&gt; }, /** 加号单独一条：带上按钮自身的 root 坐标，供「从加号圆形扩散进编辑页」用 */ onAddCourseFromFab: (fabBoundsInRoot: Rect) -&gt; Unit = { onAddCourse(null, null) }, onEditCourse: (Long) -&gt; Unit = {}, onOpenSettings: () -&gt; Unit = {}, onOpenImport: () -&gt; Unit = {}, islandCollapse: IslandCollapseState? = null, scrollToTopTick: Int = 0, /** * 入场回合：每次进入课表由宿主自增（见 AppRoot 的 scheduleEntryEpoch）。 * * 为什么不能只靠「组合重新创建」：navigation-compose 的转场按 entry id 复用内容槽， * 而 saveState/restoreState 恢复的 entry 还是原来那个 id。于是在上一段转场收尾前 * 切回来时，这一页根本没离开组合，`remember` 不重跑、级联不重播——真机上就是 * 「慢慢切有入场动画、快速切没有」。 */ entryEpoch: Int = 0, viewModel: ScheduleViewModel = hiltViewModel(), )</ID>
+    <ID>LongMethod:ScriptManageScreen.kt$@Composable internal fun ScriptManageScreen( onBack: () -&gt; Unit, viewModel: ScriptManageViewModel = hiltViewModel(), )</ID>
+    <ID>LongMethod:SettingsScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun SettingsScreen( onBack: () -&gt; Unit, viewModel: SettingsViewModel = hiltViewModel(), )</ID>
+    <ID>LongMethod:TodayClassCards.kt$@Composable internal fun CurrentClassCard( item: TodayCourseItem, clock: State&lt;LocalDateTime&gt;, /** * 时间条是否做那一次「从全亮扫到真实进度」的入场动作。 * * 传的是宿主那个「进程内第一次进入今日」的闸门：为 true 时扫一遍，之后进入直接落位。 * 之所以不能只靠 remember —— 卡片每次离开组合都会新建 Animatable（初值 1f）， * 于是切走再回来又会从头扫一遍，读起来就是「时间条每次都在动」。 */ sweepOnce: Boolean = true, )</ID>
+    <ID>LongMethod:TodayCourseRow.kt$@Composable internal fun CourseRow( item: TodayCourseItem, clock: State&lt;LocalDateTime&gt;, isCurrent: Boolean, selected: Boolean, onClick: () -&gt; Unit, )</ID>
+    <ID>LongMethod:TodayScreen.kt$@Composable fun TodayScreen( onEditCourse: (Long) -&gt; Unit = {}, onOpenExams: () -&gt; Unit = {}, islandCollapse: IslandCollapseState? = null, scrollToTopTick: Int = 0, /** * 是否播放整页的分段入场。 * * tab 切页已经是一整屏横滑；若每次切回今日再叠一层 0~708ms 的 fade + 上浮， * 页面在滑动过程里是半透明的（内容一边滑一边长出来），而"看起来快好了"的那 * 200ms 正好是三段动画同时收尾的窗口——这时再切走，图层连同页面一起被销毁重建， * 观感就是闪一下。这里与「我的」页的 entranceEpoch 同一套节奏：切 tab 只做位移， * 入场只在本次进程第一次进入时播。（课表页不一样：它按需求每次进入都重播级联， * 因为课块本身是逐格涌入的，重播读起来是「又摊开一次」而不是整页半透明。） */ playEntrance: Boolean = true, /** 首次入场已经开始：宿主据此记住「已经播过」，下次切回不再重播 */ onEntranceShown: () -&gt; Unit = {}, viewModel: TodayViewModel = hiltViewModel(), )</ID>
+    <ID>LongParameterList:ChunkedTransfer.kt$( request: DownloadRequest, source: UpdateSource, plan: ChunkPlan, index: Int, file: RandomAccessFile, input: InputStream, response: Response, written: LongArray, done: MutableList&lt;Int&gt;, lock: Any, meter: SpeedMeter, total: Long, from: Long, )</ID>
+    <ID>LongParameterList:ChunkedTransfer.kt$( request: DownloadRequest, source: UpdateSource, plan: ChunkPlan, index: Int, file: RandomAccessFile, response: Response, written: LongArray, chunkCount: Int, done: MutableList&lt;Int&gt;, lock: Any, meter: SpeedMeter, from: Long, )</ID>
+    <ID>LongParameterList:ChunkedTransfer.kt$( request: DownloadRequest, source: UpdateSource, plan: ChunkPlan, index: Int, file: RandomAccessFile, written: LongArray, chunkCount: Int, done: MutableList&lt;Int&gt;, lock: Any, meter: SpeedMeter, )</ID>
+    <ID>LongParameterList:GlassRuntime.kt$GlassRuntime$( shader: RuntimeShader, widthPx: Float, heightPx: Float, radiusPx: Float, bandPx: Float, time: Float, tint: Color, bodyAlpha: Float, tilt: Offset, )</ID>
+    <ID>LongParameterList:IslandIndicatorLayout.kt$( barWidthPx: Float, barHeightPx: Float, itemWidthPx: Float, slide: Float, velocity: Float, travel: Float, insetXPx: Float, insetYPx: Float, )</ID>
+    <ID>LongParameterList:WeekCourseOverlay.kt$( course: CourseEntity, sections: List&lt;SectionTimeEntity&gt;, colIndex: Int, dayWidth: Dp, layout: GridLayout, metrics: GridMetrics, isTodayColumn: Boolean, selected: Boolean, clock: State&lt;LocalDateTime&gt;, /** 这一块在入场序列里的起播延迟（序号 × 节拍，见 entranceStepMs） */ entranceDelayMs: Long, entranceEpoch: Int, onClick: () -&gt; Unit, )</ID>
+    <ID>LongParameterList:WeekCourseOverlay.kt$( ui: ScheduleUiState, week: Int, visibleDays: List&lt;Int&gt;, layout: GridLayout, dayWidth: Dp, clock: State&lt;LocalDateTime&gt;, entranceEpoch: Int, selectedCourseId: Long?, metrics: GridMetrics, onCourseClick: (CourseEntity) -&gt; Unit, )</ID>
+    <ID>LongParameterList:WeekGridBands.kt$( band: GridBand, layout: GridLayout, ui: ScheduleUiState, week: Int, visibleDays: List&lt;Int&gt;, style: String, metrics: GridMetrics, onEmptyTap: (day: Int, section: Int) -&gt; Unit, )</ID>
+    <ID>LoopWithTooManyJumpStatements:CapsulePlan.kt$for</ID>
+    <ID>LoopWithTooManyJumpStatements:CardTilt.kt$while</ID>
+    <ID>LoopWithTooManyJumpStatements:ChunkedTransfer.kt$while</ID>
+    <ID>LoopWithTooManyJumpStatements:IcsParser.kt$IcsParser$for</ID>
+    <ID>LoopWithTooManyJumpStatements:JwSessionRecovery.kt$JwSessionRecovery$for</ID>
+    <ID>LoopWithTooManyJumpStatements:OcrTimetableParser.kt$OcrTimetableParser$for</ID>
+    <ID>LoopWithTooManyJumpStatements:SequentialTransfer.kt$while</ID>
+    <ID>LoopWithTooManyJumpStatements:SourceWatchdog.kt$while</ID>
+    <ID>MagicNumber:ApkDownloadService.kt$ApkDownloadService$100</ID>
+    <ID>MagicNumber:AppModule.kt$AppModule$15</ID>
+    <ID>MagicNumber:AppModule.kt$AppModule$20</ID>
+    <ID>MagicNumber:AppModule.kt$AppModule$30</ID>
+    <ID>MagicNumber:CalendarSyncCoordinator.kt$CalendarSyncCoordinator$800</ID>
+    <ID>MagicNumber:CapsuleNotifier.kt$CapsuleNotifier$25</ID>
+    <ID>MagicNumber:CapsuleNotifier.kt$CapsuleNotifier$36</ID>
+    <ID>MagicNumber:CapsuleNotifier.kt$CapsuleNotifier$50</ID>
+    <ID>MagicNumber:CapsuleNotifier.kt$CapsuleNotifier$75</ID>
+    <ID>MagicNumber:CapsulePlan.kt$5</ID>
+    <ID>MagicNumber:CapsulePlan.kt$5L</ID>
+    <ID>MagicNumber:CapsulePlan.kt$60_000L</ID>
+    <ID>MagicNumber:CapsulePlan.kt$7</ID>
+    <ID>MagicNumber:CardTiltGlare.kt$0.005f</ID>
+    <ID>MagicNumber:CardTiltGlare.kt$0.01f</ID>
+    <ID>MagicNumber:CardTiltGlare.kt$0.25f</ID>
+    <ID>MagicNumber:CardTiltGlare.kt$0.45f</ID>
+    <ID>MagicNumber:CardTiltGlare.kt$0.5f</ID>
+    <ID>MagicNumber:CardTiltGlare.kt$0.6f</ID>
+    <ID>MagicNumber:Contrast.kt$Contrast$0.04045</ID>
+    <ID>MagicNumber:Contrast.kt$Contrast$0.05</ID>
+    <ID>MagicNumber:Contrast.kt$Contrast$0.055</ID>
+    <ID>MagicNumber:Contrast.kt$Contrast$0.0722</ID>
+    <ID>MagicNumber:Contrast.kt$Contrast$0.2126</ID>
+    <ID>MagicNumber:Contrast.kt$Contrast$0.7152</ID>
+    <ID>MagicNumber:Contrast.kt$Contrast$1.055</ID>
+    <ID>MagicNumber:Contrast.kt$Contrast$12.92</ID>
+    <ID>MagicNumber:Contrast.kt$Contrast$2.4</ID>
+    <ID>MagicNumber:Contrast.kt$Contrast$40</ID>
+    <ID>MagicNumber:CourseBlock.kt$0.01f</ID>
+    <ID>MagicNumber:CourseBlock.kt$0.45f</ID>
+    <ID>MagicNumber:CourseDetailSheet.kt$0xFFE5484D</ID>
+    <ID>MagicNumber:CourseEditorScreen.kt$0xFFE5484D</ID>
+    <ID>MagicNumber:CourseEditorScreen.kt$255</ID>
+    <ID>MagicNumber:CourseEditorScreen.kt$7</ID>
+    <ID>MagicNumber:CourseTheme.kt$1000</ID>
+    <ID>MagicNumber:CourseTheme.kt$114</ID>
+    <ID>MagicNumber:CourseTheme.kt$150</ID>
+    <ID>MagicNumber:CourseTheme.kt$299</ID>
+    <ID>MagicNumber:CourseTheme.kt$3f</ID>
+    <ID>MagicNumber:CourseTheme.kt$587</ID>
+    <ID>MagicNumber:CourseTheme.kt$6f</ID>
+    <ID>MagicNumber:CourseTheme.kt$8</ID>
+    <ID>MagicNumber:DayDetailItems.kt$0.55f</ID>
+    <ID>MagicNumber:DownloadProgress.kt$SpeedMeter$1000L</ID>
+    <ID>MagicNumber:ExamAlarms.kt$ExamAlarms$2_000_000</ID>
+    <ID>MagicNumber:ExamParser.kt$ExamParser$3</ID>
+    <ID>MagicNumber:ExamParser.kt$ExamParser$4</ID>
+    <ID>MagicNumber:ExamParser.kt$ExamParser$5</ID>
+    <ID>MagicNumber:ExamReminderCoordinator.kt$ExamReminderCoordinator$800</ID>
+    <ID>MagicNumber:ExamReminderReceiver.kt$ExamReminderReceiver$60</ID>
+    <ID>MagicNumber:GlassClock.kt$1_000_000_000f</ID>
+    <ID>MagicNumber:GlassClock.kt$33_000_000L</ID>
+    <ID>MagicNumber:GradesScreen.kt$0.02f</ID>
+    <ID>MagicNumber:GradesScreen.kt$100</ID>
+    <ID>MagicNumber:GradesScreen.kt$100.0</ID>
+    <ID>MagicNumber:GridLayout.kt$12</ID>
+    <ID>MagicNumber:GridLayout.kt$18</ID>
+    <ID>MagicNumber:GridTextStyles.kt$0.3f</ID>
+    <ID>MagicNumber:IcsParser.kt$IcsParser$12</ID>
+    <ID>MagicNumber:IcsParser.kt$IcsParser$14</ID>
+    <ID>MagicNumber:IcsParser.kt$IcsParser$200</ID>
+    <ID>MagicNumber:IcsParser.kt$IcsParser$400</ID>
+    <ID>MagicNumber:ImportGuard.kt$ImportGuard$5</ID>
+    <ID>MagicNumber:ImportPreviewSections.kt$0xFF2BB673</ID>
+    <ID>MagicNumber:ImportPreviewSections.kt$0xFFEF4444</ID>
+    <ID>MagicNumber:ImportPreviewSections.kt$0xFFF59E0B</ID>
+    <ID>MagicNumber:ImportStatusSections.kt$0xFF2BB673</ID>
+    <ID>MagicNumber:ImporterScreen.kt$3</ID>
+    <ID>MagicNumber:ImporterScreen.kt$4</ID>
+    <ID>MagicNumber:JellySwitch.kt$0.01f</ID>
+    <ID>MagicNumber:JsonParser.kt$JsonParser$12</ID>
+    <ID>MagicNumber:JsonParser.kt$JsonParser$7</ID>
+    <ID>MagicNumber:JwAdapter.kt$500</ID>
+    <ID>MagicNumber:JwImportScreen.kt$500</ID>
+    <ID>MagicNumber:JwImportViewModel.kt$JwImportViewModel$20</ID>
+    <ID>MagicNumber:JwImportWebView.kt$&lt;no name provided&gt;$400</ID>
+    <ID>MagicNumber:JwImportWebView.kt$&lt;no name provided&gt;$499</ID>
+    <ID>MagicNumber:JwScriptManifest.kt$JwScriptManifest.Companion$30</ID>
+    <ID>MagicNumber:JwScriptOutput.kt$JwScriptOutput$12</ID>
+    <ID>MagicNumber:JwScriptOutput.kt$JwScriptOutput$15</ID>
+    <ID>MagicNumber:JwScriptOutput.kt$JwScriptOutput$20</ID>
+    <ID>MagicNumber:JwScriptOutput.kt$JwScriptOutput$30</ID>
+    <ID>MagicNumber:JwScriptOutput.kt$JwScriptOutput$500</ID>
+    <ID>MagicNumber:JwScriptOutput.kt$JwScriptOutput$7</ID>
+    <ID>MagicNumber:JwScriptRunner.kt$JwScriptRunner$1000</ID>
+    <ID>MagicNumber:JwSessionRecovery.kt$JwSessionRecovery$1024</ID>
+    <ID>MagicNumber:JwSessionRecovery.kt$JwSessionRecovery$300</ID>
+    <ID>MagicNumber:JwSessionRecovery.kt$JwSessionRecovery$399</ID>
+    <ID>MagicNumber:LiveCapsuleService.kt$LiveCapsuleService$33</ID>
+    <ID>MagicNumber:MainActivity.kt$MainActivity$1001</ID>
+    <ID>MagicNumber:MainActivity.kt$MainActivity$33</ID>
+    <ID>MagicNumber:MathUtils.kt$3f</ID>
+    <ID>MagicNumber:Notifications.kt$Notifications$33</ID>
+    <ID>MagicNumber:NowTicker.kt$1_000L</ID>
+    <ID>MagicNumber:NowTicker.kt$60L</ID>
+    <ID>MagicNumber:OcrDraftEditSheet.kt$0xFFEF4444</ID>
+    <ID>MagicNumber:OcrDraftEditSheet.kt$12</ID>
+    <ID>MagicNumber:OcrDraftEditSheet.kt$7</ID>
+    <ID>MagicNumber:OcrFieldParsing.kt$OcrFieldParsing$16</ID>
+    <ID>MagicNumber:OcrFieldParsing.kt$OcrFieldParsing$3</ID>
+    <ID>MagicNumber:OcrFieldParsing.kt$OcrFieldParsing$5</ID>
+    <ID>MagicNumber:OcrGrid.kt$OcrGrid$0.55f</ID>
+    <ID>MagicNumber:OcrGrid.kt$OcrGrid$0.5f</ID>
+    <ID>MagicNumber:OcrReview.kt$0xFFF59E0B</ID>
+    <ID>MagicNumber:OcrReview.kt$3</ID>
+    <ID>MagicNumber:OcrText.kt$OcrText$0xFF10</ID>
+    <ID>MagicNumber:OcrText.kt$OcrText$0xFF19</ID>
+    <ID>MagicNumber:OcrText.kt$OcrText$10</ID>
+    <ID>MagicNumber:OcrText.kt$OcrText$3</ID>
+    <ID>MagicNumber:OcrText.kt$OcrText$4</ID>
+    <ID>MagicNumber:OcrText.kt$OcrText$5</ID>
+    <ID>MagicNumber:OcrText.kt$OcrText$6</ID>
+    <ID>MagicNumber:OcrText.kt$OcrText$7</ID>
+    <ID>MagicNumber:OcrTimetableParser.kt$OcrTimetableParser$20</ID>
+    <ID>MagicNumber:OcrTimetableParser.kt$OcrTimetableParser$3</ID>
+    <ID>MagicNumber:OcrTimetableParser.kt$OcrTimetableParser$8</ID>
+    <ID>MagicNumber:ProfileEntryExitOverlay.kt$0.001f</ID>
+    <ID>MagicNumber:ProfileEntryExitOverlay.kt$0.999f</ID>
+    <ID>MagicNumber:ProfileEntryGeometry.kt$0.02f</ID>
+    <ID>MagicNumber:ProfileEntryGeometry.kt$0.12f</ID>
+    <ID>MagicNumber:ProfileEntryGeometry.kt$0.15f</ID>
+    <ID>MagicNumber:ProfileEntryGeometry.kt$0.16f</ID>
+    <ID>MagicNumber:ProfileEntryGeometry.kt$0.52f</ID>
+    <ID>MagicNumber:ProfileEntryGeometry.kt$0.55f</ID>
+    <ID>MagicNumber:ProfileEntryGeometry.kt$0.6f</ID>
+    <ID>MagicNumber:ProfileEntryGeometry.kt$0.72f</ID>
+    <ID>MagicNumber:ProfileEntryGeometry.kt$0.85f</ID>
+    <ID>MagicNumber:ProfileEntryGeometry.kt$0.98f</ID>
+    <ID>MagicNumber:ProfileEntryPage.kt$0.999f</ID>
+    <ID>MagicNumber:ProfileEntryPage.kt$4</ID>
+    <ID>MagicNumber:ProfileSemesterOverview.kt$0.25f</ID>
+    <ID>MagicNumber:ProfileSemesterOverview.kt$0.35f</ID>
+    <ID>MagicNumber:ProfileSemesterOverview.kt$0.5f</ID>
+    <ID>MagicNumber:ProfileSemesterOverview.kt$0.75f</ID>
+    <ID>MagicNumber:QiangZhiAdapter.kt$QiangZhiAdapter$10</ID>
+    <ID>MagicNumber:QiangZhiAdapter.kt$QiangZhiAdapter$100</ID>
+    <ID>MagicNumber:QiangZhiAdapter.kt$QiangZhiAdapter$12</ID>
+    <ID>MagicNumber:QiangZhiAdapter.kt$QiangZhiAdapter$3</ID>
+    <ID>MagicNumber:QiangZhiAdapter.kt$QiangZhiAdapter$30</ID>
+    <ID>MagicNumber:QiangZhiAdapter.kt$QiangZhiAdapter$4</ID>
+    <ID>MagicNumber:QiangZhiAdapter.kt$QiangZhiAdapter$5</ID>
+    <ID>MagicNumber:QiangZhiAdapter.kt$QiangZhiAdapter$6</ID>
+    <ID>MagicNumber:QiangZhiAdapter.kt$QiangZhiAdapter$7</ID>
+    <ID>MagicNumber:QiangZhiAdapter.kt$QiangZhiAdapter$70</ID>
+    <ID>MagicNumber:QiangZhiAdapter.kt$QiangZhiAdapter$8</ID>
+    <ID>MagicNumber:QiangZhiAdapter.kt$QiangZhiAdapter$80</ID>
+    <ID>MagicNumber:QiangZhiAdapter.kt$QiangZhiAdapter$9</ID>
+    <ID>MagicNumber:QiangZhiAdapter.kt$QiangZhiAdapter$90</ID>
+    <ID>MagicNumber:QrPayload.kt$QrPayload$12</ID>
+    <ID>MagicNumber:QrPayload.kt$QrPayload$7</ID>
+    <ID>MagicNumber:QrShare.kt$100</ID>
+    <ID>MagicNumber:ReminderCoordinator.kt$ReminderCoordinator$800</ID>
+    <ID>MagicNumber:ResumableDownload.kt$ResumableDownload$1024.0</ID>
+    <ID>MagicNumber:ResumableDownload.kt$ResumableDownload$1024L</ID>
+    <ID>MagicNumber:ResumableDownload.kt$ResumableDownload$200</ID>
+    <ID>MagicNumber:ResumableDownload.kt$ResumableDownload$206</ID>
+    <ID>MagicNumber:ResumableDownload.kt$ResumableDownload$3599</ID>
+    <ID>MagicNumber:ResumableDownload.kt$ResumableDownload$3600</ID>
+    <ID>MagicNumber:ResumableDownload.kt$ResumableDownload$4</ID>
+    <ID>MagicNumber:ResumableDownload.kt$ResumableDownload$400</ID>
+    <ID>MagicNumber:ResumableDownload.kt$ResumableDownload$416</ID>
+    <ID>MagicNumber:ResumableDownload.kt$ResumableDownload$499</ID>
+    <ID>MagicNumber:ResumableDownload.kt$ResumableDownload$500</ID>
+    <ID>MagicNumber:ResumableDownload.kt$ResumableDownload$59</ID>
+    <ID>MagicNumber:ResumableDownload.kt$ResumableDownload$599</ID>
+    <ID>MagicNumber:ResumableDownload.kt$ResumableDownload$6</ID>
+    <ID>MagicNumber:ResumableDownload.kt$ResumableDownload$60</ID>
+    <ID>MagicNumber:ResumableDownload.kt$ResumableDownload$64</ID>
+    <ID>MagicNumber:RevealMath.kt$0.9f</ID>
+    <ID>MagicNumber:ScheduleViewModel.kt$ScheduleUiState$6</ID>
+    <ID>MagicNumber:ScheduleViewModel.kt$ScheduleUiState$7</ID>
+    <ID>MagicNumber:SequentialTransfer.kt$200</ID>
+    <ID>MagicNumber:SequentialTransfer.kt$299</ID>
+    <ID>MagicNumber:SettingsDialogs.kt$16</ID>
+    <ID>MagicNumber:SettingsDialogs.kt$18</ID>
+    <ID>MagicNumber:SettingsDialogs.kt$20</ID>
+    <ID>MagicNumber:SettingsDialogs.kt$22</ID>
+    <ID>MagicNumber:SettingsViewModel.kt$SettingsViewModel$30</ID>
+    <ID>MagicNumber:SourceWatchdog.kt$1000L</ID>
+    <ID>MagicNumber:TableMapping.kt$TableMapping$12</ID>
+    <ID>MagicNumber:TableMapping.kt$TableMapping$3</ID>
+    <ID>MagicNumber:TableMapping.kt$TableMapping$7</ID>
+    <ID>MagicNumber:TimeUtils.kt$TimeUtils$3</ID>
+    <ID>MagicNumber:TimeUtils.kt$TimeUtils$4</ID>
+    <ID>MagicNumber:TimeUtils.kt$TimeUtils$5</ID>
+    <ID>MagicNumber:TimeUtils.kt$TimeUtils$6</ID>
+    <ID>MagicNumber:TimeUtils.kt$TimeUtils$60</ID>
+    <ID>MagicNumber:TimeUtils.kt$TimeUtils$7</ID>
+    <ID>MagicNumber:TodayCourseRow.kt$0.45f</ID>
+    <ID>MagicNumber:TodayCourseRow.kt$12</ID>
+    <ID>MagicNumber:TodayCourseRow.kt$18</ID>
+    <ID>MagicNumber:TodayWidget.kt$4</ID>
+    <ID>MagicNumber:Tone.kt$0.002f</ID>
+    <ID>MagicNumber:Tone.kt$0.0031308f</ID>
+    <ID>MagicNumber:Tone.kt$0.012f</ID>
+    <ID>MagicNumber:Tone.kt$0.028f</ID>
+    <ID>MagicNumber:Tone.kt$0.035f</ID>
+    <ID>MagicNumber:Tone.kt$0.04045f</ID>
+    <ID>MagicNumber:Tone.kt$0.040f</ID>
+    <ID>MagicNumber:Tone.kt$0.045f</ID>
+    <ID>MagicNumber:Tone.kt$0.050f</ID>
+    <ID>MagicNumber:Tone.kt$0.055f</ID>
+    <ID>MagicNumber:Tone.kt$0.060f</ID>
+    <ID>MagicNumber:Tone.kt$0.070f</ID>
+    <ID>MagicNumber:Tone.kt$0.085f</ID>
+    <ID>MagicNumber:Tone.kt$0.095f</ID>
+    <ID>MagicNumber:Tone.kt$0.110f</ID>
+    <ID>MagicNumber:Tone.kt$0.170f</ID>
+    <ID>MagicNumber:Tone.kt$0.285f</ID>
+    <ID>MagicNumber:Tone.kt$0.300f</ID>
+    <ID>MagicNumber:Tone.kt$0.400f</ID>
+    <ID>MagicNumber:Tone.kt$0.475f</ID>
+    <ID>MagicNumber:Tone.kt$0.800f</ID>
+    <ID>MagicNumber:Tone.kt$0.855f</ID>
+    <ID>MagicNumber:Tone.kt$0.86f</ID>
+    <ID>MagicNumber:Tone.kt$0.935f</ID>
+    <ID>MagicNumber:Tone.kt$0.945f</ID>
+    <ID>MagicNumber:Tone.kt$0.960f</ID>
+    <ID>MagicNumber:Tone.kt$0.965f</ID>
+    <ID>MagicNumber:Tone.kt$0.970f</ID>
+    <ID>MagicNumber:Tone.kt$0.980f</ID>
+    <ID>MagicNumber:Tone.kt$1.002f</ID>
+    <ID>MagicNumber:Tone.kt$1.055f</ID>
+    <ID>MagicNumber:Tone.kt$12.92f</ID>
+    <ID>MagicNumber:Tone.kt$16</ID>
+    <ID>MagicNumber:Tone.kt$2.4f</ID>
+    <ID>MagicNumber:Tone.kt$360f</ID>
+    <ID>MagicNumber:UpdateNotification.kt$UpdateNotification$100</ID>
+    <ID>MagicNumber:UpdateStatusSections.kt$100</ID>
+    <ID>MagicNumber:UpdateStatusSections.kt$50</ID>
+    <ID>MagicNumber:UpdateViewModel.kt$UpdateViewModel$1500</ID>
+    <ID>MagicNumber:WeekGrid.kt$0.01f</ID>
+    <ID>MagicNumber:WeekGridBands.kt$0.5f</ID>
+    <ID>MagicNumber:WeekPickerSheet.kt$4</ID>
+    <ID>MagicNumber:WeekPickerSheet.kt$7</ID>
+    <ID>MagicNumber:XlsxParser.kt$XlsxParser$26</ID>
+    <ID>MagicNumber:ZhengFangNewAdapter.kt$ZhengFangNewAdapter$100</ID>
+    <ID>MagicNumber:ZhengFangNewAdapter.kt$ZhengFangNewAdapter$7</ID>
+    <ID>MagicNumber:ZhengFangNewAdapter.kt$ZhengFangNewAdapter$8</ID>
+    <ID>MagicNumber:ZhengFangNewAdapter.kt$ZhengFangNewAdapter$90</ID>
+    <ID>MagicNumber:ZhengFangNewAdapter.kt$ZhengFangNewAdapter$95</ID>
+    <ID>MatchingDeclarationName:CardTilt.kt$CardTiltState</ID>
+    <ID>MatchingDeclarationName:GlassBackdrop.kt$GlassBackdropState</ID>
+    <ID>MatchingDeclarationName:GlassSurface.kt$SolidShaderBrush : ShaderBrush</ID>
+    <ID>MatchingDeclarationName:IslandCollapse.kt$IslandCollapseState</ID>
+    <ID>MatchingDeclarationName:IslandScroll.kt$IslandTopEdgeTracker</ID>
+    <ID>MatchingDeclarationName:IslandTabBar.kt$TabItem</ID>
+    <ID>MatchingDeclarationName:Presets.kt$ThemePresets</ID>
+    <ID>MatchingDeclarationName:QrShare.kt$QrShareState</ID>
+    <ID>MatchingDeclarationName:RevealMath.kt$RevealTiming</ID>
+    <ID>MatchingDeclarationName:SourceWatchdog.kt$WatchdogVerdict</ID>
+    <ID>MatchingDeclarationName:TodayCourseRow.kt$DayPart</ID>
+    <ID>MatchingDeclarationName:Tone.kt$CourseTone</ID>
+    <ID>MaxLineLength:CapsulePlanTest.kt$CapsulePlanTest$assertEquals(false, shouldUseAlarmClockFallback(now, now + 16 * 60_000L, alarmFallbackEnabled = true, exactAlarmsAllowed = true))</ID>
+    <ID>MaxLineLength:CapsulePlanTest.kt$CapsulePlanTest$assertEquals(false, shouldUseAlarmClockFallback(now, now + 5 * 60_000L, alarmFallbackEnabled = false, exactAlarmsAllowed = true))</ID>
+    <ID>MaxLineLength:CapsulePlanTest.kt$CapsulePlanTest$assertEquals(false, shouldUseAlarmClockFallback(now, now + 5 * 60_000L, alarmFallbackEnabled = true, exactAlarmsAllowed = false))</ID>
+    <ID>MaxLineLength:CapsulePlanTest.kt$CapsulePlanTest$assertEquals(false, shouldUseAlarmClockFallback(now, now - 1L, alarmFallbackEnabled = true, exactAlarmsAllowed = true))</ID>
+    <ID>MaxLineLength:CapsulePlanTest.kt$CapsulePlanTest$assertTrue(shouldUseAlarmClockFallback(now, now + 15 * 60_000L, alarmFallbackEnabled = true, exactAlarmsAllowed = true))</ID>
+    <ID>MaxLineLength:ChunkedTransfer.kt$val result = downloadChunk(request, source, plan, index, file, written, plan.chunkCount, done, lock, meter)</ID>
+    <ID>MaxLineLength:CourseDetailSheet.kt$text = "${TimeUtils.dayName(course.dayOfWeek)} · 第 ${course.startSection}-${course.endSection} 节"</ID>
+    <ID>MaxLineLength:Daos.kt$CourseDao$@Query("SELECT * FROM course WHERE tableId = :tableId AND dayOfWeek = :day AND startSection = :startSection AND name = :name LIMIT 1")</ID>
+    <ID>MaxLineLength:ExamFetcher.kt$ExamFetcher$"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36"</ID>
+    <ID>MaxLineLength:GradeFetcher.kt$GradeFetcher$"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36"</ID>
+    <ID>MaxLineLength:IcsParser.kt$IcsParser$sectionAt(sortedSections, dtEnd?.toLocalTime() ?: dtStart.toLocalTime().plusMinutes(45)) ?: startSection</ID>
+    <ID>MaxLineLength:JwSessionRecovery.kt$JwSessionRecovery$"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36"</ID>
+    <ID>MaxLineLength:Notifications.kt$Notifications$.</ID>
+    <ID>MaxLineLength:OcrFieldParsing.kt$OcrFieldParsing$internal val LINE_SECTIONS = Regex("""^第?([一二三四五六七八九十]{1,3}|\d{1,2})\s*[-~－—]\s*第?([一二三四五六七八九十]{1,3}|\d{1,2})\s*节$""")</ID>
+    <ID>MaxLineLength:OcrFieldParsing.kt$OcrFieldParsing$internal val WEEK_RE = Regex("""(\d{1,2}(?:\s*[-~－—]\s*\d{1,2})?(?:\s*[,，、]\s*\d{1,2}(?:\s*[-~－—]\s*\d{1,2})?)*)\s*[单双奇偶]?\s*[（(【\[]?\s*[周週][）)】\]]?""")</ID>
+    <ID>MaxLineLength:OcrTimetableParser.kt$OcrTimetableParser$OcrFieldParsing.findWeeks(inner, totalWeeks) != null -&gt; if (mask == null) mask = OcrFieldParsing.findWeeks(inner, totalWeeks)!!.mask</ID>
+    <ID>MaxLineLength:OcrTimetableParser.kt$OcrTimetableParser$val tokenMatch = OcrFieldParsing.findWeeks(rest, totalWeeks) ?: OcrFieldParsing.bareWeeks(rest, totalWeeks)</ID>
+    <ID>MaxLineLength:QiangZhiAdapter.kt$QiangZhiAdapter$"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36"</ID>
+    <ID>MaxLineLength:QrPayloadTest.kt$QrPayloadTest$course(name = "包装材料与检测", teacher = "王老师", room = "6A308", day = 1, start = 1, end = 4, mask = "11001100110011001100")</ID>
+    <ID>MaxLineLength:QrPayloadTest.kt$QrPayloadTest$course(name = "数字媒体技术", teacher = "李四", room = "实验楼305", day = 5, start = 5, end = 8, mask = "10101010101010101010")</ID>
+    <ID>MaxLineLength:TableMapping.kt$TableMapping$parseSection(startRaw.substringAfter("-")).also { start = parseSection(startRaw.substringBefore("-")) ?: start }</ID>
+    <ID>MaxLineLength:ZhengFangNewAdapter.kt$ZhengFangNewAdapter$"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36"</ID>
+    <ID>MayBeConst:JwImportWebView.kt$/** * 学校 xsMain.jsp 外壳页自身的 bug：初始「个人中心」iframe（#Frame0）用 CSS height:86% 撑高， * 但其父容器高度恒为 0（学校页面里给 Frame0 设高的 JS 被注释掉、easyui 的 JS 也没引入）， * 主内容区因此一直是空白。这里按学校自家菜单脚本（showMenuErji）的同款公式补高度。 */ private val JW_SHELL_FIX_JS = """ (function () { try { if ((location.hostname || '').slice(-11) !== 'dgpt.edu.cn') return; var fix = function () { var f = document.getElementById('Frame0'); if (!f) return; var vh = window.innerHeight || 0; if (vh &lt; 600) return; var tabs = document.querySelector('.tabs-wrap') || document.querySelector('.tabs'); var north = document.getElementById('mainNorthPanle'); var h = vh - (tabs ? tabs.offsetHeight : 26) - (north ? north.offsetHeight : 60) - 5; if (h &gt; 200 &amp;&amp; Math.abs(f.offsetHeight - h) &gt; 50) f.style.height = h + 'px'; }; fix(); setTimeout(fix, 1000); setTimeout(fix, 2500); } catch (e) {} })() """</ID>
+    <ID>NestedBlockDepth:CapsuleNotifier.kt$CapsuleNotifier$fun post( context: Context, plan: CapsulePlan, previousCardKey: String?, previousSkeletonKey: String?, ): Posted</ID>
+    <ID>NestedBlockDepth:IcsParser.kt$IcsParser$private fun parseEvents(text: String): List&lt;Map&lt;String, String&gt;&gt;</ID>
+    <ID>NestedBlockDepth:OcrTimetableParser.kt$OcrTimetableParser$private fun parseChunk( texts: List&lt;String&gt;, day: Int, fallbackStart: Int, fallbackEnd: Int, totalWeeks: Int, totalSections: Int, ): CourseDraft?</ID>
+    <ID>NestedBlockDepth:OcrTimetableParser.kt$OcrTimetableParser$private fun parseTextLines(lines: List&lt;OcrLine&gt;, totalWeeks: Int): List&lt;CourseDraft&gt;</ID>
+    <ID>NestedBlockDepth:RevealGeometryTest.kt$RevealGeometryTest$@Test fun radiusReachesEveryCornerForAnyOrigin()</ID>
+    <ID>NestedBlockDepth:SequentialTransfer.kt$private fun DownloadSession.handleSequential( request: DownloadRequest, source: UpdateSource, response: Response, part: File, fromScratch: Boolean, ): Notice</ID>
+    <ID>NestedBlockDepth:WeekMask.kt$WeekMask$fun parseExpression(totalWeeks: Int, raw: String?): String?</ID>
+    <ID>NestedBlockDepth:WeekMask.kt$WeekMask$fun toExpression(mask: String): String</ID>
+    <ID>NestedBlockDepth:XlsxParser.kt$XlsxParser$private fun parseSharedStrings(bytes: ByteArray): List&lt;String&gt;</ID>
+    <ID>NestedBlockDepth:XlsxParser.kt$XlsxParser$private fun parseSheet(bytes: ByteArray, shared: List&lt;String&gt;): List&lt;List&lt;String&gt;&gt;</ID>
+    <ID>PackageNaming:CourseEditorScreen.kt$package com.zhijian.schedule.feature.course_editor</ID>
+    <ID>PackageNaming:CourseEditorViewModel.kt$package com.zhijian.schedule.feature.course_editor</ID>
+    <ID>ReturnCount:ApkDownloadService.kt$ApkDownloadService$override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int</ID>
+    <ID>ReturnCount:ApkDownloader.kt$ApkDownloader$private suspend fun runSourceChain(request: DownloadRequest, sources: List&lt;UpdateSource&gt;): DownloadState</ID>
+    <ID>ReturnCount:CapsulePlan.kt$fun buildCapsulePlan( timetable: TimetableEntity?, courses: List&lt;CourseEntity&gt;, sections: List&lt;SectionTimeEntity&gt;, now: LocalDateTime, /** 课前提醒提前量（分钟）；&lt;=0（课前提醒关闭）时不产生「即将上课」状态 */ reminderMinutes: Int, /** 今天是法定假日（休）时的节日名；调休补班日与平时传 null */ holidayName: String? = null, /** 教务/手动录入的考试；仅考试当天的参与状态机（伪课程，排同日最前） */ exams: List&lt;ExamEntity&gt; = emptyList(), ): CapsulePlan</ID>
+    <ID>ReturnCount:ChunkedTransfer.kt$internal suspend fun DownloadSession.downloadSource(request: DownloadRequest, source: UpdateSource): Notice</ID>
+    <ID>ReturnCount:ChunkedTransfer.kt$private fun DownloadSession.writeChunk( request: DownloadRequest, source: UpdateSource, plan: ChunkPlan, index: Int, file: RandomAccessFile, input: InputStream, response: Response, written: LongArray, done: MutableList&lt;Int&gt;, lock: Any, meter: SpeedMeter, total: Long, from: Long, ): Stop</ID>
+    <ID>ReturnCount:ChunkedTransfer.kt$private suspend fun DownloadSession.downloadChunk( request: DownloadRequest, source: UpdateSource, plan: ChunkPlan, index: Int, file: RandomAccessFile, written: LongArray, chunkCount: Int, done: MutableList&lt;Int&gt;, lock: Any, meter: SpeedMeter, ): ChunkOutcome</ID>
+    <ID>ReturnCount:ExamParser.kt$ExamParser$fun parse(html: String): List&lt;ExamRecord&gt;</ID>
+    <ID>ReturnCount:GradeParser.kt$GradeParser$fun parse(html: String): List&lt;GradeRecord&gt;</ID>
+    <ID>ReturnCount:IcsParser.kt$IcsParser$fun parse( text: String, totalWeeks: Int, semesterStart: LocalDate?, sections: List&lt;SectionTimeEntity&gt;, ): ParseResult</ID>
+    <ID>ReturnCount:JsonParser.kt$JsonParser$private fun mapObject(obj: JsonObject, totalWeeks: Int): CourseDraft?</ID>
+    <ID>ReturnCount:JwScriptManifest.kt$JwScriptManifest.Companion$fun parse(source: String): ManifestResult</ID>
+    <ID>ReturnCount:JwScriptManifest.kt$JwScriptManifest.Companion$private fun manifestComment(source: String): String?</ID>
+    <ID>ReturnCount:JwScriptOutput.kt$JwScriptOutput$private fun toDraft(obj: JsonObject, totalWeeks: Int, warn: (String) -&gt; Unit): CourseDraft?</ID>
+    <ID>ReturnCount:JwSessionRecovery.kt$JwSessionRecovery$private fun scriptRedirectTarget(html: String): String?</ID>
+    <ID>ReturnCount:NowMarker.kt$@Composable internal fun NowMarker( ui: ScheduleUiState, week: Int, clock: State&lt;LocalDateTime&gt;, layout: GridLayout, visibleDays: List&lt;Int&gt;, metrics: GridMetrics, )</ID>
+    <ID>ReturnCount:OcrFieldParsing.kt$OcrFieldParsing$fun findWeeks(text: String, totalWeeks: Int): WeekMatch?</ID>
+    <ID>ReturnCount:OcrFieldParsing.kt$OcrFieldParsing$fun looksLikeRoom(t: String): Boolean</ID>
+    <ID>ReturnCount:OcrFieldParsing.kt$OcrFieldParsing$fun looksLikeTeacher(t: String): Boolean</ID>
+    <ID>ReturnCount:OcrFieldParsing.kt$OcrFieldParsing$fun sectionText(text: String): SectionToken?</ID>
+    <ID>ReturnCount:OcrText.kt$OcrText$fun chineseNumber(s: String): Int?</ID>
+    <ID>ReturnCount:OcrTimetableParser.kt$OcrTimetableParser$private fun parseChunk( texts: List&lt;String&gt;, day: Int, fallbackStart: Int, fallbackEnd: Int, totalWeeks: Int, totalSections: Int, ): CourseDraft?</ID>
+    <ID>ReturnCount:QiangZhiAdapter.kt$QiangZhiAdapter$private fun parseSectionLabel(text: String): IntRange?</ID>
+    <ID>ReturnCount:QrPayload.kt$QrPayload$fun decode(raw: ByteArray, totalWeeks: Int): ParseResult</ID>
+    <ID>ReturnCount:QrPayload.kt$QrPayload$private fun mapCourse(arr: JsonArray, totalWeeks: Int): CourseDraft?</ID>
+    <ID>ReturnCount:ResumableDownload.kt$ResumableDownload$fun normalizeDigest(digest: String?): String?</ID>
+    <ID>ReturnCount:ResumableDownload.kt$ResumableDownload$fun parseContentRange(header: String?): ContentRange?</ID>
+    <ID>ReturnCount:ResumableDownload.kt$ResumableDownload$fun resolveResumePoint( version: String, url: String, totalBytes: Long?, partBytes: Long, rawMeta: PartMeta?, ): ResumePoint</ID>
+    <ID>ReturnCount:ResumableDownload.kt$ResumableDownload$fun resolveTotalBytes(contentLength: Long?, contentRange: ContentRange?, knownTotal: Long?): Long?</ID>
+    <ID>ReturnCount:SequentialTransfer.kt$private fun DownloadSession.handleSequential( request: DownloadRequest, source: UpdateSource, response: Response, part: File, fromScratch: Boolean, ): Notice</ID>
+    <ID>ReturnCount:TableMapping.kt$TableMapping$internal fun parseDay(text: String): Int?</ID>
+    <ID>ReturnCount:TableMapping.kt$TableMapping$internal fun parseSection(text: String): Int?</ID>
+    <ID>ReturnCount:TableMapping.kt$TableMapping$private fun mapPositional(row: List&lt;String&gt;, totalWeeks: Int): CourseDraft?</ID>
+    <ID>ReturnCount:TableMapping.kt$TableMapping$private fun mapWithHeader(row: List&lt;String&gt;, c: Columns, totalWeeks: Int): CourseDraft?</ID>
+    <ID>ReturnCount:Tone.kt$private fun oklchOrNull(l: Float, c: Float, h: Float): Color?</ID>
+    <ID>ReturnCount:WakeUpParser.kt$WakeUpParser$fun parse(text: String, totalWeeks: Int): ParseResult</ID>
+    <ID>ReturnCount:WeekMask.kt$WeekMask$fun parseExpression(totalWeeks: Int, raw: String?): String?</ID>
+    <ID>SpreadOperator:IslandTabItem.kt$(p, *TAB_BUMP_X)</ID>
+    <ID>SpreadOperator:IslandTabItem.kt$(p, *TAB_BUMP_Y)</ID>
+    <ID>SpreadOperator:IslandTabItem.kt$(p, *TAB_HOP_Y)</ID>
+    <ID>SpreadOperator:IslandTabItem.kt$(p, *TAB_TILT_Z)</ID>
+    <ID>SpreadOperator:ParserInput.kt$ParserInput$(*SNIFF_TRIM)</ID>
+    <ID>SwallowedException:CapsuleTransitionReceiver.kt$CapsuleTransitionReceiver$t: Throwable</ID>
+    <ID>SwallowedException:JwSessionRecovery.kt$JwSessionRecovery$e: Exception</ID>
+    <ID>SwallowedException:JwSyncManager.kt$JwSyncManager$e: Exception</ID>
+    <ID>SwallowedException:LiveCapsuleService.kt$LiveCapsuleService$t: Throwable</ID>
+    <ID>TooGenericExceptionCaught:CapsuleTransitionReceiver.kt$CapsuleTransitionReceiver$t: Throwable</ID>
+    <ID>TooGenericExceptionCaught:ChunkedTransfer.kt$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:ExamFetcher.kt$ExamFetcher$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:JwSessionRecovery.kt$JwSessionRecovery$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:JwSyncManager.kt$JwSyncManager$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:LiveCapsuleService.kt$LiveCapsuleService$t: Throwable</ID>
+    <ID>TooGenericExceptionCaught:QiangZhiAdapter.kt$QiangZhiAdapter$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:RevealHost.kt$t: Throwable</ID>
+    <ID>TooGenericExceptionCaught:ScriptDownloader.kt$ScriptDownloader$e: Exception</ID>
+    <ID>TooManyFunctions:JwImportViewModel.kt$JwImportViewModel : ViewModel</ID>
+    <ID>TooManyFunctions:ResumableDownload.kt$ResumableDownload</ID>
+    <ID>TopLevelPropertyNaming:CardTilt.kt$/** * `cameraDistance` → 有效相机距离（像素）的换算系数，**实测标定值**。 * * Compose 的 `cameraDistance` 单位既不是像素也不是 dp：本机（1080×2376 @480dpi） * 用 `.tmp/cal_sweep.sh` 扫了两点——传入 19.2 时实测近边外溢 +56px（等效 P≈1230）， * 传入 336 时外溢 ≈0（等效 P≈21,500），两点都落在 `P ≈ v × 64` 上。 * * 换设备/换 Compose 版本后若观感变得"很平"或"撕裂"，重跑那个脚本重新标定本值。 * 之所以要除以它：[perspectiveScale] 想表达的是「相机距离是几倍卡长」， * 直接乘进去会被放大 64 倍，效果等于没有透视（历史 bug 即如此）。 */ private const val CameraDistanceUnit = 64f</ID>
+    <ID>TopLevelPropertyNaming:CardTiltGlare.kt$// 三层光的峰值系数：卡心处只有柔光 + 亮核（合计 0.94·peak，与单层实现同亮度）， // 越靠边扫光越强，最亮处约 1.4·peak——倾斜越狠反射越亮，是物理上也讲得通的走向。 private const val BroadPeak = 0.26f</ID>
+    <ID>TopLevelPropertyNaming:CardTiltGlare.kt$// 光带剖面：0.44~0.56 是亮区，两侧各留一段透明缓冲，得到一条边界柔和的"扫光"。 private const val SheenOuter = 0f</ID>
+    <ID>TopLevelPropertyNaming:CardTiltGlare.kt$private const val BroadMid = 0.11f</ID>
+    <ID>TopLevelPropertyNaming:CardTiltGlare.kt$private const val CoreMid = 0.44f</ID>
+    <ID>TopLevelPropertyNaming:CardTiltGlare.kt$private const val CorePeak = 0.68f</ID>
+    <ID>TopLevelPropertyNaming:CardTiltGlare.kt$private const val CoreTail = 0.16f</ID>
+    <ID>TopLevelPropertyNaming:CardTiltGlare.kt$private const val SheenCenter = 0.50f</ID>
+    <ID>TopLevelPropertyNaming:CardTiltGlare.kt$private const val SheenInner = 0.44f</ID>
+    <ID>TopLevelPropertyNaming:CardTiltGlare.kt$private const val SheenInnerMirror = 0.56f</ID>
+    <ID>TopLevelPropertyNaming:CardTiltGlare.kt$private const val SheenOuterMirror = 1f</ID>
+    <ID>TopLevelPropertyNaming:CardTiltGlare.kt$private const val SheenPeak = 0.50f</ID>
+    <ID>TopLevelPropertyNaming:JellyGeometry.kt$/** * 拉伸上限与手柄直径的比值：0.375（即 24dp 手柄最多拉长到 33dp）。 * * 为什么是比例而不是固定 dp：手柄会在 16↔24 之间变，固定 9dp 会让小圆点被拉成 * 一根细条（16→25dp，+56%）、大手柄却只 +37%，同一个动作在两端的手感不一致。 * 按比例取，两端都是 +37.5% 的相对伸长，读作同一种「被拽长」。 */ internal const val JellyStretchRatio = 0.375f</ID>
+    <ID>TopLevelPropertyNaming:JellyGeometry.kt$/** * 按住时的抓取形变：占拉伸上限的 45%。 * * 按在 24dp 手柄上时宽度 24 → 28.1（+17%），与 M3 规范按下档的 28dp 几乎重合 * （`SwitchTokens`：Unselected 16 / Selected 24 / Pressed 28）；按在 16dp 小圆点上时 * 16 → 18.7，同样是 +17%。 * * 为什么不是 22%（本组件的上一版）：那只是拉伸上限的 22%，落到直径上只有 +8%， * 手指按住时几乎看不出「被捏住」，等于白留了一条通道。 */ private const val JellyGrab = 0.45f</ID>
+    <ID>TopLevelPropertyNaming:JellyGeometry.kt$/** * 速度归一化基准：`spring(ζ=0.55, k=420)` 走完单位行程（0→1）时的**峰值速度**。 * * 推导：ω = √420 ≈ 20.49，ω_d = ω√(1-ζ²) ≈ 17.12， * v(t) = (ω²/ω_d)·e^(-ζωt)·sin(ω_d·t)，极值落在 t* = atan(ω_d/ζω)/ω_d ≈ 57.8ms， * 代入得 v_peak ≈ 10.69 /s（逐帧数值积分复核：10.74）。行程固定是 0↔1 * （中心始终从 16 走到 36，与手柄直径无关，见 [jellyThumbRect]），所以这一个常数够用； * 快速连点时弹簧被中途改向，速度可能超过它，由 [jellyStretch] 夹紧。 */ private const val JellySpeedRef = 10.69f</ID>
+    <ID>TopLevelPropertyNaming:JellyGeometry.kt$/** 拉伸时的最大纵向压缩比例：体积守恒的错觉，宽了就要矮一点（24 → 17.8dp）。 */ internal const val JellySquash = 0.26f</ID>
+    <ID>TopLevelPropertyNaming:JellySwitch.kt$/** 圆点换色时长：快于位移，保证「胶囊拉满」那一帧圆点已经是目的地颜色。 */ private const val JellyThumbTintMs = 120</ID>
+    <ID>TopLevelPropertyNaming:JellySwitch.kt$/** 未选中描边的淡入淡出时长：必须与 [JellyTrackTintMs] 同拍，否则会看到「蓝底上挂着一圈灰边」。 */ private const val JellyBorderMs = 140</ID>
+    <ID>TopLevelPropertyNaming:JellySwitch.kt$/** 禁用态整体压暗：M3 用 0.38 的内容透明度，轨道更淡，这里折中取 0.42。 */ private const val JellyDisabledAlpha = 0.42f</ID>
+    <ID>TopLevelPropertyNaming:JellySwitch.kt$/** 轨道换色时长：与圆点同档，位移还没走到一半，底色就已经是终态。 */ private const val JellyTrackTintMs = 140</ID>
+    <ID>UnusedPrivateProperty:ChunkedTransfer.kt$val verdict = ResumableDownload.resolveReadFailure(e, cancelRequested.get())</ID>
+    <ID>UseCheckOrError:CalendarSyncManager.kt$CalendarSyncManager$throw IllegalStateException("开学日期无效")</ID>
+    <ID>UseCheckOrError:CalendarSyncManager.kt$CalendarSyncManager$throw IllegalStateException("无法创建日历（请检查日历权限）")</ID>
+    <ID>UseCheckOrError:CalendarSyncManager.kt$CalendarSyncManager$throw IllegalStateException("未找到系统日历")</ID>
+    <ID>UseCheckOrError:SettingsViewModel.kt$SettingsViewModel$throw IllegalStateException("无法写入文件")</ID>
+    <ID>UseCheckOrError:SettingsViewModel.kt$SettingsViewModel$throw IllegalStateException("无法读取文件")</ID>
+    <ID>UseCheckOrError:UpdateChecker.kt$UpdateChecker$throw IllegalStateException("响应格式异常")</ID>
+    <ID>UseCheckOrError:UpdateChecker.kt$UpdateChecker$throw IllegalStateException("检查更新失败（HTTP ${response.code}）")</ID>
+  </CurrentIssues>
+</SmellBaseline>
