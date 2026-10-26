@@ -12,6 +12,10 @@
 
 ## [Unreleased]
 
+## [1.0.13] - 2026-10-27
+
+*提交区间：v1.0.12..v1.0.13（3 个提交）— 代码规范化：包结构重整、超长文件拆分、静态检查与 CI 基建*
+
 ### Added
 
 - feat(ui): 今日页课程卡与课表色块共用色调，并让倾动透视真正生效
@@ -33,6 +37,7 @@
 - fix(ui): 入口卡展开圆角在进度越过 1 时可能算出微小负值（`coerceAtMost` → `coerceIn(0f, 短边一半)`）
 - fix(ui): `RevealMath` 里 `revealRadius` 的 KDoc 误挂在 `smoothstep` 上，文档归位
 - fix(test): `ProfileEntryGeometryTest` 起手圆角期望未考虑短边夹紧、`IslandIndicatorLayoutTest` 前缘/后缘基准误用网格中心线，两处断言与生产行为对齐
+
 
 ## [1.0.12] - 2026-10-26
 
