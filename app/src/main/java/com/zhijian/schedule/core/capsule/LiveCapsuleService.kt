@@ -12,7 +12,6 @@ import android.os.PowerManager
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import dagger.hilt.android.AndroidEntryPoint
-import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,6 +21,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 /**
  * 课程实时胶囊：前台服务每 30s 重算当前/下一节课并刷新状态栏实时通知。
@@ -33,7 +33,6 @@ import kotlinx.coroutines.launch
  */
 @AndroidEntryPoint
 class LiveCapsuleService : Service() {
-
     @Inject
     lateinit var coordinator: CapsuleCoordinator
 
@@ -62,13 +61,18 @@ class LiveCapsuleService : Service() {
         CapsuleNotifier.ensureChannel(this)
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    override fun onStartCommand(
+        intent: Intent?,
+        flags: Int,
+        startId: Int,
+    ): Int {
         carriedNotification(intent)?.let { lastRendered = it }
-        val type = if (Build.VERSION.SDK_INT >= 34) {
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-        } else {
-            0
-        }
+        val type =
+            if (Build.VERSION.SDK_INT >= 34) {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            } else {
+                0
+            }
         ServiceCompat.startForeground(
             this,
             CapsuleNotifier.SERVICE_NOTIFICATION_ID,
@@ -76,33 +80,41 @@ class LiveCapsuleService : Service() {
             type,
         )
         if (loop == null) {
-            loop = scope.launch {
-                while (isActive) {
-                    try {
-                        // 实时卡片被系统超时撤下（倒计时兜底）/ 被划掉后，与上轮 key 相同会一直
-                        // 去重跳过——发现卡片缺失就强制重建重发（含再次请求提升，流体云恢复）
-                        val nm = getSystemService(NotificationManager::class.java)
-                        val cardPosted = nm?.activeNotifications
-                            ?.any { it.id == CapsuleNotifier.LIVE_CARD_ID } == true
-                        val posted = coordinator.renderNow(
-                            previousCardKey = lastCardKey.takeIf { cardPosted },
-                            previousSkeletonKey = lastSkeletonKey,
-                        ) ?: run {
-                            stopSelf()
-                            break
+            loop =
+                scope.launch {
+                    while (isActive) {
+                        try {
+                            // 实时卡片被系统超时撤下（倒计时兜底）后，与上轮 key 相同会一直去重跳过，
+                            // 因此发现卡片缺失就允许强制重建重发（含再次请求提升，流体云恢复）。
+                            //
+                            // 但**用户主动划掉**不能重发：CapsuleNotifier 内部会检查
+                            // CapsuleDismissTracker，本场次已记账时不会重新出卡——这里不需要额外判断，
+                            // 传 null 的 previousCardKey 只是让 Notifier 有机会重新走一遍决策。
+                            val nm = getSystemService(NotificationManager::class.java)
+                            val cardPosted =
+                                nm
+                                    ?.activeNotifications
+                                    ?.any { it.id == CapsuleNotifier.LIVE_CARD_ID } == true
+                            val posted =
+                                coordinator.renderNow(
+                                    previousCardKey = lastCardKey.takeIf { cardPosted },
+                                    previousSkeletonKey = lastSkeletonKey,
+                                ) ?: run {
+                                    stopSelf()
+                                    break
+                                }
+                            lastCardKey = posted.cardKey
+                            lastSkeletonKey = posted.skeletonKey
+                            posted.serviceNotification?.let { lastRendered = it }
+                            setLiveState(posted.live)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (t: Throwable) {
+                            // 单次读取/构建失败不终止循环，下一轮重试
                         }
-                        lastCardKey = posted.cardKey
-                        lastSkeletonKey = posted.skeletonKey
-                        posted.serviceNotification?.let { lastRendered = it }
-                        setLiveState(posted.live)
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (t: Throwable) {
-                        // 单次读取/构建失败不终止循环，下一轮重试
+                        delay(REFRESH_INTERVAL_MS)
                     }
-                    delay(REFRESH_INTERVAL_MS)
                 }
-            }
         }
         return START_STICKY
     }
@@ -119,14 +131,16 @@ class LiveCapsuleService : Service() {
                 if (wakeLock?.isHeld == true) return
                 val manager = getSystemService(PowerManager::class.java) ?: return
                 runCatching {
-                    wakeLock = manager.newWakeLock(
-                        PowerManager.PARTIAL_WAKE_LOCK,
-                        WAKE_LOCK_TAG,
-                    ).apply {
-                        setReferenceCounted(false)
-                        // 4 小时上限是防泄漏兜底：正常路径在状态离开实时态时主动释放
-                        acquire(WAKE_LOCK_TIMEOUT_MS)
-                    }
+                    wakeLock =
+                        manager
+                            .newWakeLock(
+                                PowerManager.PARTIAL_WAKE_LOCK,
+                                WAKE_LOCK_TAG,
+                            ).apply {
+                                setReferenceCounted(false)
+                                // 4 小时上限是防泄漏兜底：正常路径在状态离开实时态时主动释放
+                                acquire(WAKE_LOCK_TIMEOUT_MS)
+                            }
                 }.onFailure { wakeLock = null }
             } else {
                 releaseWakeLockLocked()
@@ -164,7 +178,10 @@ class LiveCapsuleService : Service() {
         /** 实时态 wake lock 的防泄漏上限 */
         private const val WAKE_LOCK_TIMEOUT_MS = 4 * 60 * 60 * 1000L
 
-        fun start(context: Context, notification: Notification? = null) {
+        fun start(
+            context: Context,
+            notification: Notification? = null,
+        ) {
             val intent = Intent(context, LiveCapsuleService::class.java)
             if (notification != null) intent.putExtra(EXTRA_NOTIFICATION, notification)
             ContextCompat.startForegroundService(context, intent)

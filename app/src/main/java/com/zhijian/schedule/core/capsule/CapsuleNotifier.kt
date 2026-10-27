@@ -8,7 +8,6 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.drawable.Icon
 import android.os.Build
-import android.os.Bundle
 import androidx.annotation.RequiresApi
 import com.zhijian.schedule.MainActivity
 import com.zhijian.schedule.R
@@ -16,13 +15,20 @@ import com.zhijian.schedule.core.util.TimeUtils
 
 /**
  * 课程实时胶囊的通知构建。
+ *
  * Android 16+ 用 ProgressStyle 通知 + `android.requestPromotedOngoing` extra 请求系统提升为
- * Live Update（ColorOS 16 显示为状态栏顶部「流体云」胶囊，需用户在系统通知设置里为
- * 本应用开启「流体云显示实时活动」）；低版本退化为普通常驻进度通知。
- * 提升只在「即将上课（课前提醒倒数窗口）」与「正在上课」两个状态请求。
+ * Live Update（ColorOS 16 显示为状态栏顶部「流体云」胶囊，MagicOS 显示为灵动胶囊——
+ * 两家都收编了安卓实时通知规范，所以这一条原生路径就是跨厂商地基）；
+ * 低版本退化为普通常驻进度通知。
+ *
+ * 厂商私有承载面（小米超级岛等）由 [LiveSurfaceRenderers] 在 build 之后叠加扩展参数，
+ * 本类只负责把状态机投影成厂商无关的 [LiveContent] 并守住原生提升的资格条件。
+ *
+ * 提升只在「即将上课（课前提醒倒数窗口）」与「正在上课」两个状态请求：
+ * 官方明确把「即将到来的日历事件」列为**不适合**提升的内容，因此「下节课 / 今日已结束 /
+ * 假期」一律不提升，只由 FGS 骨架通知承载。扩展时请勿放宽这条边界。
  */
 object CapsuleNotifier {
-
     const val CH_CAPSULE = "capsule"
 
     /**
@@ -40,8 +46,8 @@ object CapsuleNotifier {
      */
     const val LIVE_CARD_ID = 3001
 
-    /** 请求系统提升为 Live Update / 流体云胶囊（Android 16 正式 API 的 extra 键） */
-    private const val EXTRA_REQUEST_PROMOTED_ONGOING = "android.requestPromotedOngoing"
+    /** 划卡回调的独立 requestCode，避免与其余 PendingIntent 抢占槽位 */
+    private const val DISMISS_REQUEST_CODE = 3005
 
     /** 「即将上课」状态用的品牌陶土色，与上课中的课程色区分开 */
     private const val COLOR_ABOUT_TO_START = 0xFFD97757.toInt()
@@ -53,7 +59,7 @@ object CapsuleNotifier {
                 CH_CAPSULE,
                 context.getString(R.string.channel_capsule_name),
                 NotificationManager.IMPORTANCE_LOW,
-            ).apply { description = context.getString(R.string.channel_capsule_desc) }
+            ).apply { description = context.getString(R.string.channel_capsule_desc) },
         )
     }
 
@@ -66,11 +72,28 @@ object CapsuleNotifier {
             runCatching {
                 context.getSystemService(NotificationManager::class.java)?.canPostPromotedNotifications()
             }.getOrNull()
-        } else null
+        } else {
+            null
+        }
 
     fun placeholder(context: Context): Notification =
-        baseBuilder(context, "纸间课表", "实时胶囊启动中…", chip = "", promote = false, color = 0, countdownTo = null)
-            .build()
+        baseBuilder(
+            context,
+            LiveContent(
+                iconRes = R.drawable.ic_stat_notify,
+                chip = "",
+                title = "纸间课表",
+                subtitle = null,
+                detail = "实时胶囊启动中…",
+                progress = null,
+                progressColor = 0,
+                countdownToMillis = null,
+                key = "placeholder",
+                sessionKey = null,
+                live = false,
+            ),
+            promote = false,
+        ).build()
 
     /** 一次渲染的结果；骨架通知内容未变更时 [serviceNotification] 为 null（不重复抢发） */
     class Posted(
@@ -97,211 +120,292 @@ object CapsuleNotifier {
         val nm = context.getSystemService(NotificationManager::class.java)
         // ---- 实时卡片：独立通知（非 FGS），timeout 到点由系统撤下 ----
         val live = plan.isLive
-        val cardKey: String? = if (live) {
-            val (title, text) = texts(plan)
-            val progress = progressOf(plan)
-            // chip 进 key：每分钟的「剩 X 分」变化也要触发刷新
-            val key = "$title|$text|${plan.chip}|${progress ?: -1}"
-            if (key != previousCardKey) {
-                val builder = baseBuilder(
-                    context, title, text, plan.chip,
-                    promote = true,
-                    color = courseColorOf(plan),
-                    countdownTo = countdownTargetOf(plan),
-                    smallIcon = smallIconOf(plan),
-                    subtext = courseSubText(plan),
-                )
-                if (progress != null) {
-                    if (Build.VERSION.SDK_INT >= 36) {
-                        applyProgressStyle(builder, plan, progress)
-                    } else {
-                        builder.setProgress(100, progress, false)
+        val content = contentOf(plan)
+        val cardKey: String? =
+            if (live) {
+                // 用户已划掉本场次卡片：不再重发（官方明确禁止重新发布用户关闭的动态）
+                if (CapsuleDismissTracker.isDismissed(context, content.sessionKey)) {
+                    previousCardKey
+                } else {
+                    val nowMillis = System.currentTimeMillis()
+                    // chip / 进度 / 倒计时都会逐分钟变化，全部进 key 驱动刷新
+                    val key = "${content.title}|${content.subtitle}|${content.chip}|${content.progress ?: -1}"
+                    if (key != previousCardKey) {
+                        val builder =
+                            baseBuilder(
+                                context,
+                                content,
+                                promote = true,
+                                smallIcon = content.iconRes,
+                            )
+                        if (content.progress != null) {
+                            if (Build.VERSION.SDK_INT >= 36) {
+                                applyProgressStyle(builder, content)
+                            } else {
+                                builder.setProgress(100, content.progress, false)
+                            }
+                        }
+                        // 系统级兜底：倒计时跑完 + 宽限后由 system_server 撤下（进程冻结/闹钟被吞也不卡死）
+                        countdownCleanupDelayMillis(plan, nowMillis)
+                            ?.let { builder.setTimeoutAfter(it) }
+                        val notification = builder.build()
+                        // 厂商私有协议在这里叠加（小米超级岛等），失败不影响通知本身
+                        LiveSurfaceRenderers.decorateNotification(context, notification, content)
+                        if (Build.VERSION.SDK_INT >= 36) {
+                            runCatching { nm?.notify(LIVE_CARD_ID, notification) }
+                        } else {
+                            runCatching { nm?.notify(LIVE_CARD_ID, notification) }
+                        }
                     }
+                    key
                 }
-                // 系统级兜底：倒计时跑完 + 宽限后由 system_server 撤下（进程冻结/闹钟被吞也不卡死）
-                countdownCleanupDelayMillis(plan, System.currentTimeMillis())
-                    ?.let { builder.setTimeoutAfter(it) }
-                runCatching { nm?.notify(LIVE_CARD_ID, builder.build()) }
+            } else {
+                runCatching { nm?.cancel(LIVE_CARD_ID) }
+                // 离开实时态：清掉划卡记账，下节课重新允许出卡
+                CapsuleDismissTracker.clear(context)
+                null
             }
-            key
-        } else {
-            runCatching { nm?.cancel(LIVE_CARD_ID) }
-            null
-        }
         // ---- FGS 骨架：非实时态承载状态文本；实时态让位给实时卡片 ----
-        val (skelTitle, skelText, skelChip) = skeletonTexts(plan)
-        val skeletonKey = "$skelTitle|$skelText|${if (live) "" else courseSubText(plan).orEmpty()}"
-        val serviceNotification = if (skeletonKey != previousSkeletonKey) {
-            val skeleton = baseBuilder(
-                context, skelTitle, skelText, skelChip,
-                promote = false, color = 0, countdownTo = null,
-                subtext = if (live) null else courseSubText(plan),
-            ).build()
-            runCatching { nm?.notify(SERVICE_NOTIFICATION_ID, skeleton) }
-            skeleton
-        } else null
+        val (skelTitle, skelDetail) =
+            if (live) {
+                // 实时态：骨架退为静默说明，让位给实时卡片
+                "纸间课表" to "课程胶囊运行中 · 打开今日课表"
+            } else {
+                texts(plan)
+            }
+        val skeletonSubtitle = if (live) null else courseSubText(plan)
+        val skeletonKey = "$skelTitle|$skelDetail|${skeletonSubtitle.orEmpty()}"
+        val serviceNotification =
+            if (skeletonKey != previousSkeletonKey) {
+                val skeleton =
+                    baseBuilder(
+                        context,
+                        LiveContent(
+                            iconRes = R.drawable.ic_stat_notify,
+                            chip = if (live) "" else plan.chip,
+                            title = skelTitle,
+                            subtitle = skeletonSubtitle,
+                            detail = skelDetail,
+                            progress = null,
+                            progressColor = 0,
+                            countdownToMillis = null,
+                            key = skeletonKey,
+                            sessionKey = null,
+                            live = false,
+                        ),
+                        promote = false,
+                    ).build()
+                runCatching { nm?.notify(SERVICE_NOTIFICATION_ID, skeleton) }
+                skeleton
+            } else {
+                null
+            }
         return Posted(cardKey, skeletonKey, serviceNotification, live)
     }
 
-    /** 骨架通知文案：非实时态与之前一致（它就是用户看到的状态卡）；实时态退为静默说明 */
-    private fun skeletonTexts(plan: CapsulePlan): Triple<String, String, String> =
-        if (plan.isLive) {
-            Triple("纸间课表", "课程胶囊运行中 · 打开今日课表", "")
-        } else {
-            val (title, text) = texts(plan)
-            Triple(title, text, plan.chip)
-        }
-
     /**
-     * 倒计时目标：上课中→下课，即将上课→上课。
-     * 由系统 chronometer 每秒自绘，不依赖本进程刷新——ColorOS 冻结后台进程时仍持续走秒。
+     * 状态机 → 厂商无关内容。这是**唯一**的投影点：
+     * 原生提升、小米超级岛、后续的 vivo / 华为都吃这同一份 [LiveContent]，
+     * 避免各分支各自拼文案导致同一节课在不同卡片上口径不一致。
      */
-    private fun countdownTargetOf(plan: CapsulePlan): Long? = when (plan) {
-        is CapsulePlan.Ongoing -> plan.endAtMillis
-        is CapsulePlan.AboutToStart -> plan.startAtMillis
-        else -> null
-    }
-
-    fun texts(plan: CapsulePlan): Pair<String, String> = when (plan) {
-        is CapsulePlan.Ongoing -> {
-            val c = plan.course
-            val where = listOf(c.room, c.teacher).filter { it.isNotBlank() }
-                .joinToString(" · ").let { if (it.isEmpty()) "" else "$it · " }
-            val reminder = plan.reminderMinutes
-            if (reminder != null) {
-                "距离下课仅剩 $reminder 分钟" to
-                    "${c.name} · $where${TimeUtils.formatTime(c.end)} 下课"
-            } else {
-                // 开始时间已过，给下课时刻更实用
-                val tail = if (plan.remainingMinutes <= 0) "即将下课"
-                    else "${TimeUtils.formatTime(c.end)} 下课 · 还剩 ${plan.remainingMinutes} 分钟"
-                "正在上课 · ${c.name}" to "$where$tail"
+    private fun contentOf(plan: CapsulePlan): LiveContent {
+        val (title, detail) = texts(plan)
+        val progress =
+            when (plan) {
+                is CapsulePlan.Ongoing -> plan.progress
+                is CapsulePlan.AboutToStart -> plan.progress
+                else -> null
             }
-        }
-
-        is CapsulePlan.AboutToStart -> {
-            val c = plan.course
-            val where = listOf(c.room, c.teacher).filter { it.isNotBlank() }
-                .joinToString(" · ").let { if (it.isEmpty()) "" else "$it · " }
-            val left = if (plan.minutesUntil <= 0) "马上开始" else "还有 ${TimeUtils.minutesText(plan.minutesUntil)}"
-            "即将上课 · ${c.name}" to
-                "$where${TimeUtils.formatTime(c.start)} · $left"
-        }
-
-        is CapsulePlan.Upcoming -> {
-            val c = plan.course
-            val where = listOf(c.room, c.teacher).filter { it.isNotBlank() }
-                .joinToString(" · ").let { if (it.isEmpty()) "" else "$it · " }
-            val until = if (plan.minutesUntil <= 0) "马上开始" else "${TimeUtils.minutesText(plan.minutesUntil)}后"
-            "下节课 · ${c.name}" to
-                "$where${TimeUtils.formatTime(c.start)} · $until"
-        }
-
-        is CapsulePlan.Holiday -> {
-            val text = plan.nextText?.let { "今天放假 · 下一节 $it" } ?: "今天放假，好好休息一下"
-            "假期 · ${plan.name}" to text
-        }
-
-        is CapsulePlan.DayDone -> {
-            val title = if (plan.hadClassesToday) "今日课程已结束" else "今天没有课"
-            val text = plan.nextText?.let { "下一节 · $it" } ?: "本周暂无课程安排"
-            title to text
-        }
-
-        CapsulePlan.NoTable -> "纸间课表" to "还没有课表，先导入或手动创建一张"
+        val countdownTo =
+            when (plan) {
+                is CapsulePlan.Ongoing -> plan.endAtMillis
+                is CapsulePlan.AboutToStart -> plan.startAtMillis
+                else -> null
+            }
+        return LiveContent(
+            iconRes = smallIconOf(plan),
+            chip = plan.chip,
+            title = title,
+            subtitle = courseSubText(plan),
+            detail = detail,
+            progress = progress,
+            progressColor = courseColorOf(plan),
+            countdownToMillis = countdownTo,
+            key = title,
+            // 场次：一节课 / 一个课前倒数窗口；用课程起点时刻做稳定标识
+            sessionKey =
+                when (plan) {
+                    is CapsulePlan.Ongoing -> "ongoing:${plan.course.name}:${plan.course.start}"
+                    is CapsulePlan.AboutToStart -> "about:${plan.course.name}:${plan.course.start}"
+                    else -> null
+                },
+            live = plan.isLive,
+        )
     }
+
+    fun texts(plan: CapsulePlan): Pair<String, String> =
+        when (plan) {
+            is CapsulePlan.Ongoing -> {
+                val c = plan.course
+                val where =
+                    listOf(c.room, c.teacher)
+                        .filter { it.isNotBlank() }
+                        .joinToString(" · ")
+                        .let { if (it.isEmpty()) "" else "$it · " }
+                val reminder = plan.reminderMinutes
+                if (reminder != null) {
+                    "距离下课仅剩 $reminder 分钟" to
+                        "${c.name} · $where${TimeUtils.formatTime(c.end)} 下课"
+                } else {
+                    // 开始时间已过，给下课时刻更实用
+                    val tail =
+                        if (plan.remainingMinutes <= 0) {
+                            "即将下课"
+                        } else {
+                            "${TimeUtils.formatTime(c.end)} 下课 · 还剩 ${plan.remainingMinutes} 分钟"
+                        }
+                    "正在上课 · ${c.name}" to "$where$tail"
+                }
+            }
+
+            is CapsulePlan.AboutToStart -> {
+                val c = plan.course
+                val where =
+                    listOf(c.room, c.teacher)
+                        .filter { it.isNotBlank() }
+                        .joinToString(" · ")
+                        .let { if (it.isEmpty()) "" else "$it · " }
+                val left = if (plan.minutesUntil <= 0) "马上开始" else "还有 ${TimeUtils.minutesText(plan.minutesUntil)}"
+                "即将上课 · ${c.name}" to
+                    "$where${TimeUtils.formatTime(c.start)} · $left"
+            }
+
+            is CapsulePlan.Upcoming -> {
+                val c = plan.course
+                val where =
+                    listOf(c.room, c.teacher)
+                        .filter { it.isNotBlank() }
+                        .joinToString(" · ")
+                        .let { if (it.isEmpty()) "" else "$it · " }
+                val until = if (plan.minutesUntil <= 0) "马上开始" else "${TimeUtils.minutesText(plan.minutesUntil)}后"
+                "下节课 · ${c.name}" to
+                    "$where${TimeUtils.formatTime(c.start)} · $until"
+            }
+
+            is CapsulePlan.Holiday -> {
+                val text = plan.nextText?.let { "今天放假 · 下一节 $it" } ?: "今天放假，好好休息一下"
+                "假期 · ${plan.name}" to text
+            }
+
+            is CapsulePlan.DayDone -> {
+                val title = if (plan.hadClassesToday) "今日课程已结束" else "今天没有课"
+                val text = plan.nextText?.let { "下一节 · $it" } ?: "本周暂无课程安排"
+                title to text
+            }
+
+            CapsulePlan.NoTable -> "纸间课表" to "还没有课表，先导入或手动创建一张"
+        }
 
     /**
      * 上课中按剩余进度逐块消耗小图标；即将上课尚未开课，保持满格。
      * 提醒节点把暗掉的课块重新点亮，让状态栏图标也能看出状态切换。
      */
-    private fun smallIconOf(plan: CapsulePlan): Int = when {
-        plan is CapsulePlan.Ongoing && plan.reminderMinutes != null -> R.drawable.ic_stat_notify
-        plan is CapsulePlan.Ongoing -> consumedIcon(plan.progress)
-        else -> R.drawable.ic_stat_notify
-    }
+    private fun smallIconOf(plan: CapsulePlan): Int =
+        when {
+            plan is CapsulePlan.Ongoing && plan.reminderMinutes != null -> R.drawable.ic_stat_notify
+            plan is CapsulePlan.Ongoing -> consumedIcon(plan.progress)
+            else -> R.drawable.ic_stat_notify
+        }
 
     /**
      * 每消耗 1/4 课堂，按课表阅读顺序（左上→右上→左下→右下）暗掉一块课块，
      * 让流体云/状态栏上的图标像进度条一样被「用完」。
      */
-    private fun consumedIcon(progress: Int): Int = when {
-        progress >= 75 -> R.drawable.ic_stat_notify
-        progress >= 50 -> R.drawable.ic_stat_notify_used1
-        progress >= 25 -> R.drawable.ic_stat_notify_used2
-        else -> R.drawable.ic_stat_notify_used3
-    }
+    private fun consumedIcon(progress: Int): Int =
+        when {
+            progress >= 75 -> R.drawable.ic_stat_notify
+            progress >= 50 -> R.drawable.ic_stat_notify_used1
+            progress >= 25 -> R.drawable.ic_stat_notify_used2
+            else -> R.drawable.ic_stat_notify_used3
+        }
 
     /** 状态色区分：上课中用课程色，提醒节点与即将上课用品牌陶土色，一眼可辨 */
-    private fun courseColorOf(plan: CapsulePlan): Int = when (plan) {
-        is CapsulePlan.Ongoing ->
-            if (plan.reminderMinutes != null) COLOR_ABOUT_TO_START else plan.course.color
-        is CapsulePlan.AboutToStart -> COLOR_ABOUT_TO_START
-        else -> 0
-    }
+    private fun courseColorOf(plan: CapsulePlan): Int =
+        when (plan) {
+            is CapsulePlan.Ongoing ->
+                if (plan.reminderMinutes != null) COLOR_ABOUT_TO_START else plan.course.color
+            is CapsulePlan.AboutToStart -> COLOR_ABOUT_TO_START
+            else -> 0
+        }
 
     /**
      * 通知副标题：节次 · 教室 · 上课时间段 · 教师。
      * ColorOS 提升卡片不显示 contentText，副标题是卡面上唯一能补充信息的文本行。
      */
     private fun courseSubText(plan: CapsulePlan): String? {
-        val course = when (plan) {
-            is CapsulePlan.Ongoing -> plan.course
-            is CapsulePlan.AboutToStart -> plan.course
-            is CapsulePlan.Upcoming -> plan.course
-            else -> null
-        } ?: return null
-        val parts = buildList {
-            course.sectionText?.takeIf { it.isNotBlank() }?.let(::add)
-            course.room.takeIf { it.isNotBlank() }?.let(::add)
-            add("${TimeUtils.formatTime(course.start)}-${TimeUtils.formatTime(course.end)}")
-            course.teacher.takeIf { it.isNotBlank() }?.let(::add)
-        }
+        val course =
+            when (plan) {
+                is CapsulePlan.Ongoing -> plan.course
+                is CapsulePlan.AboutToStart -> plan.course
+                is CapsulePlan.Upcoming -> plan.course
+                else -> null
+            } ?: return null
+        val parts =
+            buildList {
+                course.sectionText?.takeIf { it.isNotBlank() }?.let(::add)
+                course.room.takeIf { it.isNotBlank() }?.let(::add)
+                add("${TimeUtils.formatTime(course.start)}-${TimeUtils.formatTime(course.end)}")
+                course.teacher.takeIf { it.isNotBlank() }?.let(::add)
+            }
         return parts.joinToString(" · ")
     }
 
-    private fun progressOf(plan: CapsulePlan): Int? = when (plan) {
-        is CapsulePlan.Ongoing -> plan.progress
-        is CapsulePlan.AboutToStart -> plan.progress
-        else -> null
-    }
-
+    /**
+     * 构建原生通知骨架。厂商差异一律不在这里处理，交给 [LiveSurfaceRenderers]。
+     *
+     * 提升资格要点（官方硬条件，缺一项静默不提升）：
+     * 样式须为 ProgressStyle / BigTextStyle / 默认之一；必须 ongoing；必须有 contentTitle；
+     * **不得**自定义布局、**不得**分组摘要、**不得** `setColorized(true)`；渠道不得 IMPORTANCE_MIN。
+     *
+     * 特别注意 `setColor` 与 `setColorized` 的区别：前者给通知元素着色，
+     * 后者把整条通知彩色化（提升的一票否决项）。本方法两者都不用，
+     * 课程颜色只通过 [applyProgressStyle] 的进度段表达。
+     */
     private fun baseBuilder(
         context: Context,
-        title: String,
-        text: String,
-        chip: String,
+        content: LiveContent,
         promote: Boolean,
-        color: Int,
-        countdownTo: Long?,
         smallIcon: Int = R.drawable.ic_stat_notify,
-        subtext: String? = null,
     ): Notification.Builder {
-        val builder = Notification.Builder(context, CH_CAPSULE)
-            .setSmallIcon(smallIcon)
-            .setContentTitle(title)
-            .setContentText(text)
-            .setContentIntent(contentIntent(context))
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setCategory(Notification.CATEGORY_PROGRESS)
-            .setVisibility(Notification.VISIBILITY_PUBLIC)
-        if (subtext != null) builder.setSubText(subtext)
-        if (countdownTo != null) {
-            builder.setUsesChronometer(true)
+        val builder =
+            Notification
+                .Builder(context, CH_CAPSULE)
+                .setSmallIcon(smallIcon)
+                .setContentTitle(content.title)
+                .setContentText(content.detail ?: content.subtitle)
+                .setContentIntent(contentIntent(context))
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .setCategory(Notification.CATEGORY_PROGRESS)
+                .setVisibility(Notification.VISIBILITY_PUBLIC)
+        content.subtitle?.let { builder.setSubText(it) }
+        if (content.countdownToMillis != null) {
+            // 倒计时交系统 chronometer 自绘：进程被冻结也照常走秒，不依赖本进程刷新
+            builder
+                .setUsesChronometer(true)
                 .setChronometerCountDown(true)
-                .setWhen(countdownTo)
+                .setWhen(content.countdownToMillis)
         } else {
             builder.setShowWhen(false)
         }
-        if (Build.VERSION.SDK_INT >= 36 && chip.isNotEmpty()) {
-            builder.setShortCriticalText(chip)
-            if (promote) {
-                if (color != 0) builder.setColor(color)
-                builder.addAction(openTodayAction(context))
-                // 提升资格（ui_rich_ongoing 生效时）：显式请求 + 常驻 + 标题 + ProgressStyle，
-                // 且不得着色/分组摘要/自定义视图；另需用户在系统里为该应用放行实时通知
-                builder.addExtras(Bundle().apply { putBoolean(EXTRA_REQUEST_PROMOTED_ONGOING, true) })
+        if (promote) {
+            // deleteIntent 只在**用户主动清除**时触发（timeoutAfter 到期由 system_server 撤下时不走），
+            // 用来区分「用户不想要了」与「系统正常退场」，见 [CapsuleDismissTracker]
+            builder.setDeleteIntent(dismissIntent(context, content.sessionKey))
+            builder.addAction(openTodayAction(context))
+            if (Build.VERSION.SDK_INT >= 36) {
+                // 原生提升 + 厂商私有面（小米超级岛等）的叠加点
+                LiveSurfaceRenderers.decorateBuilder(context, builder, content)
             }
         }
         return builder
@@ -309,21 +413,50 @@ object CapsuleNotifier {
 
     /** 卡片/通知上的「打开今日课表」操作按钮 */
     private fun openTodayAction(context: Context): Notification.Action =
-        Notification.Action.Builder(
-            Icon.createWithResource(context, R.drawable.ic_stat_notify),
-            context.getString(R.string.capsule_action_open_today),
-            contentIntent(context),
-        ).build()
+        Notification.Action
+            .Builder(
+                Icon.createWithResource(context, R.drawable.ic_stat_notify),
+                context.getString(R.string.capsule_action_open_today),
+                contentIntent(context),
+            ).build()
 
+    /**
+     * 进度条样式。课程色只放在进度段上——这是唯一允许多少带点色彩的位置，
+     * 通知整体仍然保持不着色（否则会失去提升资格）。
+     */
     @RequiresApi(36)
-    private fun applyProgressStyle(builder: Notification.Builder, plan: CapsulePlan, progress: Int) {
-        val style = Notification.ProgressStyle()
-            .setProgress(progress.coerceIn(0, 100))
-            .addProgressSegment(
-                Notification.ProgressStyle.Segment(100).setColor(courseColorOf(plan))
-            )
+    private fun applyProgressStyle(
+        builder: Notification.Builder,
+        content: LiveContent,
+    ) {
+        val progress = content.progress ?: return
+        val style =
+            Notification
+                .ProgressStyle()
+                .setProgress(progress.coerceIn(0, 100))
+                .addProgressSegment(
+                    Notification.ProgressStyle.Segment(100).setColor(content.progressColor),
+                )
         builder.setStyle(style)
     }
+
+    /**
+     * 用户划掉实时卡片的回调。
+     * 用独立 requestCode，避免与卡片跳转的 PendingIntent 互相覆盖。
+     */
+    private fun dismissIntent(
+        context: Context,
+        sessionKey: String?,
+    ): PendingIntent =
+        PendingIntent.getBroadcast(
+            context,
+            DISMISS_REQUEST_CODE,
+            Intent(context, CapsuleTransitionReceiver::class.java).apply {
+                action = CapsuleTransitionReceiver.ACTION_CARD_DISMISSED
+                putExtra(CapsuleTransitionReceiver.EXTRA_DISMISSED_SESSION, sessionKey)
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
 
     private fun contentIntent(context: Context): PendingIntent =
         PendingIntent.getActivity(
