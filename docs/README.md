@@ -31,6 +31,10 @@
 - [2026-10-26-jw-import-channels.md](research/2026-10-26-jw-import-channels.md) — 全国高校教务课表导入渠道全景：A 层 8 类数据出口 + B 层 11 种客户端导入方式 + 覆盖率测算与 P0-P2 优先级。
 - [2026-10-26-channel-matrix-vendor.md](research/2026-10-26-channel-matrix-vendor.md) — 教务侧渠道矩阵细化：8 类出口逐家端点、字段、坑与证据（E01-E45），含导出通道与研究生系统的纠正。
 - [2026-10-26-channel-matrix-client.md](research/2026-10-26-channel-matrix-client.md) — 客户端渠道矩阵细化：WakeUp/超级课程表/星链/Sleepy/拾光/小爱等产品 × 渠道对照，分享码与文件导入的工程取舍。
+- [2026-10-27-vendor-live-notification-docs.md](research/2026-10-27-vendor-live-notification-docs.md) — 实时通知厂商文档证据档（主档）：Android 16 / OPPO / 小米 / 荣耀 / vivo / 华为 / 苹果逐条列官方 URL 与原文摘录，按【官网原文】/【二手】/【未取到】分级，并含本项目实现现状对照表与检索质量备注。
+- [2026-10-27-vendor-live-notification-docs-oppo-mi-honor.md](research/2026-10-27-vendor-live-notification-docs-oppo-mi-honor.md) — 同上，OPPO / 小米 / 荣耀分册（574 行）：三家与原生 ProgressStyle 的关系、接入门槛、商务邮箱与白名单机制；结论是三家都不能靠普通通知自动上岛，小米走私有 `miui.focus.param` 协议。
+- [2026-10-27-vendor-live-notification-vivo-huawei.md](research/2026-10-27-vendor-live-notification-vivo-huawei.md) — 同上，vivo / 华为分册：vivo 原子通知 `notification.superx.*` 字段全集与原子岛左右岛模板、华为 Live View Kit 与 HMS 两条线路的差异；关键结论是华为 `TIMER` 场景明确排除「课程提醒」。
+- [2026-10-27-vendor-live-notification-apple-aosp.md](research/2026-10-27-vendor-live-notification-apple-aosp.md) — 同上，苹果 / Android 原生分册：Live Activity 的 4KB 帧上限、8h/4h/12h 生命周期、priority 5/10 预算模型，以及 Android 16 提升的 9 项硬条件与 96dp chip 限制。
 
 > **学校目录数据**：`app/src/main/assets/jw/schools.tsv`（1144 条，随 APK 打包）由 [tools/gen_school_catalog.py](../tools/gen_school_catalog.py) 从学校目录快照生成，只收录「协议属于本应用已实现解析器 + 带教务入口 URL」的条目。`verified=1` 表示目录标记为「已实现配置」，`0` 表示「待验证·可尝试」——**两者都不代表该校当前实测可用**，UI 里必须区分展示。目录快照本身不入库，重建时把快照路径作为第一个参数传给脚本即可。
 
@@ -50,6 +54,7 @@
 - [2026-10-15-liquid-glass-theme-design.md](specs/2026-10-15-liquid-glass-theme-design.md) — 液态玻璃主题设计：禁模糊（blur）的材质定义、折射与高光算法、自适应双档的性能边界。
 - [2026-10-24-exam-academic-center-design.md](specs/2026-10-24-exam-academic-center-design.md) — 学业中心一期设计：已拍板的决策表（数据来源、合并口径、提醒档位）、Room v2→v3 迁移与 UI 层级。
 - [2026-10-25-jw-script-engine-design.md](specs/2026-10-25-jw-script-engine-design.md) — 教务脚本引擎设计：页面上下文注入模型、最小契约（manifest + `fetchSchedule` 信封）、分发三件套与安全模型。
+- [2026-10-27-multi-vendor-live-notification-design.md](specs/2026-10-27-multi-vendor-live-notification-design.md) — 多厂商实时通知适配设计：把既有流体云胶囊抽象成 `LiveContent` + `LiveSurfaceRenderer`，一次内容投影驱动原生提升 / 小米超级岛 / 未来各厂商；含 7 条问题清单（含一条勘误）、逐厂商接入契约与实施验收记录。
 
 ## testing/ — 测试夹具
 
