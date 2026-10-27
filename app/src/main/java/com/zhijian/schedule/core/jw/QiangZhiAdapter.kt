@@ -28,6 +28,12 @@ object QiangZhiAdapter : JwAdapter {
     override val id = "qiangzhi"
     override val name = "强智 jsxsd"
 
+    override val steps =
+        AdapterSteps(
+            timetablePage = "学生课表",
+            note = "左侧菜单里没有「学生课表」时，请让教务开放该菜单权限",
+        )
+
     private const val UA =
         "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36"
 
@@ -39,7 +45,8 @@ object QiangZhiAdapter : JwAdapter {
             path.contains("xskb_list.do") -> 90
             path.contains("logon.do") || path.contains("logintoxk") -> 90
             path.contains("/jxd/") -> 70
-            SchoolCatalog.byHost(parsed.host) != null -> 80
+            // 目录条目必须与本校协议一致：否则收录了 URP/树维 的学校会被误判成强智
+            SchoolCatalog.byHost(parsed.host)?.adapterId == id -> JwMatchScore.CATALOG_WEAK
             else -> 0
         }
     }

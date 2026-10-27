@@ -8,6 +8,8 @@ import com.zhijian.schedule.core.notifications.Notifications
 import com.zhijian.schedule.core.notifications.ReminderCoordinator
 import com.zhijian.schedule.core.calendar.CalendarSyncCoordinator
 import com.zhijian.schedule.core.data.prefs.SettingsStore
+import com.zhijian.schedule.core.jw.SchoolCatalog
+import com.zhijian.schedule.core.jw.ensureLoaded
 import com.zhijian.schedule.core.repository.ScheduleRepository
 import com.zhijian.schedule.core.sync.SyncScheduler
 import com.zhijian.schedule.core.update.ApkDownloader
@@ -20,8 +22,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 @HiltAndroidApp
-class ZhiJianApp : Application(), Configuration.Provider {
-
+class ZhiJianApp :
+    Application(),
+    Configuration.Provider {
     @Inject
     lateinit var workerFactory: HiltWorkerFactory
 
@@ -58,6 +61,8 @@ class ZhiJianApp : Application(), Configuration.Provider {
             runCatching { apkDownloader.cleanupOutdated(BuildConfig.VERSION_NAME) }
             // 旧版本的镜像开关默认关闭；升级后一次性打开，保证直连不可用时能自动换源
             runCatching { settingsStore.migrateIfNeeded() }
+            // 学校目录（选校自动填 URL + 域名兜底识别）在后台解一次，避免首开弹层空转
+            runCatching { SchoolCatalog.ensureLoaded(this@ZhiJianApp) }
             repository.ensureInitialized()
             Notifications.ensureChannels(this@ZhiJianApp)
             val settings = settingsStore.settings.first()
@@ -75,7 +80,9 @@ class ZhiJianApp : Application(), Configuration.Provider {
     }
 
     override val workManagerConfiguration: Configuration
-        get() = Configuration.Builder()
-            .setWorkerFactory(workerFactory)
-            .build()
+        get() =
+            Configuration
+                .Builder()
+                .setWorkerFactory(workerFactory)
+                .build()
 }

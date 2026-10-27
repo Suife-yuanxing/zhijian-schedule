@@ -58,3 +58,7 @@ lint-results*.xml
 hs_err_pid*.log
 replay_pid*.log
 
+# --- Python 工具（tools/ 下的生成脚本）---
+__pycache__/
+*.pyc
+

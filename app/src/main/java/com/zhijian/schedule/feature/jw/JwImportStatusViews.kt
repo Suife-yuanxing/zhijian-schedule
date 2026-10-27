@@ -23,45 +23,65 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.zhijian.schedule.core.jw.AdapterSteps
 import com.zhijian.schedule.core.theme.CourseColors
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.TapButton
 import com.zhijian.schedule.core.ui.TapTextButton
 
-/**
- * 教务导入流程的「状态与反馈」区块：登录指引、加载进度、失败浮层、WAF 提示条。
- *
- * 这些都是叠在 WebView 之上的薄壳，只读状态 + 回调，自己不持有业务状态
- * （导入流程的步骤划分见 JwImportScreen.kt 顶部注释）。
- */
+// 教务导入流程的「状态与反馈」区块：登录指引、加载进度、失败浮层、WAF 提示条。
+//
+// 这些都是叠在 WebView 之上的薄壳，只读状态 + 回调，自己不持有业务状态
+// （导入流程的步骤划分见 JwImportScreen.kt 顶部注释）。
 
-/** 步骤引导条：① 登录 → ② 学生课表 → ③ 抓取课表，并按当前落脚页给出下一步提示 */
+/**
+ * 步骤引导条：① 登录 → ② {该校的课表入口} → ③ 抓取课表，并按当前落脚页给出下一步提示。
+ *
+ * 第二段来自 [AdapterSteps.timetablePage]：强智是「学生课表」、URP 是
+ * 「个人管理 → 本学期课表」、eams5 是「我的课表」，各校菜单不一样，
+ * 未识别教务时退回通用文案。
+ */
 @Composable
 internal fun GuideBar(
     colors: CourseColors,
     onLoginPage: Boolean,
     onLoggedInPage: Boolean,
     onAuthserverPage: Boolean,
+    steps: AdapterSteps?,
 ) {
-    val status = when {
-        onLoggedInPage -> "已进入教务系统，点右下「抓取课表」" to colors.accent
-        onAuthserverPage -> "请在「统一身份认证」页用学号 + 密码登录" to colors.accent
-        onLoginPage -> "请用学号 / 密码登录；校外网络请先连校园 WiFi，或经 WebVPN 访问" to colors.accent
-        else -> "登录后打开「学生课表」页面，再点「抓取课表」" to colors.textMuted
-    }
+    val page = steps?.timetablePage ?: DEFAULT_TIMETABLE_PAGE
+    val status =
+        when {
+            onLoggedInPage -> "已进入教务系统，点右下「抓取课表」" to colors.accent
+            onAuthserverPage -> "请在「统一身份认证」页用学号 + 密码登录" to colors.accent
+            onLoginPage -> "请用学号 / 密码登录；校外网络请先连校园 WiFi，或经 WebVPN 访问" to colors.accent
+            else -> "登录后打开「$page」页面，再点「抓取课表」" to colors.textMuted
+        }
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("① 登录", color = colors.text, fontSize = 12.sp, fontWeight = FontWeight.Medium)
             Text(" → ", color = colors.textMuted, fontSize = 12.sp)
-            Text("② 学生课表", color = colors.text, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Text(
+                text = "② $page",
+                color = colors.text,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
             Text(" → ", color = colors.textMuted, fontSize = 12.sp)
             Text("③ 抓取课表", color = colors.text, fontSize = 12.sp, fontWeight = FontWeight.Medium)
         }
         Text(status.first, color = status.second, fontSize = 11.sp)
     }
 }
+
+/** 未识别教务时的通用叫法，与改造前的文案保持一致 */
+internal const val DEFAULT_TIMETABLE_PAGE = "学生课表"
 
 /** WebView 顶部加载进度条：淡入淡出，不打断网页本身 */
 @Composable

@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.zhijian.schedule.core.data.prefs.SettingsStore
+import com.zhijian.schedule.core.jw.AdapterSteps
 import com.zhijian.schedule.core.jw.JwAdapterRegistry
 import com.zhijian.schedule.core.jw.script.JwScriptOutput
 import com.zhijian.schedule.core.jw.script.ScriptCatalog
@@ -82,6 +83,10 @@ class JwImportViewModel @Inject constructor(
     val detectedAdapterName: String?
         get() = JwAdapterRegistry.forUrl(url)?.name
 
+    /** 当前地址对应适配器的网页操作指引（菜单路径 / 注意事项）；未识别为 null */
+    val currentSteps: AdapterSteps?
+        get() = JwAdapterRegistry.forUrl(withScheme(url))?.steps
+
     /** 当前地址对应的统一认证入口；学校本地登录入口故障时可改走这里 */
     val ssoEntry: String?
         get() {
@@ -155,7 +160,9 @@ class JwImportViewModel @Inject constructor(
             val trimmed = withScheme(url)
             if (trimmed.isNotBlank()) url = trimmed
             settingsStore.setJw(trimmed, JwAdapterRegistry.forUrl(trimmed)?.name.orEmpty())
-            when (val result = syncManager.fetchForPreview()) {
+            // WebView 已停在课表页时（URP / 树维 带学期参数），优先用它抓，而不是地址栏
+            val effective = pageUrl.takeIf { isSameHost(it, trimmed) }
+            when (val result = syncManager.fetchForPreview(effective)) {
                 is JwSyncManager.FetchResult.Success -> preview = result.preview
                 is JwSyncManager.FetchResult.Failed -> {
                     errorMessage = result.message

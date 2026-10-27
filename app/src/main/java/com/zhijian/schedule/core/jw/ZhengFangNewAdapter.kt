@@ -33,6 +33,12 @@ object ZhengFangNewAdapter : JwAdapter {
     override val id = "zhengfang_new"
     override val name = "正方新版（jwglxt）"
 
+    override val steps =
+        AdapterSteps(
+            timetablePage = "信息查询 → 学生课表",
+            note = "先在页面顶部把学年学期选成当前学期，再点抓取",
+        )
+
     private const val UA =
         "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36"
 
@@ -51,6 +57,8 @@ object ZhengFangNewAdapter : JwAdapter {
             path.startsWith("/jwglxt/") || path == "/jwglxt" -> 100
             path.contains("login_slogin.html") -> 95
             path.contains("xskbcx_cx") -> 90
+            // 目录条目兜底：用户只填了域名时也能按本校协议识别
+            SchoolCatalog.byHost(parsed.host)?.adapterId == id -> JwMatchScore.CATALOG
             else -> 0
         }
     }

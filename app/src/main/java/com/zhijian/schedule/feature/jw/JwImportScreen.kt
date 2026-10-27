@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -36,6 +37,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.zhijian.schedule.core.jw.JwAdapterRegistry
 import com.zhijian.schedule.core.jw.script.JwScriptRunner
 import com.zhijian.schedule.core.jw.script.ScriptOption
 import com.zhijian.schedule.core.theme.LocalCourseColors
@@ -72,6 +74,7 @@ fun JwImportScreen(
     val haptics = LocalHapticFeedback.current
     var webView by remember { mutableStateOf<WebView?>(null) }
     var showScriptPicker by remember { mutableStateOf(false) }
+    var showSchoolPicker by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     fun runScript(option: ScriptOption) {
@@ -134,9 +137,17 @@ fun JwImportScreen(
                     value = viewModel.url,
                     onValueChange = viewModel::onUrlChange,
                     label = { Text("教务地址", fontSize = 12.sp) },
-                    placeholder = { Text("含 /jsxsd/ 或 /jwglxt/ 的完整地址", fontSize = 11.sp) },
+                    placeholder = { Text("含 /jsxsd/、/jwglxt/、/jwweb/、/eams/ 的完整地址", fontSize = 11.sp) },
                     textStyle = LocalTextStyle.current.copy(fontSize = 13.sp),
                     singleLine = true,
+                    trailingIcon = {
+                        TapTextButton(
+                            onClick = { showSchoolPicker = true },
+                            contentPadding = PaddingValues(horizontal = 6.dp),
+                        ) {
+                            Text("选校", fontSize = 12.sp, color = colors.accent)
+                        }
+                    },
                     modifier = Modifier.weight(1f),
                 )
                 Spacer(Modifier.width(8.dp))
@@ -149,9 +160,12 @@ fun JwImportScreen(
             }
 
             val adapterName = viewModel.detectedAdapterName
+            val supported = JwAdapterRegistry.all().joinToString("、") { it.name }
+            val adapterLabel =
+                adapterName?.let { "识别为：$it" }
+                    ?: "未识别教务类型（当前支持：$supported）"
             Text(
-                text = adapterName?.let { "识别为：$it" }
-                    ?: "未识别教务类型（当前支持：强智 jsxsd、正方新版）",
+                text = adapterLabel,
                 color = if (adapterName != null) colors.accent else colors.textMuted,
                 fontSize = 11.sp,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
@@ -170,6 +184,7 @@ fun JwImportScreen(
                 onLoginPage = viewModel.onLoginPage,
                 onLoggedInPage = viewModel.onLoggedInPage,
                 onAuthserverPage = viewModel.onAuthserverPage,
+                steps = viewModel.currentSteps,
             )
 
             // 仅在学校本地登录入口返回 5xx（源站超时/被 WAF 拦截）时，才露出统一认证兜底入口
@@ -235,11 +250,21 @@ fun JwImportScreen(
                         fontSize = 12.sp,
                     )
                     if (viewModel.needsLogin) {
+                        val steps = viewModel.currentSteps
+                        val page = steps?.timetablePage ?: DEFAULT_TIMETABLE_PAGE
                         Text(
-                            text = "提示：请先在上方网页中登录，并进入「学生课表」页面后重试。",
+                            text = "提示：请先在上方网页中登录，并进入「$page」页面后重试。",
                             color = colors.textMuted,
                             fontSize = 11.sp,
                         )
+                        val note = steps?.note.orEmpty()
+                        if (note.isNotEmpty()) {
+                            Text(
+                                text = note,
+                                color = colors.textMuted,
+                                fontSize = 10.sp,
+                            )
+                        }
                     }
                 }
             }
@@ -253,12 +278,14 @@ fun JwImportScreen(
             ) {
                 Column(Modifier.weight(1f)) {
                     Text("每日自动同步", color = colors.text, fontSize = 13.sp)
-                    Text(
-                        text = if (viewModel.lastSyncTime > 0) {
+                    val syncHint =
+                        if (viewModel.lastSyncTime > 0) {
                             "上次成功：${formatTime(viewModel.lastSyncTime)}"
                         } else {
                             "每日自动抓取课表变更（方案 4.10）"
-                        },
+                        }
+                    Text(
+                        text = syncHint,
                         color = colors.textMuted,
                         fontSize = 11.sp,
                     )
@@ -304,6 +331,17 @@ fun JwImportScreen(
         )
     }
 
+    if (showSchoolPicker) {
+        SchoolPickerDialog(
+            onDismiss = { showSchoolPicker = false },
+            onPick = { profile ->
+                showSchoolPicker = false
+                viewModel.onUrlChange(profile.entry())
+                viewModel.reload()
+            },
+        )
+    }
+
     preview?.let { p ->
         JwPreviewSheet(
             preview = p,
@@ -313,5 +351,7 @@ fun JwImportScreen(
     }
 }
 
-private fun formatTime(millis: Long): String =
-    SimpleDateFormat("M月d日 HH:mm", Locale.CHINA).format(Date(millis))
+private fun formatTime(millis: Long): String {
+    val fmt = SimpleDateFormat("M月d日 HH:mm", Locale.CHINA)
+    return fmt.format(Date(millis))
+}

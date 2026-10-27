@@ -48,15 +48,23 @@ class JwSyncManager @Inject constructor(
         data object NoConfig : FetchResult
     }
 
-    private suspend fun fetchPreview(syncMode: Boolean): FetchResult {
+    /**
+     * @param urlOverride 用户在 WebView 里实际停留的课表页地址（同 host 时优先）。
+     *   URP 老版 / 树维的课表页带学期与类型参数，从基路径猜不如直接复用当前页。
+     */
+    private suspend fun fetchPreview(
+        syncMode: Boolean,
+        urlOverride: String? = null,
+    ): FetchResult {
         val settings = settingsStore.settings.first()
-        val url = settings.jwUrl
+        val url = urlOverride?.takeIf { it.isNotBlank() } ?: settings.jwUrl
         if (url.isBlank()) return FetchResult.NoConfig
         val totalWeeks = repository.activeTimetable.first()?.totalWeeks ?: 20
         return try {
             val adapter = JwAdapterRegistry.forUrl(url)
                 ?: return FetchResult.Failed(
-                    "暂未识别该教务系统（当前支持：强智 jsxsd、正方新版）。可先用 Excel / CSV 导入",
+                    "暂未识别该教务系统（当前支持：${JwAdapterRegistry.all().joinToString("、") { it.name }}）。" +
+                        "可先用 Excel / CSV 导入",
                     retryable = false,
                 )
             val drafts = fetchWithRetry(adapter, url, totalWeeks)
@@ -120,12 +128,16 @@ class JwSyncManager @Inject constructor(
         }
     }
 
-    /** 手动抓取：返回预览，由用户确认后应用 */
-    suspend fun fetchForPreview(): FetchResult = fetchPreview(syncMode = false)
+    /**
+     * 手动抓取：返回预览，由用户确认后应用。
+     * [urlOverride] 传当前 WebView 地址，可让 URP / 树维 直接复用已带参数的课表页。
+     */
+    suspend fun fetchForPreview(urlOverride: String? = null): FetchResult =
+        fetchPreview(syncMode = false, urlOverride = urlOverride)
 
     /** 自动同步：抓取 → 护栏检查 → 直接应用 → 通知变更 */
-    suspend fun syncNow(notify: Boolean = true): FetchResult {
-        return when (val result = fetchPreview(syncMode = true)) {
+    suspend fun syncNow(notify: Boolean = true): FetchResult =
+        when (val result = fetchPreview(syncMode = true)) {
             is FetchResult.Success -> {
                 val warning = result.preview.warning
                 if (warning != null) {
@@ -146,7 +158,6 @@ class JwSyncManager @Inject constructor(
             }
             FetchResult.NoConfig -> result
         }
-    }
 
     private companion object {
         /** 首次 + 一次退避重试，覆盖学校 WAF 的短时抖动；后台同步还有 WorkManager 层重试 */

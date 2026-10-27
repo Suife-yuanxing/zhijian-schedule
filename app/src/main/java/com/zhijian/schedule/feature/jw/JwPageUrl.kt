@@ -29,6 +29,36 @@ internal fun isJwAuthserverPage(pageUrl: String): Boolean =
     pageUrl.contains("authserver", true)
 
 /**
+ * 两个地址是否同一主机（忽略 scheme 与端口）。
+ *
+ * 用于判定「WebView 当前页」能否替代地址栏作为抓取入口：
+ * URP / 树维 的课表页带学期与类型参数，当前页比地址栏更准。
+ */
+internal fun isSameHost(
+    a: String,
+    b: String,
+): Boolean {
+    val hostA = hostOf(a) ?: return false
+    val hostB = hostOf(b) ?: return false
+    return hostA == hostB
+}
+
+private fun hostOf(url: String): String? {
+    val trimmed = url.trim()
+    if (!trimmed.startsWith("http", ignoreCase = true)) return null
+    val host =
+        trimmed
+            .substringAfter("://")
+            .substringBefore('/')
+            .substringBefore('?')
+            .substringBefore('#')
+            .substringAfter('@')
+            .substringBefore(':')
+            .lowercase()
+    return host.ifBlank { null }
+}
+
+/**
  * 用户可能只输入裸域名；WebView 需要完整 scheme 才能当网址加载。
  *
  * @param blankPage 未配置时的空白页常量（[JwImportViewModel.BLANK_PAGE]）：必须原样返回，
