@@ -24,6 +24,12 @@
 - feat(tools): 新增 `tools/gen_school_catalog.py`，从学校目录快照重新生成 `schools.tsv`（可复现，不把快照本身放进仓库）
 - test(jw): 新增 `QingGuoParseTest`（4 例）、`UrpParseTest`（6 例）、`ShuWeiClassicParseTest`（6 例）、`Eams5ParseTest`（6 例）、`SchoolCatalogTest`（10 例）、`AdapterStepsTest`（10 例）
 - docs(testing): 新增真机实测记录 `docs/testing/2026-10-27-real-device-jw.md`——6 个适配器的识别链路在 OnePlus PKG110 / Android 16 上全部通过，强智（东莞职院）另跑通了「抓取 → 解析 → 预览」全链路，附 9 张截图
+- feat(capsule): 抽出厂商无关的实时通知适配层——`LiveContent` 内容投影 + `LiveSurfaceRenderer` 渲染器接口 + `LiveSurfaceRenderers` 注册表，`CapsuleNotifier` 只保留「状态机 → 内容 → 原生骨架」，后续接 vivo / 华为 / OPPO 泛在服务不必再改核心文件
+- feat(capsule): 接入小米超级岛（HyperOS OS3）——按官方 `param_v2` 协议挂 `miui.focus.param` 扩展参数，无需 SDK 与额外权限；处理了 `timeout`（分钟）与 `islandTimeout`（秒）单位不同、图标走 `miui.focus.pics` Bundle 不内联、整串 3072 字节超限降级三个易错点
+- feat(capsule): 新增 `LiveSurfaceSupport` 能力探测——把「能否请求提升」（API 36 即可）与「能否真正被提升」（需 Android 16 QPR1 / API 36.1）拆成两个判断，避免 API 36.0 用户把「胶囊不出现」误当 bug
+- test(capsule): 新增 `HyperOsIslandParamTest`（6 例）——校验超级岛参数根节点必填字段、岛超时上下限夹取、3072 字节上限、引号转义、文案裁剪与颜色格式
+- docs(spec): 新增 `docs/specs/2026-10-27-multi-vendor-live-notification-design.md`——把流体云胶囊抽象成统一适配层，给出原生提升 / 通知扩展参数 / 厂商生态卡片三档路线的成本判断与逐厂商接入契约
+- docs(research): 新增四份实时通知厂商文档证据档——Android 16 与 Apple 原生、OPPO / 小米 / 荣耀、vivo / 华为分册，按【官网原文】/【二手】/【未取到】分级并逐条附 URL
 
 ### Changed
 
@@ -34,6 +40,11 @@
 - fix(jw): 抓取优先使用 WebView 当前停留的课表页（同 host 时），URP / 树维 带学期与类型参数的页面不再因地址栏只填基路径而取不到课表
 - fix(jw): 「用脚本导入」弹层快速上甩时不再反复回弹——`NestedScrollConnection` 就地消费向上方向的剩余拖动与甩动速度，弹层本体收不到增量即无从过顶回弹；列表内部滚动与下拉关闭手势均保留（Material3 已知嵌套滚动缺陷的针对性修复）
 - chore(quality): 重新生成 `config/ktlint/baseline.xml`（既有文件行号随本次改动漂移）
+
+### Fixed
+
+- fix(capsule): 用户划掉的实时卡片不再自动重发——原实现每 30s 检测 `activeNotifications`，卡片不在就无条件重建，无法区分「系统 `timeoutAfter` 正常退场」与「用户手动划掉」；官方明确要求不得重新发布用户已关闭的动态，否则可能被撤销整个应用的通知权限。改用 `setDeleteIntent` 区分两者，并新增 `CapsuleDismissTracker` 按场次记账，同一节课内不再重发、离开实时态自动清账
+- fix(capsule): 实时卡片移除遗留的 `setColor` 调用——它并非失格项（真正的一票否决是 `setColorized`），但与「提升通知不着色」的语义冲突，课程色统一只走进度段 `Segment.setColor`；注释中写明两者区别防止后人误加 `setColorized`
 
 ## [1.0.13] - 2026-10-27
 
