@@ -28,6 +28,11 @@
 - [jw-vendor-landscape.md](research/jw-vendor-landscape.md) — 教务厂商覆盖与抓取可行性：公开的 4140 条学校目录中有约 1470 条可判协议（正方新版 562、强智 292、青果 164、超星 135…），并指出当时的 `ZhengFangAdapter` 实际实现的是强智 jsxsd。
 - [2026-10-19-multi-jw-import.md](research/2026-10-19-multi-jw-import.md) — 多教务导入的落地方案：首批只做正方新版 / 强智 / 金智 URP / 青果四家，给出适配器分层、兜底策略与排期。
 - [2026-10-25-script-engine-notes.md](research/2026-10-25-script-engine-notes.md) — 给脚本作者的一页契约说明：`PAPER_SCRIPT_MANIFEST` 头部格式与 `fetchSchedule(ctx)` 的返回值信封字段。
+- [2026-10-26-jw-import-channels.md](research/2026-10-26-jw-import-channels.md) — 全国高校教务课表导入渠道全景：A 层 8 类数据出口 + B 层 11 种客户端导入方式 + 覆盖率测算与 P0-P2 优先级。
+- [2026-10-26-channel-matrix-vendor.md](research/2026-10-26-channel-matrix-vendor.md) — 教务侧渠道矩阵细化：8 类出口逐家端点、字段、坑与证据（E01-E45），含导出通道与研究生系统的纠正。
+- [2026-10-26-channel-matrix-client.md](research/2026-10-26-channel-matrix-client.md) — 客户端渠道矩阵细化：WakeUp/超级课程表/星链/Sleepy/拾光/小爱等产品 × 渠道对照，分享码与文件导入的工程取舍。
+
+> **学校目录数据**：`app/src/main/assets/jw/schools.tsv`（1144 条，随 APK 打包）由 [tools/gen_school_catalog.py](../tools/gen_school_catalog.py) 从学校目录快照生成，只收录「协议属于本应用已实现解析器 + 带教务入口 URL」的条目。`verified=1` 表示目录标记为「已实现配置」，`0` 表示「待验证·可尝试」——**两者都不代表该校当前实测可用**，UI 里必须区分展示。目录快照本身不入库，重建时把快照路径作为第一个参数传给脚本即可。
 
 ## plans/ — 实施计划
 
@@ -49,6 +54,7 @@
 ## testing/ — 测试夹具
 
 - [mock-jw.md](testing/mock-jw.md) — 本地模拟教务服务的使用说明：`node tools/mock-jw/server.mjs` 起服，模拟正方新版与强智 jsxsd，覆盖 WebView → 共享 Cookie → 适配器 → 预览 → 落库整条客户端链路，无需真实学校账号。
+- [2026-10-27-real-device-jw.md](testing/2026-10-27-real-device-jw.md) — 真机实测记录：6 个适配器（强智 / 树维 classic / URP / eams5 / 青果 / 正方新版）的识别链路在 Android 16 上逐家验证，含填写地址、识别文案与页面可达性，截图见 `testing/shots/jw-real-device/`。
 
 ## adr/ — 架构决策记录
 

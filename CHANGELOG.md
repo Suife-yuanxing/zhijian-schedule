@@ -12,6 +12,29 @@
 
 ## [Unreleased]
 
+### Added
+
+- feat(jw): 接入青果 KINGOSOFT 教务（`/jwweb/`、`/qzhgjw/`）——WebView 登录后重放课表页，支持框架页下钻与登录态判定
+- feat(jw): 接入 URP 综合教务——新 URP 走 `dateList` JSON（`classWeek` 位图 / `classSessions`+`continuingSession` 换算节次），老 URP 走 `showTimetable.do` HTML 表格；已停在课表页时直接复用当前页地址
+- feat(jw): 接入树维经典 EAMS（`/eams/`、`courseTableForStd!courseTable.action`），与 eams5 三段式 JSON 明确区分
+- feat(jw): 接入树维 eams5（`/eams5-student/`）——`print-data` 为主、`get-data` → `ws/schedule-table/datum` 兜底；只认「响应里带 HTML 课表表格」的形态，不猜 JSON 字段
+- feat(jw): 新增 `HtmlTableScheduleParser` 通用「星期 × 节次」表格解析器：rowspan/colspan 展开、合并表头、纯数字节次行标签、周次/节次/教师/教室识别，青果 / URP 老版 / 树维 classic 共用
+- feat(jw): 「选校自动填 URL」——内置 1144 条学校目录（`assets/jw/schools.tsv`，随构建打包），支持按校名 / 拼音缩写 / 拼音全拼 / 域名检索、首字母分组，并区分「已验证」与「未实测」两类条目
+- feat(jw): 抓取指引按厂商定制（`JwAdapter.steps`）——引导条第二段与失败提示改由适配器提供，强智「学生课表」、URP「个人管理 → 本学期课表」、eams5「我的课表」各有专属文案与注意事项，未识别时退回通用文案
+- feat(tools): 新增 `tools/gen_school_catalog.py`，从学校目录快照重新生成 `schools.tsv`（可复现，不把快照本身放进仓库）
+- test(jw): 新增 `QingGuoParseTest`（4 例）、`UrpParseTest`（6 例）、`ShuWeiClassicParseTest`（6 例）、`Eams5ParseTest`（6 例）、`SchoolCatalogTest`（10 例）、`AdapterStepsTest`（10 例）
+- docs(testing): 新增真机实测记录 `docs/testing/2026-10-27-real-device-jw.md`——6 个适配器的识别链路在 OnePlus PKG110 / Android 16 上全部通过，强智（东莞职院）另跑通了「抓取 → 解析 → 预览」全链路，附 9 张截图
+
+### Changed
+
+- feat(jw): 教务类型提示与未识别文案改为按 `JwAdapterRegistry` 动态生成，不再硬编码厂商名单
+- refactor(jw): 协议识别打分集中到 `JwMatchScore` 常量，适配器不再散落魔法数字
+- refactor(jw): 学校目录拆出 `SchoolCatalogAssets.kt`——assets 读取走 `ensureLoaded` 扩展，`SchoolCatalog` 保持纯 JVM，单测直接喂目录文本，符合「纯逻辑文件不 import android.*」的项目约定
+- fix(jw): 强智 / 正方新版的学校目录兜底改为「仅当目录标注的协议与自身一致」才命中，避免 URP / 树维 / 青果学校被误判成强智
+- fix(jw): 抓取优先使用 WebView 当前停留的课表页（同 host 时），URP / 树维 带学期与类型参数的页面不再因地址栏只填基路径而取不到课表
+- fix(jw): 「用脚本导入」弹层快速上甩时不再反复回弹——`NestedScrollConnection` 就地消费向上方向的剩余拖动与甩动速度，弹层本体收不到增量即无从过顶回弹；列表内部滚动与下拉关闭手势均保留（Material3 已知嵌套滚动缺陷的针对性修复）
+- chore(quality): 重新生成 `config/ktlint/baseline.xml`（既有文件行号随本次改动漂移）
+
 ## [1.0.13] - 2026-10-27
 
 *提交区间：v1.0.12..v1.0.13（3 个提交）— 代码规范化：包结构重整、超长文件拆分、静态检查与 CI 基建*
