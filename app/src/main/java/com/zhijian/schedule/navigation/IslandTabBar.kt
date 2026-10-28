@@ -1,6 +1,7 @@
 package com.zhijian.schedule.navigation
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -21,6 +22,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.MutableFloatState
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,9 +47,8 @@ import com.zhijian.schedule.core.ui.glass.glassBackdropSurface
 import com.zhijian.schedule.core.ui.glass.glassSurface
 import com.zhijian.schedule.core.ui.island.IslandCollapseState
 import com.zhijian.schedule.core.ui.island.IslandTokens
-import com.zhijian.schedule.core.ui.rememberAnimationsDisabled
 import com.zhijian.schedule.core.ui.island.rememberIslandPalette
-import kotlin.math.abs
+import com.zhijian.schedule.core.ui.rememberAnimationsDisabled
 
 internal data class TabItem(
     val route: String,
@@ -129,22 +130,11 @@ internal fun FloatingIslandBar(
         val itemWidth = maxWidth / itemCount
         // 系统关掉动画时直接落位（辅助功能「移除动画」/ 开发选项动画缩放 0）
         val animationsOff = rememberAnimationsDisabled()
-        // 选中胶囊的位置以 **tab 下标** 为单位做动画：速度单位随之变成「每秒走几个 tab」，
-        // 与屏宽、tab 数无关，果冻拉伸才在不同屏幕上一致（推导见 Motion.FluidSlide）
         val slide = remember { Animatable(selectedIndex.toFloat()) }
-        // 本次动画跨过的 tab 数：速度按「相对跨度」折算，跨 2 格不该一路顶在满拉伸。
-        // 用 State 而不是普通变量：它要在**布局阶段**被读取（见 IslandIndicator），
-        // 状态读留在测量里才能只失效布局、不连带重组整条浮岛。
-        val travel = remember { mutableFloatStateOf(1f) }
-        LaunchedEffect(selectedIndex, animationsOff) {
-            val target = selectedIndex.toFloat()
-            if (animationsOff) {
-                slide.snapTo(target)
-            } else {
-                travel.floatValue = abs(target - slide.value).coerceAtLeast(1f)
-                slide.animateTo(target, Motion.FluidSlide)
-            }
-        }
+        // 本次行程的起止下标：进度与方向都从它们和 slide 的实时值算出来（见 IslandIndicator）
+        val travelFrom = remember { mutableFloatStateOf(selectedIndex.toFloat()) }
+        val travelTo = remember { mutableFloatStateOf(selectedIndex.toFloat()) }
+        rememberJellyTravel(selectedIndex, slide, travelFrom, travelTo, animationsOff)
         val bodyAlpha = glass?.let { if (isDark) it.bodyAlphaDark else it.bodyAlphaLight } ?: 0f
         val glassTint = glass?.let { if (isDark) it.tintDark else it.tintLight } ?: Color.Transparent
         val chipAlpha = if (glass != null) island.chipAlpha else IslandTokens.CHIP_ALPHA
@@ -159,40 +149,45 @@ internal fun FloatingIslandBar(
                     shape = IslandShape,
                     ambientColor = Color.Black.copy(alpha = if (glass != null) 0.14f else 0.08f),
                     spotColor = Color.Black.copy(alpha = if (glass != null) 0.34f else 0.20f),
-                )
-                .then(
+                ).then(
                     when {
-                        glass == null -> Modifier
-                            .clip(IslandShape)
-                            .background(colors.surface)
-                            .border(1.dp, colors.border, IslandShape)
-                        backdrop != null -> Modifier.glassBackdropSurface(
-                            shape = IslandShape,
-                            tint = glassTint,
-                            bodyAlpha = bodyAlpha,
-                            clock = glassClock,
-                            tilt = tilt,
-                            backdrop = backdrop,
-                            originInLayer = { pillOriginInWindow - backdrop.contentOriginInWindow },
-                        )
-                        else -> Modifier.glassSurface(
-                            shape = IslandShape,
-                            tint = glassTint,
-                            bodyAlpha = bodyAlpha,
-                            clock = glassClock,
-                            tilt = tilt,
-                        )
+                        glass == null ->
+                            Modifier
+                                .clip(IslandShape)
+                                .background(colors.surface)
+                                .border(1.dp, colors.border, IslandShape)
+                        backdrop != null ->
+                            Modifier.glassBackdropSurface(
+                                shape = IslandShape,
+                                tint = glassTint,
+                                bodyAlpha = bodyAlpha,
+                                clock = glassClock,
+                                tilt = tilt,
+                                backdrop = backdrop,
+                                originInLayer = { pillOriginInWindow - backdrop.contentOriginInWindow },
+                            )
+                        else ->
+                            Modifier.glassSurface(
+                                shape = IslandShape,
+                                tint = glassTint,
+                                bodyAlpha = bodyAlpha,
+                                clock = glassClock,
+                                tilt = tilt,
+                            )
                     },
                 ),
         ) {
             IslandIndicator(
                 slide = slide,
-                travel = travel,
+                travelFrom = travelFrom,
+                travelTo = travelTo,
                 itemWidth = itemWidth,
-                island = island,
-                chipAlpha = chipAlpha,
-                glassActive = glass != null,
-                glassClock = glassClock,
+                skin =
+                    if (glass != null) {
+                        IslandIndicatorSkin.Glass(tint = island.chip, alpha = chipAlpha, clock = glassClock)
+                    } else {
+                        IslandIndicatorSkin.Paper(island)
+                    },
             )
             Row(
                 Modifier
@@ -202,5 +197,63 @@ internal fun FloatingIslandBar(
                 content = content,
             )
         }
+    }
+}
+
+/**
+ * 选中胶囊的**行程**：位移与形变共用同一个数（[slide]）。
+ *
+ * ## 为什么不再维护第二个进度
+ * 形变需要「走了多少」这个量。与其另起一个 `Animatable` 让它和位移对齐（对齐本身就会错拍），
+ * 不如从位移的**实时值反算**：`progress = (slide - from) / (to - from)`。
+ * 于是「同一条时间线」不是靠对齐得到的，而是结构上只有一条——位移停下的那一帧，
+ * 进度必然恰好是 1，形变必然恰好归位。
+ *
+ * 反算的两端 [from] / [to] 由本函数在**每次新行程开始时**记录：也需要它们来给形变定方向
+ * （`to - from` 的符号），这比读 `slide.velocity` 稳定——停稳瞬间速度归零，方向会掉成 0，
+ * 而一次行程的方向从头到尾不变。
+ *
+ * ## 四条硬规矩（都在这里，调用点不必再管）
+ * 1) **首帧不演**：`armed` 吞掉第一次组合，否则进应用第一帧胶囊会凭空涨一下。
+ * 2) **关动画直接落位**：`animationsOff` 时立刻跳到目标，形变为原形（无障碍「移除动画」）。
+ * 3) **连点从原形重起**：上一段被取消后 from 重记为当前位置，进度归 0，新一段从头演。
+ * 4) **收尾写死终值**：动画结束后再 `snapTo(target)` 一次，避免浮点尾差留下亚像素偏移。
+ *
+ * @param selectedIndex 目标 tab 下标
+ * @param slide 选中下标的位置（tab 下标单位），由本函数驱动
+ * @param from 本次行程的起点下标（输出：供进度反算与定方向）
+ * @param to 本次行程的终点下标（输出：同上）
+ * @param animationsOff 系统关闭动画时为 true
+ */
+@Composable
+internal fun rememberJellyTravel(
+    selectedIndex: Int,
+    slide: Animatable<Float, AnimationVector1D>,
+    from: MutableFloatState,
+    to: MutableFloatState,
+    animationsOff: Boolean,
+) {
+    var armed by remember { mutableStateOf(false) }
+    LaunchedEffect(selectedIndex, animationsOff) {
+        val target = selectedIndex.toFloat()
+        if (animationsOff) {
+            slide.snapTo(target)
+            from.floatValue = target
+            to.floatValue = target
+            return@LaunchedEffect
+        }
+        if (!armed) {
+            // 首帧：位置已由 Animatable 的初值给好，只标记「武装完成」，不演
+            armed = true
+            slide.snapTo(target)
+            from.floatValue = target
+            to.floatValue = target
+            return@LaunchedEffect
+        }
+        // 起点取「当前位置」：上一段若被连点打断在半路，新行程就从那里重新起步（进度归 0）
+        from.floatValue = slide.value
+        to.floatValue = target
+        slide.animateTo(target, Motion.FluidSlide)
+        slide.snapTo(target)
     }
 }

@@ -2,12 +2,13 @@ package com.zhijian.schedule.navigation
 
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.unit.Dp
+import com.zhijian.schedule.core.ui.island.islandJellyStretch
 import com.zhijian.schedule.core.ui.island.islandPillRect
-import com.zhijian.schedule.core.ui.island.islandStretch
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.sign
 
-/**
+/*
  * 浮岛指示器与底栏尺寸的纯几何：不碰 Compose 的测量/绘制，也不持有状态，
  * 全部是「输入 → 输出」的算式，因此可以在本机 JVM 单测里逐条钉死
  * （见 app/src/test 下同包 IslandIndicatorLayoutTest）。
@@ -41,32 +42,30 @@ internal fun islandBarHeight(progress: Float): Dp =
 /**
  * 选中胶囊在浮岛坐标系里的矩形（px）。
  *
- * 位置以 **tab 下标** slide 为单位：中心 = (slide + 0.5) × 一格宽，因此速度单位是
- * 「每秒走几个 tab」，与屏宽、tab 数无关；拉伸量由该速度折算（见 islandStretch）。
- * 内边距从浮岛尺寸里扣除后才是胶囊的静止尺寸，所以文字/图标的居中对位不受影响。
- *
- * @param barWidthPx / barHeightPx 浮岛本体的实测尺寸（px）
- * @param itemWidthPx 一格 tab 的宽度（= 浮岛宽 / tab 数）
+ * @param metrics 舱体与内边距（尺寸、格宽、内缩，全部逐帧不变，见 [IslandBarMetrics]）
  * @param slide 选中胶囊当前的 tab 下标（可为小数、可越界）
- * @param velocity 胶囊滑行的实时速度（每秒几个 tab），决定拉伸与方向
- * @param travel 本次动画跨过的 tab 数，拉伸归一化的基准
- * @param insetXPx / insetYPx 胶囊与浮岛边缘的单侧间距（px）
+ * @param from 本次行程的起点下标
+ * @param to 本次行程的终点下标
+ *
+ * ## 进度与方向都从 slide 反算
+ * `progress = (slide - from) / (to - from)`：位移走到哪，形变就演到哪，不需要第二个动画通道。
+ * `direction = sign(to - from)`：一次行程里方向恒定，且停稳后仍然有效（速度那时已经归零）。
+ *
+ * 起点等于终点（没在移动、或首帧）时进度取 1 = 已归位，方向取 +1——两种取值都不产生形变。
  */
 internal fun islandIndicatorRect(
-    barWidthPx: Float,
-    barHeightPx: Float,
-    itemWidthPx: Float,
+    metrics: IslandBarMetrics,
     slide: Float,
-    velocity: Float,
-    travel: Float,
-    insetXPx: Float,
-    insetYPx: Float,
-): Rect = islandPillRect(
-    barWidth = barWidthPx,
-    barHeight = barHeightPx,
-    baseWidth = itemWidthPx - insetXPx * 2f,
-    baseHeight = barHeightPx - insetYPx * 2f,
-    centerX = (slide + 0.5f) * itemWidthPx,
-    stretch = islandStretch(velocity, travel),
-    direction = sign(velocity),
-)
+    from: Float,
+    to: Float,
+): Rect {
+    val span = to - from
+    val progress = if (abs(span) < 1e-4f) 1f else ((slide - from) / span).coerceIn(0f, 1f)
+    val direction = if (abs(span) < 1e-4f) 0f else sign(span)
+    return islandPillRect(
+        box = metrics.pillBox(),
+        centerX = (slide + 0.5f) * metrics.itemWidthPx,
+        jelly = islandJellyStretch(progress),
+        direction = direction,
+    )
+}
