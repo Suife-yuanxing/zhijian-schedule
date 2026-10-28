@@ -131,6 +131,8 @@ object JwAdapterRegistry {
             UrpAdapter,
             ShuWeiClassicAdapter,
             Eams5Adapter,
+            // 校级条目放最后：它靠主机名精确命中，不影响任何厂商的路径指纹
+            GuangXiGcAdapter,
         )
 
     /** 未识别时返回 null，由调用方给出明确提示；绝不静默回退到某一家厂商 */

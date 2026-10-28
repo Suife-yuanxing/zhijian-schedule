@@ -53,7 +53,11 @@ object SchoolCatalog {
     /** 检索串里多个别名（缩写 / 全拼）之间的分隔符 */
     private const val SEARCH_SEPARATOR = "/"
 
-    /** 有真实抓取证据的学校；assets 目录不含它们时也能工作 */
+    /**
+     * 内置条目：有真实抓取证据、或有校方公开文件可查的入口。
+     * assets 目录不含它们时也能工作，也不会被 `tools/gen_school_catalog.py`
+     * 重新生成的 TSV 覆盖掉。
+     */
     private val builtIn =
         listOf(
             SchoolProfile(
@@ -64,6 +68,20 @@ object SchoolCatalog {
                 adapterId = QiangZhiAdapter.id,
                 pinyin = "dongguanzhiyejishuxueyuan",
                 entryUrl = "https://jw.dgpt.edu.cn/jsxsd/",
+            ),
+            // 广西工程职业学院：校方 2022 年通知里的 http://edu.gxgcedu.com/ 已 NXDOMAIN，
+            // 现行入口是智慧校园统一认证；登录后从门户进教务，后端挂在同域 /academic/ 下
+            // （校外可达时直连 :8088，路径正是 URP 的强特征）。入口是门户而非课表页，
+            // 抓取未实测，所以 verified = false。
+            SchoolProfile(
+                id = "gxgc:zhxy.gxgcedu.com",
+                name = "广西工程职业学院",
+                hosts = setOf("zhxy.gxgcedu.com"),
+                basePath = "/academic/",
+                adapterId = UrpAdapter.id,
+                pinyin = "gxgc/guangxigongchengzhiyexueyuan",
+                verified = false,
+                entryUrl = "https://zhxy.gxgcedu.com/login",
             ),
         )
 
