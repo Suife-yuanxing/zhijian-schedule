@@ -40,6 +40,7 @@
 
 ### Changed
 
+- docs(research): 四份实时通知证据档就地勘误——把 10-27 会话期「抓不到」的工具状态与「页面拿不到」的页面事实分开记录，主档 §9 改为逐页正文可取状态总表（13 条中 9 条确认可取、3 条确认不可取、1 条属工具边界）；更正三处会误导实现的错误：`Settings.ACTION_MANAGE_APP_PROMOTED_NOTIFICATIONS` 实为 `ACTION_APP_NOTIFICATION_PROMOTION_SETTINGS`（android-36 常量表双向确认）、`MetricStyle` 属 API 37 而非与 `ProgressStyle` 同期、华为实况窗正文实际在 `liveview-introduction` 而非 `liveview-scenes`；被更正的原文一律用删除线留痕
 - feat(jw): 教务类型提示与未识别文案改为按 `JwAdapterRegistry` 动态生成，不再硬编码厂商名单
 - refactor(jw): 协议识别打分集中到 `JwMatchScore` 常量，适配器不再散落魔法数字
 - refactor(jw): 学校目录拆出 `SchoolCatalogAssets.kt`——assets 读取走 `ensureLoaded` 扩展，`SchoolCatalog` 保持纯 JVM，单测直接喂目录文本，符合「纯逻辑文件不 import android.*」的项目约定
