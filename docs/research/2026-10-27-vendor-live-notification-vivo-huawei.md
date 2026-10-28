@@ -2,6 +2,12 @@
 
 检索时间：2026-10-27（Asia/Shanghai）。仅使用官方域名优先的来源；二手来源单独标注「二手」。每条关键结论后附实际访问过的 URL；未查到官方文档的条目明确写「未检索到官方文档」并列出实际尝试过的 URL。
 
+> **复核补记（2026-10-28）**：本册结论本身成立，但「未检索到 / 未取到」的**归因**需更正——那批页面绝大多数只是 `extract` 通道不通，换 `curl` + 去标签 + 标识符校验就能拿到正文。
+> 10-28 已实测重新取到并逐条核对的页面：vivo `doc/894`（11,465 字，准入流程原文）、`doc/895`（26,794 字）、`doc/896`（43,767 字，`notification.superx` 命中 97 次）、`doc/577`（16,556 字）；
+> 华为 `liveview-introduction`（17,836 字）与 `HMSCore-Guides/android-live-intro-0000001563098012`（11,708 字）。
+> 复核结果：本册正文的关键判断**经原文逐字复验全部成立**，无需改结论——华为「课程提醒」确在 `liveview-introduction` 的 `TIMER` 场景里被点名为不适用（§3.7 L371 / §4 L499 引述准确）；vivo 接入邮件 `oosyztz@vivo.com` 与「7-10 个工作日审核」「须已在 vivo 应用商店上架」亦在 `doc/894` 正文可查。
+> 细节与判定方法见 [`2026-10-28-vendor-live-notification-source-audit.md`](2026-10-28-vendor-live-notification-source-audit.md)。
+
 ---
 
 # 一、vivo（dev.vivo.com.cn）

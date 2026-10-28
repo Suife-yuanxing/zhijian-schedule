@@ -259,7 +259,12 @@ let activity = try Activity.request(
   - https://developer.android.google.cn/training/wearables/notifications/live-updates （Wear OS 7 起支持）
 - 页面规范页（设计侧）：https://developer.android.google.cn/design/ui/mobile/guides/home-screen/live-updates
 - Wayback 交叉验证（官方主站存档）：https://web.archive.org/web/20260710123040/https://developer.android.com/about/versions/16/features/progress-centric-notifications
-- 未能访问的 URL（主站抽取失败，返回空正文）：https://developer.android.com/about/versions/16/features/progress-centric-notifications 、https://developer.android.com/develop/ui/compose/notifications/live-update 、https://developer.android.com/reference/android/app/Notification.ProgressStyle 、https://developer.android.com/develop/ui/views/notifications/live-update.html
+- ~~未能访问的 URL（主站抽取失败，返回空正文）~~ **2026-10-28 复核：这批 URL 的内容全部拿得到**，只是须换同源的官方中国镜像：
+  - https://developer.android.google.cn/about/versions/16/features/progress-centric-notifications （2,624 字，`ProgressStyle` 命中 17 次）
+  - https://developer.android.google.cn/develop/ui/compose/notifications/live-update （3,823 字，与 Views 版为同一篇）
+  - https://developer.android.google.cn/reference/android/app/Notification.ProgressStyle （182,351 字，`setProgressSegments` 等全在）
+  - https://developer.android.google.cn/develop/ui/views/notifications/live-update （3,919 字）
+  - 判定依据见 [`2026-10-28-vendor-live-notification-source-audit.md`](2026-10-28-vendor-live-notification-source-audit.md)：**`extract` 失败 ≠ 页面拿不到**，`curl` + 去标签 + 标识符校验这条路是通的；`developer.android.com` 主站本身连接超时（curl 28），镜像域正常。
 
 ### 2. 接入方式：依赖库 / SDK、权限、AndroidManifest 声明、核心类或 API 名、服务类型
 
@@ -286,8 +291,12 @@ let activity = try Activity.request(
   - 升级请求：Notification.Builder.setRequestPromotedOngoing(boolean) 或 extras 里的 Notification.EXTRA_REQUEST_PROMOTED_ONGOING；读取状态用 Notification.FLAG_PROMOTED_ONGOING、Notification.hasPromotableCharacteristics()、NotificationManager.canPostPromotedNotifications()
     - https://developer.android.google.cn/develop/ui/views/notifications/live-update
     - https://developer.android.google.cn/reference/android/app/Notification.Builder
-  - 跳设置页：Settings.ACTION_MANAGE_APP_PROMOTED_NOTIFICATIONS
+  - 跳设置页：~~Settings.ACTION_MANAGE_APP_PROMOTED_NOTIFICATIONS~~ → **10-28 更正为 `Settings.ACTION_APP_NOTIFICATION_PROMOTION_SETTINGS`**
+    - 官方指南页两处均写作 `Settings.ACTION_APP_NOTIFICATION_PROMOTION_SETTINGS`（"是 intent action，可让应用把用户转到设置"）
+    - 本机 android.jar（android-36, rev 2）校验：`javap -constants android.provider.Settings` 里**只有** `ACTION_APP_NOTIFICATION_PROMOTION_SETTINGS = "android.settings.APP_NOTIFICATION_PROMOTION_SETTINGS"`；`ACTION_MANAGE_APP_PROMOTED_NOTIFICATIONS` 在常量表与 class 字符串表中均不存在
+    - 官方 reference 原文：「Activity Action: Show the permission screen for allowing apps to post promoted notifications.」Added in API 36
     - https://developer.android.google.cn/develop/ui/views/notifications/live-update
+    - https://developer.android.google.cn/reference/android/provider/Settings
   - 服务类型：官方 Live Update 文档未规定专用 foregroundServiceType；因 Live Update 必须是 ongoing 通知，实践中通常由 startForeground() 承载，FGS 类型与权限按 Android 14+ 规则（android.permission.FOREGROUND_SERVICE_*）配置。
     - https://developer.android.google.cn/about/versions/14/changes/fgs-types-required
 
@@ -406,7 +415,7 @@ var ps =
 - 用户侧开关：
   - 可对单条通知「临时关闭 / 降级为标准通知」（dismiss / demote）
   - 可对单个 app 整体关闭实时动态（promotion）
-  - 对应的设置入口 intent：Settings.ACTION_MANAGE_APP_PROMOTED_NOTIFICATIONS
+  - 对应的设置入口 intent：~~Settings.ACTION_MANAGE_APP_PROMOTED_NOTIFICATIONS~~ → `Settings.ACTION_APP_NOTIFICATION_PROMOTION_SETTINGS`（10-28 更正，本机 android.jar 与官方 reference 双向确认；配 `Settings.EXTRA_APP_PACKAGE`，启动前需 `resolveActivity`）
   - 状态查询：NotificationManager.canPostPromotedNotifications()（返回 false 代表用户在设置里关掉了 promotion）；Notification.hasPromotableCharacteristics()（只判通知自身是否具备可提升特征，**不**考虑用户设置）
   - 通知渠道不得为 IMPORTANCE_MIN，否则无法提升
   - https://developer.android.google.cn/develop/ui/views/notifications/live-update

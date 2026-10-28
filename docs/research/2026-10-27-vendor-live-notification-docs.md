@@ -3,6 +3,10 @@
 > 目的：为 `docs/specs/2026-10-27-multi-vendor-live-notification-design.md` 提供可复核的原文出处。
 > 调研方式：Anysearch 检索 + 官方文档页正文提取。**未对任何厂商后台发起登录，未改动 App 源码，未提交 git。**
 > 证据分级：**【官网原文】** 官方文档站正文可直接支撑｜**【二手】** 第三方或论坛来源，仅作线索｜**【未取到】** 本次未取得正文，仅记录入口 URL。
+>
+> **勘误（2026-10-28 复核）**：下文所有「抓取失败 / 未取到正文」标注，反映的是 **10-27 当次会话的工具通道状态**，
+> 不等于页面拿不到。10-28 按 [`2026-10-28-vendor-live-notification-source-audit.md`](2026-10-28-vendor-live-notification-source-audit.md)
+> 的标识符校验法逐页复核后，已在原位补上**实际可取状态**；被更正的原文用 ~~删除线~~ 保留，不抹掉历史判断。
 
 ---
 
@@ -10,9 +14,9 @@
 
 | 项 | 内容 |
 | --- | --- |
-| 官方文档 | <https://developer.android.com/develop/ui/views/notifications/live-update>（**【未取到正文】** 抓取失败，以下要点来自检索摘要与第三方文档交叉） |
-| Compose 版 | <https://developer.android.com/develop/ui/compose/notifications/live-update>（**【未取到正文】**） |
-| 中文版 | <https://developer.android.com/about/versions/16/features/progress-centric-notifications?hl=zh-cn>（**【未取到正文】**） |
+| 官方文档 | <https://developer.android.com/develop/ui/views/notifications/live-update>（~~**【未取到正文】** 抓取失败~~ → **10-28 复核：【官网原文】已取到完整正文**。主站 `developer.android.com` 至今连不上，须改走同源的 `developer.android.google.cn`；页面 Last updated 2026-10-24（中文）/ 2026-10-23（英文）） |
+| Compose 版 | <https://developer.android.com/develop/ui/compose/notifications/live-update>（~~**【未取到正文】**~~ → **10-28 复核：已取到，且与 Views 版是同一篇正文**，只有页眉面包屑与 `ChronometerCountdown` 的大小写拼写不同） |
+| 中文版 | <https://developer.android.com/about/versions/16/features/progress-centric-notifications?hl=zh-cn>（~~**【未取到正文】**~~ → **10-28 复核：已取到**，Last updated 2026-03-03，即「以进度为中心的通知」） |
 
 **【二手，但引用官方条款】** OneSignal 文档 <https://documentation.onesignal.com/docs/en/android-live-notifications> 给出可直接引用的要点：
 
@@ -29,7 +33,7 @@
 - `Settings.ACTION_APP_NOTIFICATION_PROMOTION_SETTINGS` + `Settings.EXTRA_APP_PACKAGE` 用于引导，**启动前需 resolveActivity**。
 - 被路由的第三方形态：**Samsung 会把 Live Updates 路由到 Now Bar**，并在 AOD 上呈现。
 
-资格条件的另一种表述（检索摘要，来自官方 Compose 页）：通知必须是 `Standard` / `BigTextStyle` / `CallStyle` / `ProgressStyle` 之一。
+资格条件的另一种表述（~~检索摘要~~ → **10-28 复核为【官网原文】**，Views 版与 Compose 版逐字相同）：通知必须是 `Standard` / `BigTextStyle` / `CallStyle` / `ProgressStyle` / `MetricStyle` 之一。
 
 **【二手线索】** 社区问题 `stackoverflow.com/questions/79672535` 报告 `canPostPromotedNotifications()` 长期返回 false、菜单缺失 chip 的现象（本次未取到正文，仅记录现象与 URL）。
 
@@ -290,24 +294,34 @@
 
 ---
 
-## 9. 本次未取到正文的页面（仅记录入口）
+## 9. 正文可取状态总表（2026-10-28 逐页复核）
 
-| 页面 | URL | 备注 |
-| --- | --- | --- |
-| Android 16 Live Updates（视图版） | <https://developer.android.com/develop/ui/views/notifications/live-update> | extract 失败；要点经 OneSignal 交叉 |
-| Android 16 Live Updates（Compose 版） | <https://developer.android.com/develop/ui/compose/notifications/live-update> | extract 失败 |
-| Android 16 进度中心通知（中文） | <https://developer.android.com/about/versions/16/features/progress-centric-notifications?hl=zh-cn> | extract 失败 |
-| 荣耀「荣耀灵动胶囊」开发文档正文 | <https://developer.honor.com/cn/doc/guides/101571> | 仅取到导航；胶囊字段级页面未定位 |
-| vivo 原子通知规范 | <https://dev.vivo.com.cn/wap/documentCenter/doc/895> | extract 失败；要点经检索摘要 |
-| vivo 通知栏规范介绍 | <https://dev.vivo.com.cn/documentCenter/doc/577> | extract 失败 |
-| 华为《开发实况窗场景》《受限说明》正文 | <https://developer.huawei.com/consumer/cn/doc/doccenter-capabilities/liveview-scenes> | 未取正文 |
-| 小米超级岛模板库 PDF | mag-admin 直链 | PDF 不在 extract 支持范围 |
-| 小米 HyperOS 文档 pId=2146 | <https://dev.mi.com/xiaomihyperos/documentation/detail?pId=2146> | 同站另一页，未取正文 |
+原表标题是「本次未取到正文的页面」，10-28 复核后改为**逐页标注实际状态**——
+因为其中过半其实拿得到，只是当次通道不通。判定标准不再是「字符数」，
+而是**能否命中该页应有的关键标识符**（类名、权限名、字段名、条款原句）。
+
+| 页面 | URL | 10-27 当次 | 10-28 复核结论 |
+| --- | --- | --- | --- |
+| Android 16 Live Updates（视图版） | <https://developer.android.com/develop/ui/views/notifications/live-update> | extract 失败；要点经 OneSignal 交叉 | ✅ **完整正文**（3,919 字去标签文本）。主站仍不可达，改走 <https://developer.android.google.cn/develop/ui/views/notifications/live-update>；命中 `POST_PROMOTED_NOTIFICATIONS` / `setRequestPromotedOngoing` / `FLAG_PROMOTED_ONGOING` / `hasPromotableCharacteristics` |
+| Android 16 Live Updates（Compose 版） | <https://developer.android.com/develop/ui/compose/notifications/live-update> | extract 失败 | ✅ **完整正文**，且**与视图版同一篇**：两版文本 diff 仅 21 行，差异全是面包屑与 `setChronometerCountdown` 的大小写 |
+| Android 16 进度中心通知（中文） | <https://developer.android.com/about/versions/16/features/progress-centric-notifications?hl=zh-cn> | extract 失败 | ✅ **完整正文**（2,624 字）。命中 `ProgressStyle`（17 处）/ `setProgressSegments` / `ProgressStyle.Segment` |
+| Android `Notification.ProgressStyle` API reference | <https://developer.android.google.cn/reference/android/app/Notification.ProgressStyle> | 未列入（苹果分册记作「未能访问」） | ✅ **完整正文**（182,351 字）。`setProgressSegments` / `setProgressPoints` / `setProgressTrackerIcon` / `setStyledByProgress` 全部在页 |
+| 荣耀「荣耀灵动胶囊」开发文档正文 | <https://developer.honor.com/cn/doc/guides/101571> | 仅取到导航；胶囊字段级页面未定位 | ❌ **仍未取到**。抽取到 23,150 字，但全是站内导航：`灵动胶囊` 仅 3 次且都在菜单项里，`实时通知` / `字段` 命中 0 次 |
+| 荣耀智慧服务配置指南 | <https://developer.honor.com/cn/doc/guides/100158> | 【官网原文】正文为导航与服务配置说明 | ❌ **仍是壳**，10-28 抽取仅 20 字 |
+| vivo 原子通知规范（doc/895） | <https://dev.vivo.com.cn/documentCenter/doc/895> | extract 失败；要点经检索摘要 | ✅ **完整正文**（26,794 字）。含「2. 原子通知产品形态」「3. 原子通知基础交互」等小节；`原子通知` 45 次 / `原子岛` 23 次 |
+| vivo 原子通知技术规范（doc/896） | <https://dev.vivo.com.cn/documentCenter/doc/896> | 未列入 | ✅ **完整正文**（43,767 字）。`notification.superx` 命中 **97 次**——分册 §1.3 的字段表全部可回溯 |
+| vivo 通知栏规范介绍（doc/577） | <https://dev.vivo.com.cn/documentCenter/doc/577> | extract 失败 | ✅ **完整正文**（16,556 字）。含「5.1 普通样式 / 5.2 大文本样式 / 5.3 进度条样式」等节 |
+| 华为《实况窗场景准入》《受限说明》 | <https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/liveview-introduction> | 未取正文 | ✅ **完整正文**（17,836 字）。「最长不得超过 8 小时」「课程提醒」列为 TIMER **不适用场景** 均逐字在页 |
+| 华为 `liveview-scenes`（旧入口） | <https://developer.huawei.com/consumer/cn/doc/doccenter-capabilities/liveview-scenes> | 未取正文 | ❌ 该 URL 只返回 4 字「文档中心」；**正文实际在 `liveview-introduction`**，原表 URL 记错 |
+| 小米 HyperOS 文档 pId=2146 | <https://dev.mi.com/xiaomihyperos/documentation/detail?pId=2146> | 同站另一页，未取正文 | ✅ **完整正文**（3,421 字）。Q&A 里 `miui.focus.param` / `islandTimeout` / `3072` 字节上限全部命中 |
+| 小米超级岛模板库 PDF | mag-admin 直链 | PDF 不在 extract 支持范围 | ⚠️ **仍只能人工下载**——PDF 不在 extract 与去标签脚本的射程内，属工具边界而非页面问题 |
 
 ---
 
 ## 10. 检索质量备注
 
 - 本轮 `web_fetch` 因抓取端点鉴权失败（HTTP 401）全程不可用，外部内容全部经 Anysearch 的 `search` / `batch_search` / `extract` 获得；`extract` 对 `developer.android.com` 恒定失败，对 Apple / 华为 / 小米 / OPPO 文档站成功。
-- 凡标注**【二手】**的条目（荣耀接入规范、vivo 权限前置、苹果预算实证）均**未取到官方正文**，引用时需按线索对待。
+- **10-28 复核补充（重要）**：`extract` 失败**只说明该工具这条路走不通**，不说明页面拿不到。`curl` 直接抓 HTML → 去标签 → 用标识符校验，这条路对 `developer.android.google.cn`（同源的官方中国镜像）与小米 / vivo / 华为文档站全部走通；只有 OPPO（前端异步渲染，`curl` 只拿到 21 字壳）、荣耀（登录墙，三个页面 MD5 完全相同 `46017edd…`）、`developer.android.com` 主站（连接超时）三条路确实不通。
+- 因此「未取到正文」这类结论**必须带判定依据**：写清是「连接失败」还是「拿到壳」，以及用什么标识符验的。光看字符数会被壳页骗——OPPO 那两页有 200 字左右的壳，荣耀那页有 23,150 字的导航。
+- 凡标注**【二手】**的条目（荣耀接入规范、vivo 权限前置、苹果预算实证）**均未取到官方正文**，引用时需按线索对待。**10-28 复核后只剩荣耀一条仍未证实**：vivo 的接入流程与「需邮件申请 + 7-10 个工作日审核 + 须已上架」在 [doc/894](https://dev.vivo.com.cn/documentCenter/doc/894) 有官方正文，苹果的预算与生命周期数值在 Apple 开发者页亦可取——两者不再依赖二手。
 - `linux.do` 页面正文含针对自动化抓取的拒绝声明，本档**仅记录其标题与 URL 作为线索，未采用其正文内容**。

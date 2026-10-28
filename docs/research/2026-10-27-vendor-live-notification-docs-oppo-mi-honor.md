@@ -5,6 +5,14 @@
 > 全程未登录任何厂商后台，未改动 App 源码，未提交 git。
 > 证据分级：【官网原文】官方文档站正文可直接支撑｜【二手】第三方来源，仅作线索｜【未检索到】未取得正文，列出实际尝试过的 URL。
 > 说明：本机 `web_search` 后端返回 HTTP 401（检索端点未配置），本次全部检索改走 Anysearch 通道完成。
+>
+> **复核补记（2026-10-28）**：本册结论经逐页复验**全部成立**，两处标注另有澄清——
+> ① **OPPO**：`12658`（模板 2.0）、`13572`（接入准备）、`13567`（字段表）、`13568`（垂域里程碑）、`13578`（销卡）、`13558`（意图共享端侧）六页 10-28 重新抽取均有完整正文，本册引用可信；
+> 但 `13565`（意图共享数据结构）复验仍**只有壳页**——1,216 字全是站内导航，正文区是一句「未能检索到相关内容」。原判断准确，这是 OPPO 真正的正文缺口，不是抓取姿势问题。
+> ② **小米**：`pId=2146`（常见 Q&A）10-28 已取到完整正文（3,421 字，`miui.focus.param` / `islandTimeout` / `3072` 字节上限全部命中），本册 §2 引用的 Q&A 原句可回溯；
+> 主档 §9 原表把该页记作「未取正文」属通道问题，已就近更正。
+> ③ **荣耀**：`101571` 复验抽取到 23,150 字**全是站内导航**（`灵动胶囊` 仅 3 次且都在菜单里，`实时通知` 与 `字段` 命中 0 次），`100158` 只剩 20 字。三个荣耀页面 MD5 完全相同（`46017edd…`），确认是登录墙返回的同一张空壳——**荣耀一份字段级正文都没拿到**，这是本册最大的证据短板，判断无误。
+> 细节见 [`2026-10-28-vendor-live-notification-source-audit.md`](2026-10-28-vendor-live-notification-source-audit.md)。
 
 ---
 
@@ -34,7 +42,7 @@
 
 其他原文要点：
 
-- 系统查询 API：`Notification.FLAG_PROMOTED_ONGOING`、`Notification.hasPromotableCharacteristics()`、`NotificationManager.canPostPromotedNotifications()`、`Settings.ACTION_MANAGE_APP_PROMOTED_NOTIFICATIONS`。
+- 系统查询 API：`Notification.FLAG_PROMOTED_ONGOING`、`Notification.hasPromotableCharacteristics()`、`NotificationManager.canPostPromotedNotifications()`、~~`Settings.ACTION_MANAGE_APP_PROMOTED_NOTIFICATIONS`~~ → **10-28 更正为 `Settings.ACTION_APP_NOTIFICATION_PROMOTION_SETTINGS`**（官方指南与 android-36 常量表双向确认，前者并不存在）。
 - 提升后表现：通知抽屉顶部、锁屏醒目位置、抽屉收起时以 status chip 出现在状态栏；卡片默认展开且不可折叠。
 - status chip 最大宽度 96dp；文本少于 7 个字符整体显示，不足一半则只显示图标。
 - `ProgressStyle` 构件：`Notification.ProgressStyle.Point`、`Notification.ProgressStyle.Segment`，以及 `setProgress(int)`、`setStyledByProgress(boolean)`、`setProgressTrackerIcon(Icon)`、`setProgressSegments(List)`、`setProgressPoints(List)`。
@@ -60,7 +68,7 @@
 | --- | --- | --- |
 | 服务接入指南 · 接入准备 | <https://open.oppomobile.com/documentation/page/info?id=13572> | 服务形态、需向 OPPO 提供的信息、方案选型、卡片模板清单 |
 | 意图共享（端侧） | <https://open.oppomobile.com/documentation/page/info?id=13558> | `ContentProviderClient` 调用细节、错误码表、示例代码 |
-| 意图共享数据结构 | <https://open.oppomobile.com/documentation/page/info?id=13565> | 页面正文未取到（返回导航壳），字段表见同站模板页 |
+| 意图共享数据结构 | <https://open.oppomobile.com/documentation/page/info?id=13565> | 页面正文未取到（返回导航壳），字段表见同站模板页。<br>**10-28 复验：仍是壳**，1,216 字全为站内导航，正文区只有「未能检索到相关内容」——确认是 OPPO 侧正文缺口 |
 | 进度可视化模板 | <https://open.oppomobile.com/documentation/page/info?id=13567> | `IntelligentIntent` 完整字段表 + 数据示例（本次取证核心） |
 | 垂域里程碑 | <https://open.oppomobile.com/documentation/page/info?id=13568> | 各 `entityName` 的 code/text/销卡延时/强提醒/耳机播报全表 |
 | 销卡 | <https://open.oppomobile.com/documentation/page/info?id=13578> | 四种销卡途径、云侧 `deleteIntent` 接口详情、端侧调用示例 |
@@ -221,6 +229,8 @@ OPPO 有**两条互不相同的接入线路**，本次均取到原文：
 - 彩卡规则：若状态栏卡为彩卡（黑色背景卡属彩卡），锁屏与通知中心均使用相同质感及颜色彩卡，**不区分亮暗模式**；未设计彩卡则使用流体云 1.0 的亮色/暗色模式卡。彩色卡片需要描边处理，描边支持自定义颜色。
 
 **未检索到官方文档**：OPPO 开放平台一级导航存在「流体云 → 设计规范」独立章节，本次**未取得该章节的字段级正文**。实际尝试过的 URL：<https://open.oppomobile.com/new/wiki>（导航壳）、<https://open.oppomobile.com/wiki/doc>（导航壳）、<https://open.oppomobile.com/documentation/page/info?id=11709>（设计原则，检索命中但未取到流体云专项内容）。
+
+**10-28 复验补充**：`id=11709` 抽取到 3,692 字，内容是**负一屏**的文档目录（负一屏简介 / 卡片设计规范 / 卡片接入指南…），属另一条产品线；`new/wiki` 仍是 135 字的 JavaScript 门禁壳。结论不变——流体云的设计规范章节**确实没有可从外部直接抓取的正文页**，不在 `documentation/page/info` 体系里。
 
 ### 1.6 权限与开关
 
@@ -557,7 +567,7 @@ int focusProtocolVersion = Settings.System.getInt(
 | 企业开发者认证 | **必须**（原文"首次接入需注册 OPPO 开放平台账号并完成企业认证"） | **必须**（企业开发者认证，1-3 工作日审核；另有应用审核 1-3 工作日） | **未检索到官方文档**（但需签《荣耀智慧服务平台合作协议》） |
 | 是否需签合作协议 | 未在已取文档中明示，但需联系 OPPO 商务确认 | 非"协议"表述，但需两级场景/方案审核 | **是**，《荣耀智慧服务平台合作协议》 |
 | 是否仅限系统白名单 | **实质上是**：意图名、serviceId、垂域码值均由 OPPO 分配；需 OPPO 提供调测 APK | **是**：场景预审 + 正式方案审核 + 上线验证后获正式权限；调试期设备白名单（10 台 / 30 天 / 按 OAID） | 未见官方条款；用户侧按 YOYO 建议服务粒度可控开关 |
-| 是否需商务对接 | **是**，邮箱 `fwst@oppo.com` | 走平台自助流程（管理中心开服务 + 提报），另有 `mipush-permission@xiaomi.com` 走权限邮件 | 未取到官方流程页；平台公示 `Developers_HKBD@honor.com` |
+| 是否需商务对接 | **是**，邮箱 `fwst@oppo.com` | 走平台自助流程（管理中心开服务 + 提报），另有 `mipush-permission@xiaomi.com` 走权限邮件 | 未取到官方流程页；平台公示 `Developers_HKBD@honor.com`（10-28 复验仍未取到，详见本节开头补记） |
 | 自助程度 | 低（强商务依赖） | 中（有明确的自助审核链路与平台入口） | 未知 |
 | 灰度/放量 | 未见条款 | **有**：初次获权限后约 7~15 天放量到 100% | 未见条款 |
 | 费用 | 未见条款 | 原文"**暂不涉及收费**" | 未见条款 |
