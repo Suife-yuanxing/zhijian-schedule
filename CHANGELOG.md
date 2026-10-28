@@ -28,6 +28,13 @@
 - feat(capsule): 接入小米超级岛（HyperOS OS3）——按官方 `param_v2` 协议挂 `miui.focus.param` 扩展参数，无需 SDK 与额外权限；处理了 `timeout`（分钟）与 `islandTimeout`（秒）单位不同、图标走 `miui.focus.pics` Bundle 不内联、整串 3072 字节超限降级三个易错点
 - feat(capsule): 新增 `LiveSurfaceSupport` 能力探测——把「能否请求提升」（API 36 即可）与「能否真正被提升」（需 Android 16 QPR1 / API 36.1）拆成两个判断，避免 API 36.0 用户把「胶囊不出现」误当 bug
 - test(capsule): 新增 `HyperOsIslandParamTest`（6 例）——校验超级岛参数根节点必填字段、岛超时上下限夹取、3072 字节上限、引号转义、文案裁剪与颜色格式
+- feat(ui): 底部浮岛选中胶囊的果冻改成**移动途中先拉长、然后回收**——形变由位移进度驱动（`islandJellyWave`：前半程 `sin²` 瓣拉长 +16%、中点归位、后半程反向瓣回收 −8.8%），抵达那一刻形状已归位；不再有「滑过去 → 站定 → 原地蹦两下」的第二段时间线
+- feat(ui): 果冻几何支持**带符号**拉伸——回收相能把胶囊压到比静止更窄（88→80.3dp）同时变高（48→50.9dp），体积守恒由同一个 `squash` 系数在宽度与高度两轴反向实现；此前拉伸量被夹在 0..1，结构上只能变宽
+- refactor(ui): 行程与形变收进 `rememberJellyTravel`——进度由 `slide` 实时值在 `from..to` 之间反算，方向由 `sign(to−from)` 给出（不读 velocity，停稳时符号会丢），结构上只可能有一条时间线
+- refactor(ui): 浮岛指示器拆出 `IslandIndicatorSkin`（玻璃水滴 / 纸面渐变胶囊两种外观互斥）与 `IslandBarMetrics`（逐帧不变的量测），`IslandIndicator` 与 `islandIndicatorRect` 的参数回到「只收逐帧变动的那几个」
+- test(ui): 新增 `IslandJellyWaveTest`（9 例）——钉住两端为 0、接缝斜率连续、拉长在前回收在后、两峰都在行程内、拉得比收得重、带符号几何真的能窄过静止、方向镜像、边界不越舱
+- test(ui): `IslandIndicatorLayoutTest` 扩到 12 例——补齐「行程四分之一处最宽、四分之三处最窄、抵达即归位」「方向决定哪条边多探」「越界 slide 不超演」「无跨度行程渲染为原形」四条端到端不变量
+- docs(research): 新增 `docs/research/2026-10-28-jelly-capsule-motion.md`——六条外部规范、波形推导的逐值表，以及**真机逐帧实测**（一加 PKG110 / Android 16：宽度 312→357→282→309，峰谷都落在位移途中，实测 +15.5%/−8.7% vs 推导 +16%/−8.8%）
 - docs(spec): 新增 `docs/specs/2026-10-27-multi-vendor-live-notification-design.md`——把流体云胶囊抽象成统一适配层，给出原生提升 / 通知扩展参数 / 厂商生态卡片三档路线的成本判断与逐厂商接入契约
 - docs(research): 新增四份实时通知厂商文档证据档——Android 16 与 Apple 原生、OPPO / 小米 / 荣耀、vivo / 华为分册，按【官网原文】/【二手】/【未取到】分级并逐条附 URL
 
