@@ -35,6 +35,8 @@
 - [2026-10-27-vendor-live-notification-docs-oppo-mi-honor.md](research/2026-10-27-vendor-live-notification-docs-oppo-mi-honor.md) — 同上，OPPO / 小米 / 荣耀分册（574 行）：三家与原生 ProgressStyle 的关系、接入门槛、商务邮箱与白名单机制；结论是三家都不能靠普通通知自动上岛，小米走私有 `miui.focus.param` 协议。
 - [2026-10-27-vendor-live-notification-vivo-huawei.md](research/2026-10-27-vendor-live-notification-vivo-huawei.md) — 同上，vivo / 华为分册：vivo 原子通知 `notification.superx.*` 字段全集与原子岛左右岛模板、华为 Live View Kit 与 HMS 两条线路的差异；关键结论是华为 `TIMER` 场景明确排除「课程提醒」。
 - [2026-10-27-vendor-live-notification-apple-aosp.md](research/2026-10-27-vendor-live-notification-apple-aosp.md) — 同上，苹果 / Android 原生分册：Live Activity 的 4KB 帧上限、8h/4h/12h 生命周期、priority 5/10 预算模型，以及 Android 16 提升的 9 项硬条件与 96dp chip 限制。
+- [2026-10-28-vendor-live-notification-source-audit.md](research/2026-10-28-vendor-live-notification-source-audit.md) — 多厂商实时通知的**原文抓取留档审核**：逐份核对 10-27 那批 HTML 快照抽到了什么（Android 两页为完整正文、小米 7 页完整、荣耀 3 页是同一张登录墙空壳、OPPO 2 页只有壳），并更正已提交分册里「Android 官方文档未取到正文」的误标。
+- [2026-10-28-jelly-capsule-motion.md](research/2026-10-28-jelly-capsule-motion.md) — 底部浮岛胶囊「果冻」动效规范与灵感调研：六条可落地的外部规范（NN/g 时长、迪士尼 squash & stretch、follow-through、Reduce Motion、Apple 两参数弹簧模型）、「移动途中先拉长再回收」的双瓣波形推导与逐值表、一加 PKG110 上的逐帧实测数据，以及取不到原文的部分据实标注。
 
 > **学校目录数据**：`app/src/main/assets/jw/schools.tsv`（1144 条，随 APK 打包）由 [tools/gen_school_catalog.py](../tools/gen_school_catalog.py) 从学校目录快照生成，只收录「协议属于本应用已实现解析器 + 带教务入口 URL」的条目。`verified=1` 表示目录标记为「已实现配置」，`0` 表示「待验证·可尝试」——**两者都不代表该校当前实测可用**，UI 里必须区分展示。目录快照本身不入库，重建时把快照路径作为第一个参数传给脚本即可。
 
