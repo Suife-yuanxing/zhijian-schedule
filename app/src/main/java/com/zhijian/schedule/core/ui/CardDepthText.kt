@@ -3,15 +3,15 @@ package com.zhijian.schedule.core.ui
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.unit.Density
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
- * 卡面文字的「深度层级」：这一行浮在卡面上多高、静止时压出多深的影。
+ * 卡面文字的「深度层级」：这一行浮在卡面上多高、静止时吃多强的浮雕明暗。
  *
  * ## 为什么单靠倾动不够
  *
@@ -37,8 +37,8 @@ import androidx.compose.ui.unit.dp
  *    这是 3D 感的唯一来源，也是唯一会随手指变化的量。
  * 2. [relief]（**静**）：倾动是交互态；截图、静态浏览、系统关闭动画
  *    （ANIMATOR_DURATION_SCALE == 0）时位移恒为 0，若把 3D 全押在视差上，
- *    那些场景里卡片会退回成一张纸。所以每层再配一道"光从上方来"的浮雕软影
- *    （[reliefShadow]），静止也读得出谁在前。
+ *    那些场景里卡片会退回成一张纸。所以每层再配一层"光从上方来"的字形明暗面
+ *    （[inkVolume]），静止也读得出谁在前。
  *
  * ## 取值依据
  *
@@ -48,23 +48,33 @@ import androidx.compose.ui.unit.dp
  *   带单位的说明（共 20 周）再靠后，事实类信息（开学日期、进度条、页码）留在卡面。
  * - 正文留在 Z=0 不是偷懒：3D-immersive 规范 §3 明确写着"倾斜/抬起的平面上小字会有
  *   亚像素发虚，长文本必须留在卡面，只有短的大标题/标签可以前移"。
- * - 幅度：焦点大卡最大倾角 17°（[rememberFocusCardTiltStyle]），最高层 6dp 在满倾时
- *   漂移 6dp≈16px；层间差 6 / 4 / 3 / 1.5 / 0 已经能读出"错开"，再大就会撞到右侧
+ * - 幅度：焦点大卡最大倾角 17°（[rememberFocusCardTiltStyle]），最高层 10dp 在满倾时
+ *   漂移 10dp≈30px；层间差 10 / 7 / 5 / 3 / 0 已经能读出"错开"，再大就会撞到右侧
  *   绩点块或挤进下一行——戏剧性交给层间比例，不靠绝对值。
  *
- * ## 试过但被否掉的做法：动态投影
+ * ## 为什么删掉了文字投影（Shadow）
  *
- * 曾按"影子钉在卡面、字形漂走"的思路，在倾动时用 saveLayer + tint + BlurMaskFilter
- * 画一份偏移的字形副本。真机截图否掉了它：整字复本哪怕模糊到半径是偏移量的两倍，
- * 读到的仍是"重影/串色"而不是"影子"——因为它有和正文一样的笔画锐度基线。
- * 真实软阴影是**距离场**而不是"一份模糊的字"，用逐帧 saveLayer 硬凑既费合成又不像，
- * 所以只保留 [reliefShadow] 这条静态通道。
+ * 上一版给每层叠了一道 [androidx.compose.ui.graphics.Shadow]，真机截图否掉了它：
+ * Compose 的文字投影本质是"把字形的 alpha 蒙版整体模糊一次、再错位盖下去"，
+ * 所以它**永远比正文低一档锐度**。480dpi（density 3）下按 4.2×relief×density 取模糊
+ * 半径，Hero 层落到 12.6px 模糊、6.3px 落差、0.34 不透明度的深蓝——而「第 9 周」
+ * 这类 CJK 字形的笔画本身只有 8~10px 宽，于是那层影子和正文同宽同形，
+ * 肉眼读作**重影/描边发糊**，不是"浮起来"。
+ *
+ * 量化证据（同机同角度截图逐环取样，墨度相对峰值归一）：
+ * 正常抗锯齿的墨边在离笔画 4px 处衰减到 0.4% 以下；
+ * 加投影后同一量在 4px 处仍有 11%、8px 处 6%、12px 处 3.5%，且右下比左上重一倍
+ * ——这正是"影子"被读成"重影"的形状，和位置偏了几像素的副本无从区分。
+ *
+ * 结论：CJK 大字号的文字投影是重影发生器，靠调小模糊救不回来（调到不重影就看不见），
+ * 只能整条通道换掉。静止的立体感改由 [inkVolume] 承担——上缘提亮、下缘压暗，
+ * 明暗面画在字形**内部**，结构上不可能产生第二份轮廓。
  */
 @Immutable
 data class CardDepth(
     /** 相对卡面的高度。0 = 贴在卡面上（不参与视差），正数朝观察者浮起。 */
     val depth: Dp,
-    /** 浮雕强度 0..1：光从上方来时，字形下缘压出的软影（见 [reliefShadow]）。 */
+    /** 浮雕强度 0..1：字形自身的"上缘受光、下缘背光"（见 [inkVolume]）。 */
     val relief: Float,
 )
 
@@ -80,13 +90,13 @@ object CardDepthLadder {
     /** 卡片主体标识（课表名「我的课表」）：比数字退一档，但仍在正文之上。 */
     val Title = CardDepth(depth = 7.dp, relief = 0.72f)
 
-    /** 眉标贴纸（学期胶囊）：自带底色，靠位移示层级；不叠浮雕，否则糊成双边框。 */
+    /** 眉标贴纸（学期胶囊）：自带底色，靠位移示层级；不叠明暗，否则糊成双边框。 */
     val Chip = CardDepth(depth = 5.dp, relief = 0.00f)
 
     /** 数字的量纲说明（「共 20 周」）：跟着数字走，但要明显慢于数字。 */
     val Unit = CardDepth(depth = 3.dp, relief = 0.34f)
 
-    /** 卡面本身：事实类文字与进度条留在这一层，不位移、不出影。 */
+    /** 卡面本身：事实类文字与进度条留在这一层，不位移、不出明暗。 */
     val Face = CardDepth(depth = 0.dp, relief = 0f)
 }
 
@@ -146,33 +156,53 @@ fun Modifier.cardTextDepth(
     }
 }
 
-/** 影子横纵比：光从正上方来时，软影只向下方偏移，横向给纵向的一半。 */
-private const val SHADOW_SKEW_X = 0.5f
+/** 一次浮雕的三个色阶：上缘受光色 / 本色 / 下缘背光色。 */
+@Immutable
+data class CardInk(
+    val top: Color,
+    val mid: Color,
+    val bottom: Color,
+)
 
 /**
- * 静止时的浮雕投影：光从上方来，字形下缘有一道同色相的软影。
+ * 这一层的字形明暗面：光从正上方来，上缘提亮、下缘压暗。
  *
- * 参数都是"按 [CardDepth.relief] 缩放过的 dp"，乘 [Density.density] 换成 px 再交给
- * [Shadow]（它的 offset / blurRadius 单位是像素，不是 dp——直接喂 dp 在高密度屏上会
- * 细到看不见，这是 Compose 文本阴影最常见的坑）。
+ * 这是**替代文字投影**的静态深度通道。区别是结构性的：投影是"另画一份模糊的字",
+ * 明暗面是在同一份字形上换颜色——多亮多暗都在笔画之内，永远不会有第二份轮廓，
+ * 因此不可能出现重影（推导见 [CardDepth] 的 kdoc）。
  *
- * 为什么影子取**同色相深调**而不是黑：见 [cardTiltGlare] 与 CourseTone.shade 的注释——
- * 黑乘在彩色底上会把颜色抽干发灰；深色主题下纯黑也压不出层次（卡面本身就接近黑）。
+ * 提亮走白、压暗走黑而不是换色相：字色本身已经承载语义（强调色 = 周次，
+ * 正文色 = 课表名），只调整明度才不会把主题色抽干。
+ *
+ * 深色主题反过来多压一点、少提一点：卡面接近于黑，白上加白没有可读的台阶，
+ * 只有往下压暗才看得出厚度（与旧版那道文字软影的 dark 分支同一个理由）。
  */
-fun CardDepth.reliefShadow(
-    ink: Color,
-    density: Density,
+fun CardDepth.inkVolume(
+    base: Color,
     dark: Boolean = false,
-): Shadow? {
-    if (relief <= 0f) return null
-    val lift = (if (dark) 1.3f else 2.1f) * relief
-    val blur = (if (dark) 3.0f else 4.2f) * relief
-    val alpha = (if (dark) 0.44f else 0.34f) * relief
-    // 影子朝"下方"偏：横向只给纵向的一半（1:2），这是"光从正上方来"在平面上的投影走向。
-    // 三处都乘 density 换成像素——Shadow 的 offset / blurRadius 单位是 px 而不是 dp。
-    return Shadow(
-        color = ink.copy(alpha = alpha.coerceIn(0f, 1f)),
-        offset = Offset(SHADOW_SKEW_X * lift * density.density, lift * density.density),
-        blurRadius = blur * density.density,
+): CardInk {
+    if (relief <= 0f) return CardInk(top = base, mid = base, bottom = base)
+    val light = ((if (dark) 0.16f else 0.22f) * relief).coerceIn(0f, 1f)
+    val shade = ((if (dark) 0.30f else 0.17f) * relief).coerceIn(0f, 1f)
+    return CardInk(
+        top = lerp(base, Color.White, light),
+        mid = base,
+        bottom = lerp(base, Color.Black, shade),
     )
 }
+
+/**
+ * 明暗面的分界：受光带压在上部 [BEVEL_MID_STOP] 之内，其余 45% 交给背光带。
+ *
+ * 取 0.55 而不是 0.5 是刻意的——CJK 字形的重心（横画的视觉基线）比几何中线略低，
+ * 分界点跟着下移，中段回落到本色的位置才落在"看起来像字身中间"的地方。
+ */
+private const val BEVEL_MID_STOP = 0.55f
+
+/** 把 [CardInk] 变成自上下行的渐变笔芯；中段回落到本色，让主色仍是主色。 */
+fun CardInk.toBrush(): Brush =
+    Brush.verticalGradient(
+        0f to top,
+        BEVEL_MID_STOP to mid,
+        1f to bottom,
+    )

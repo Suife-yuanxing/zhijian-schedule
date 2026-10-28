@@ -30,9 +30,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -44,11 +42,12 @@ import com.zhijian.schedule.core.ui.CardDepthLadder
 import com.zhijian.schedule.core.ui.cardTextDepth
 import com.zhijian.schedule.core.ui.cardTilt
 import com.zhijian.schedule.core.ui.cardTiltGlare
+import com.zhijian.schedule.core.ui.inkVolume
 import com.zhijian.schedule.core.ui.pressScale
-import com.zhijian.schedule.core.ui.reliefShadow
 import com.zhijian.schedule.core.ui.rememberCardTiltState
 import com.zhijian.schedule.core.ui.rememberFocusCardTiltStyle
 import com.zhijian.schedule.core.ui.rememberMotionAllowed
+import com.zhijian.schedule.core.ui.toBrush
 import java.util.Locale
 
 /**
@@ -56,11 +55,16 @@ import java.util.Locale
  *
  * 卡面文字是按 [CardDepthLadder] 排开的一条深度阶梯：周次数字最靠前、卡名次之、
  * 学期胶囊再靠后、量纲说明最浅，事实类信息（开学日期 / 进度条 / 页码）留在卡面 Z=0。
- * 每层吃两道表现——倾动时的视差位移（[cardTextDepth]）与静止时的浮雕软影
- * （[reliefShadow]），于是按住拖动时字与字之间会真的错开，松手回正后仍读得出前后。
+ * 每层吃两道表现——倾动时的视差位移（[cardTextDepth]）与静止时的字形明暗面
+ * （[inkVolume]），于是按住拖动时字与字之间会真的错开，松手回正后仍读得出前后。
+ *
+ * 这里**不再给文字叠投影**：Compose 的文字 Shadow 是"整份字形的模糊副本"，
+ * 在 480dpi 的 CJK 大字号上会与正文同宽同形地糊出来，肉眼读作重影而不是阴影
+ * （量化过程见 [com.zhijian.schedule.core.ui.CardDepth] 的 kdoc）。立体感改由字形自身的
+ * 上亮下暗承担——明暗画在笔画内部，结构上不可能产生第二份轮廓。
  *
  * 卡片右下角的绩点块是共享元素锚点，点按直接进成绩页；它不参与视差（位移会让转场起点偏），
- * 但同样吃一道浮雕，与左侧数字错开半档，读作同一张卡上的两件物体。
+ * 但同样吃一道明暗面，与左侧数字错开半档，读作同一张卡上的两件物体。
  */
 @Composable
 internal fun SemesterOverviewCard(
@@ -87,35 +91,19 @@ internal fun SemesterOverviewCard(
             0f
         }
     val stats = "${timetable.startDate} 开学 · $courseCount 门课程"
-    val density = LocalDensity.current
     val dark = LocalIsDark.current
-    // 每层文字的浮雕投影色：同色相深调，纯黑压在彩色字上会发灰（见 CourseTone.shade 的注释）
-    val inkShadow = lerp(colors.text, Color.Black, 0.45f)
-    val accentShadow = lerp(colors.accent, Color.Black, 0.45f)
-    // 3D 字形的明暗面：上缘受光、下缘背光。与浮雕投影是两个通道——影子给出"离卡面多高"，
-    // 渐变笔芯给出"这块字本身有多厚"，只有影子没有明暗面时，大字仍是"一张被照亮的贴纸"。
-    val heroInk =
-        Brush.verticalGradient(
-            0f to lerp(colors.accent, Color.White, if (dark) 0.30f else 0.20f),
-            0.55f to colors.accent,
-            1f to lerp(colors.accent, Color.Black, if (dark) 0.22f else 0.16f),
-        )
-    val gpaInk =
-        Brush.verticalGradient(
-            0f to lerp(colors.text, Color.White, if (dark) 0.42f else 0f),
-            0.6f to colors.text,
-            1f to lerp(colors.text, colors.accent, if (dark) 0.22f else 0.14f),
-        )
-    // 四段文字各走各的 Z 平面（6 / 4 / 3 / 1.5dp）：倾动时彼此错开才读得出「层」。
+    // 字形明暗面：上缘受光、下缘背光。替代旧版的文字投影——一样表达"离卡面多高"，
+    // 但画在笔画之内，不会糊出第二份轮廓（见 CardDepth 的 kdoc）
+    val heroInk = CardDepthLadder.Hero.inkVolume(colors.accent, dark).toBrush()
+    val titleInk = CardDepthLadder.Title.inkVolume(colors.text, dark).toBrush()
+    val unitInk = CardDepthLadder.Unit.inkVolume(colors.textMuted, dark).toBrush()
+    val gpaInk = CardDepthLadder.Title.inkVolume(colors.text, dark).toBrush()
+    // 四段文字各走各的 Z 平面（10 / 7 / 5 / 3dp）：倾动时彼此错开才读得出「层」。
     // 此前整列共用一个 12dp，所有字同进同退，等于没有深度。
     val titleDepth = Modifier.cardTextDepth(state = tilt, style = tiltStyle, depth = CardDepthLadder.Title)
     val chipDepth = Modifier.cardTextDepth(state = tilt, style = tiltStyle, depth = CardDepthLadder.Chip)
     val heroDepth = Modifier.cardTextDepth(state = tilt, style = tiltStyle, depth = CardDepthLadder.Hero)
     val unitDepth = Modifier.cardTextDepth(state = tilt, style = tiltStyle, depth = CardDepthLadder.Unit)
-    // 静态浮雕：系统关闭动画 / 截图 / 静态浏览时位移恒为 0，深度只能靠这道软影表达
-    val heroShadow = CardDepthLadder.Hero.reliefShadow(accentShadow, density, dark)
-    val titleShadow = CardDepthLadder.Title.reliefShadow(inkShadow, density, dark)
-    val unitShadow = CardDepthLadder.Unit.reliefShadow(inkShadow, density, dark)
     // 焦点卡：更松的圆角 + 极轻的暖色渐变，和下方分组列表拉开层级
     val heroBrush =
         Brush.linearGradient(
@@ -141,9 +129,13 @@ internal fun SemesterOverviewCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = timetable.name,
-                        style = MaterialTheme.typography.titleMedium.copy(shadow = titleShadow),
-                        color = colors.text,
-                        fontWeight = FontWeight.SemiBold,
+                        // 颜色交给渐变笔芯，别再传 color（两者同时给以 brush 为准，
+                        // 留着一个无效的 color 会让后来读代码的人以为改它有用）
+                        style =
+                            MaterialTheme.typography.titleMedium.copy(
+                                brush = titleInk,
+                                fontWeight = FontWeight.SemiBold,
+                            ),
                         maxLines = 1,
                         modifier = titleDepth,
                     )
@@ -154,7 +146,7 @@ internal fun SemesterOverviewCard(
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Medium,
                         maxLines = 1,
-                        // 贴纸自带底色：位移示层级即可，不叠浮雕（会和底色糊成双边框）
+                        // 贴纸自带底色：位移示层级即可，不叠明暗（会和底色糊成双边框）
                         modifier =
                             chipDepth
                                 .clip(RoundedCornerShape(7.dp))
@@ -166,20 +158,17 @@ internal fun SemesterOverviewCard(
                 Row(verticalAlignment = Alignment.Bottom) {
                     Text(
                         text = week?.let { "第 $it 周" } ?: "学期外",
-                        // 颜色交给渐变笔芯，别再传 color（两者同时给以 brush 为准，
-                        // 留着一个无效的 color 会让后来读代码的人以为改它有用）
                         fontSize = 30.sp,
                         lineHeight = 32.sp,
                         fontWeight = FontWeight.SemiBold,
-                        style = TextStyle(brush = heroInk, shadow = heroShadow),
+                        style = TextStyle(brush = heroInk),
                         modifier = heroDepth,
                     )
                     Spacer(Modifier.width(7.dp))
                     Text(
                         text = "共 ${timetable.totalWeeks} 周",
-                        color = colors.textMuted,
                         fontSize = 12.sp,
-                        style = TextStyle(shadow = unitShadow),
+                        style = TextStyle(brush = unitInk),
                         modifier = unitDepth.padding(bottom = 4.dp),
                     )
                 }
@@ -201,7 +190,6 @@ internal fun SemesterOverviewCard(
                 GpaTile(
                     weightedGpa = weightedGpa,
                     totalCredits = totalCredits,
-                    valueShadow = titleShadow,
                     valueInk = gpaInk,
                     onClick = onOpenGrades,
                 )
@@ -257,14 +245,13 @@ internal fun SemesterOverviewCard(
 private fun GpaTile(
     weightedGpa: Double?,
     totalCredits: Double,
-    valueShadow: Shadow?,
     valueInk: Brush,
     onClick: () -> Unit,
 ) {
     val colors = LocalCourseColors.current
     val source = remember { MutableInteractionSource() }
-    // 绩点块是卡面上的「第二层贴纸」：浮岛上的那枚数字同样吃一道浮雕与明暗面，
-    // 与左侧 6dp 的周次数字错开一档，读作同一张卡上的两件物体
+    // 绩点块是卡面上的「第二层贴纸」：浮岛上的那枚数字同样吃一道明暗面，
+    // 与左侧 10dp 的周次数字错开一档，读作同一张卡上的两件物体
     val tileModifier =
         Modifier
             .pressScale(source, pressedScale = 0.94f)
@@ -293,7 +280,7 @@ private fun GpaTile(
             text = weightedGpa?.let { String.format(Locale.US, "%.2f", it) } ?: "—",
             fontSize = 20.sp,
             fontWeight = FontWeight.SemiBold,
-            style = TextStyle(brush = valueInk, shadow = valueShadow),
+            style = TextStyle(brush = valueInk),
         )
         if (totalCredits > 0) {
             Text(

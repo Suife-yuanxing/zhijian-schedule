@@ -1,19 +1,17 @@
 package com.zhijian.schedule.core.ui
 
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.Density
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.abs
 
 /**
- * 卡面文字的 3D 深度：视差位移、深度阶梯的偏序、浮雕投影的量纲。
+ * 卡面文字的 3D 深度：视差位移、深度阶梯的偏序、字形明暗面的量纲。
  *
- * 这三条都是"改一个数就会让整张卡看起来变平/变脏"的地方，用纯函数钉住，
+ * 这三条都是"改一个数就会让整张卡看起来变平/变脏/出重影"的地方，用纯函数钉住，
  * 免得以后调参时把层间关系调乱（见 [CardDepth] 的 kdoc）。
  */
 class CardDepthTextTest {
@@ -107,7 +105,7 @@ class CardDepthTextTest {
 
     @Test
     fun `the biggest number floats highest but the chip takes no relief`() {
-        // 「第 9 周」是整卡最大视觉重心 ⇒ 最高层；贴纸自带底色 ⇒ 不叠浮雕（会糊成双边框）
+        // 「第 9 周」是整卡最大视觉重心 ⇒ 最高层；贴纸自带底色 ⇒ 不叠明暗（会糊成双边框）
         assertEquals(10.dp, CardDepthLadder.Hero.depth)
         assertEquals(0f, CardDepthLadder.Chip.relief, 1e-6f)
         assertTrue(CardDepthLadder.Hero.relief >= CardDepthLadder.Title.relief)
@@ -115,37 +113,66 @@ class CardDepthTextTest {
     }
 
     @Test
-    fun `relief shadow scales with relief and stays inside a sane alpha band`() {
-        val density = FakeDensity(2.75f)
-        val ink = Color(0xFF1C1B1F)
-        assertNull(CardDepthLadder.Face.reliefShadow(ink, density))
+    fun `ink bevel is a gradient inside the glyph and never a second outline`() {
+        val base = Color(0xFF1C1B1F)
+        // 贴纸层保持本色：三阶全等 ⇒ 渐变退化成一个颜色，画不出边
+        val flat = CardDepthLadder.Chip.inkVolume(base)
+        assertEquals(base, flat.top)
+        assertEquals(base, flat.mid)
+        assertEquals(base, flat.bottom)
 
-        val hero = CardDepthLadder.Hero.reliefShadow(ink, density)
-        val unit = CardDepthLadder.Unit.reliefShadow(ink, density)
-        assertNotNull(hero)
-        assertNotNull(unit)
-        // 影子的 alpha 必须压在 0.45 以下：字要先读得清，才谈立体
-        assertTrue(hero!!.color.alpha in 0.05f..0.40f)
-        assertTrue(hero.color.alpha > unit!!.color.alpha)
-        // 偏移与模糊都乘过 density：直接喂 dp 在高密度屏上会细到看不见
-        assertTrue(hero.offset.y > 0f)
-        assertTrue(hero.blurRadius > hero.offset.y)
+        val hero = CardDepthLadder.Hero.inkVolume(base)
+        // 上缘比本色亮、下缘比本色暗，中段回落到本色（主色不被抽干）
+        assertTrue(hero.top.luminance() > base.luminance())
+        assertTrue(hero.bottom.luminance() < base.luminance())
+        assertEquals(base, hero.mid)
+        // 明暗是"上亮下暗"单调过渡：反过来就读成字被顶住，立体方向错
+        assertTrue(hero.top.luminance() > hero.mid.luminance())
+        assertTrue(hero.mid.luminance() > hero.bottom.luminance())
     }
 
     @Test
-    fun `dark theme relief is subtler than light`() {
-        val density = FakeDensity(3f)
-        val ink = Color.White
-        val light = CardDepthLadder.Hero.reliefShadow(ink, density, dark = false)!!
-        val dark = CardDepthLadder.Hero.reliefShadow(ink, density, dark = true)!!
-        // 深色主题的卡面本来就接近黑，压重了会显脏：偏移更小、影更淡
-        assertTrue(dark.offset.y < light.offset.y)
-        assertTrue(dark.blurRadius < light.blurRadius)
+    fun `ink bevel scales with relief and stays legible`() {
+        val base = Color(0xFF1C1B1F)
+        val hero = CardDepthLadder.Hero.inkVolume(base)
+        val unit = CardDepthLadder.Unit.inkVolume(base)
+        // 层级越靠前，明暗台阶越大
+        assertTrue(
+            hero.top.luminance() - base.luminance() >
+                unit.top.luminance() - base.luminance(),
+        )
+        // 但台阶都有上限：字要先读得清，才谈立体
+        assertTrue(hero.top.red <= 1f && hero.bottom.red >= 0f)
+        assertTrue(hero.top.alpha == 1f && hero.bottom.alpha == 1f)
     }
 
-    private class FakeDensity(
-        override val density: Float,
-    ) : Density {
-        override val fontScale: Float = 1f
+    @Test
+    fun `dark theme pushes the bevel down instead of up`() {
+        val base = Color(0xFFE6E1E5)
+        val light = CardDepthLadder.Hero.inkVolume(base, dark = false)
+        val dark = CardDepthLadder.Hero.inkVolume(base, dark = true)
+        // 深色主题的卡面本身接近黑：提亮留少一点，压暗多留一点，厚度才读得出来
+        assertTrue(
+            light.top.luminance() - base.luminance() >
+                dark.top.luminance() - base.luminance(),
+        )
+        assertTrue(
+            base.luminance() - dark.bottom.luminance() >
+                base.luminance() - light.bottom.luminance(),
+        )
     }
+
+    @Test
+    fun `relief zero layers produce no bevel at all`() {
+        // Face 层留在卡面：既不位移，也不该有任何明暗台阶
+        val base = Color(0xFF333333)
+        val face = CardDepthLadder.Face.inkVolume(base)
+        assertEquals(base, face.top)
+        assertEquals(base, face.mid)
+        assertEquals(base, face.bottom)
+        // 笔芯退化成纯色：画出来与原色逐通道相等，不存在"看不见的第二层"
+        assertEquals(face.top.toArgb(), face.bottom.toArgb())
+    }
+
+    private fun Color.luminance(): Float = 0.299f * red + 0.587f * green + 0.114f * blue
 }
