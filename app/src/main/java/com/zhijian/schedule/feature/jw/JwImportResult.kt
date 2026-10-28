@@ -65,6 +65,15 @@ internal fun JwPreviewSheet(
             preview.sectionHint()?.let { hint ->
                 Text(text = hint, color = colors.accent, fontSize = 12.sp)
             }
+            // 课表信息不会跟着抓取改，但换学校/学期后旧值会留着，提示用户去核对
+            preview.infoHint?.let { hint ->
+                Text(
+                    text = hint,
+                    color = colors.textMuted,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
             Spacer(Modifier.height(10.dp))
             LazyColumn(Modifier.height(320.dp)) {
                 items(preview.changes) { change ->

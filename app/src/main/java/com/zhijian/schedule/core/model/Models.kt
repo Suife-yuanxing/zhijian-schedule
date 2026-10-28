@@ -67,6 +67,11 @@ data class ImportPreview(
      * 作息不硬编码，抓到的课表写几点就几点。
      */
     val sectionTimes: List<SectionTimeDraft> = emptyList(),
+    /**
+     * 课表信息需要核对的提示。课表信息**不跟随**抓取改写（写坏了周次映射全错），
+     * 但换了学校或学期后旧值会安静地留着，所以抓完提示用户去看一眼。
+     */
+    val infoHint: String? = null,
 ) {
     val addedCount get() = changes.count { it.kind == ImportChangeKind.ADDED }
     val changedCount get() = changes.count { it.kind == ImportChangeKind.CHANGED }

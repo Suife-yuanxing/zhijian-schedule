@@ -27,6 +27,8 @@ data class AppSettings(
     val autoSyncEnabled: Boolean = false,
     val jwUrl: String = "",
     val jwSchool: String = "",
+    /** 上次成功同步时教务地址的主机名；用于判断「是不是换了学校/校区」 */
+    val jwSyncedHost: String = "",
     val lastSyncTime: Long = 0L,
     val calendarSyncEnabled: Boolean = false,
     val capsuleEnabled: Boolean = false,
@@ -55,6 +57,7 @@ class SettingsStore @Inject constructor(
         val AUTO_SYNC = booleanPreferencesKey("auto_sync_enabled")
         val JW_URL = stringPreferencesKey("jw_url")
         val JW_SCHOOL = stringPreferencesKey("jw_school")
+        val JW_SYNCED_HOST = stringPreferencesKey("jw_synced_host")
         val LAST_SYNC = longPreferencesKey("last_sync_time")
         val CALENDAR_SYNC = booleanPreferencesKey("calendar_sync_enabled")
         val CAPSULE = booleanPreferencesKey("capsule_enabled")
@@ -79,6 +82,7 @@ class SettingsStore @Inject constructor(
             autoSyncEnabled = p[Keys.AUTO_SYNC] ?: false,
             jwUrl = p[Keys.JW_URL] ?: "",
             jwSchool = p[Keys.JW_SCHOOL] ?: "",
+            jwSyncedHost = p[Keys.JW_SYNCED_HOST] ?: "",
             lastSyncTime = p[Keys.LAST_SYNC] ?: 0L,
             calendarSyncEnabled = p[Keys.CALENDAR_SYNC] ?: false,
             capsuleEnabled = p[Keys.CAPSULE] ?: false,
@@ -104,7 +108,6 @@ class SettingsStore @Inject constructor(
         it[Keys.JW_URL] = url
         it[Keys.JW_SCHOOL] = school
     }
-    suspend fun setLastSyncTime(time: Long) = dataStore.edit { it[Keys.LAST_SYNC] = time }
     suspend fun setCalendarSync(enabled: Boolean) = dataStore.edit { it[Keys.CALENDAR_SYNC] = enabled }
     suspend fun setCapsule(enabled: Boolean) = dataStore.edit { it[Keys.CAPSULE] = enabled }
     suspend fun setCapsuleAlarmFallback(enabled: Boolean) = dataStore.edit {
@@ -113,6 +116,7 @@ class SettingsStore @Inject constructor(
     suspend fun setGradesFetchedAt(time: Long) = dataStore.edit { it[Keys.GRADES_FETCHED] = time }
     suspend fun setHolidayFetchedAt(time: Long) = dataStore.edit { it[Keys.HOLIDAY_FETCHED] = time }
     suspend fun setMirrorsEnabled(enabled: Boolean) = dataStore.edit { it[Keys.MIRRORS] = enabled }
+
     suspend fun setJwScriptIndexUrl(url: String) =
         dataStore.edit { it[Keys.JW_SCRIPT_INDEX] = url.trim() }
 
@@ -137,4 +141,19 @@ class SettingsStore @Inject constructor(
 
     suspend fun setCalendarFingerprint(value: String) =
         dataStore.edit { it[Keys.CALENDAR_FINGERPRINT] = value }
+
+    /**
+     * 记录一次成功同步：时间 + 教务主机名。
+     *
+     * 主机名单独存是为了判断「这次是不是换了学校」——课表页 URL 带学期参数，
+     * 拿整条比会把同校的正常同步误报成换学校。放在类尾部实现，避免把上面的
+     * 存量方法整体推下去、让 ktlint baseline 的行号集体漂移。
+     */
+    suspend fun setSyncMark(
+        time: Long,
+        host: String,
+    ) = dataStore.edit {
+        it[Keys.LAST_SYNC] = time
+        it[Keys.JW_SYNCED_HOST] = host
+    }
 }

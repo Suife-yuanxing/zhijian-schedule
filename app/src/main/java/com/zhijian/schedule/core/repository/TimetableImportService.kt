@@ -80,7 +80,24 @@ internal class TimetableImportService(
             } else {
                 null
             }
-        return ImportPreview(source, changes, warning, sectionTimes)
+        val infoHint = if (source == ImportSource.JW) auditInfo(tableId) else null
+        return ImportPreview(source, changes, warning, sectionTimes, infoHint)
+    }
+
+    /**
+     * 课表信息核对提示：只在教务抓取时给。
+     *
+     * 学期 / 开学日期 / 总周数是本地元数据，抓取不会改写（写坏了整学期周次映射都会错），
+     * 代价是换学校或学期后旧值会安静地留着。手动导入（CSV / 截图 / 文本）由用户自己挑
+     * 文件，不存在这个问题，不打扰。
+     */
+    private suspend fun auditInfo(tableId: Long): String? {
+        val settings = settingsStore.settings.first()
+        val table = db.timetableDao().getById(tableId)
+        val syncedHost = settings.jwSyncedHost
+        val schoolChanged =
+            syncedHost.isNotBlank() && syncedHost != TimetableInfoAudit.hostOf(settings.jwUrl)
+        return TimetableInfoAudit.audit(table?.semester.orEmpty(), schoolChanged)
     }
 
     /** 同一天同一门课优先按起始节次认，其次按「同名同日」认（节次被挪过的变更） */

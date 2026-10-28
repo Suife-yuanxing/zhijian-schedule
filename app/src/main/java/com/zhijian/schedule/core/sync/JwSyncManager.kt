@@ -14,6 +14,7 @@ import com.zhijian.schedule.core.jw.toEntity
 import com.zhijian.schedule.core.model.ImportPreview
 import com.zhijian.schedule.core.model.ImportSource
 import com.zhijian.schedule.core.repository.ScheduleRepository
+import com.zhijian.schedule.core.repository.TimetableInfoAudit
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.IOException
 import javax.inject.Inject
@@ -92,7 +93,8 @@ class JwSyncManager @Inject constructor(
                         syncMode = syncMode,
                         sectionTimes = fetched.sectionTimes,
                     )
-                settingsStore.setLastSyncTime(System.currentTimeMillis())
+                // 记下这次成功同步的时间与主机：下次抓取若换了学校，预览会提示核对课表信息
+                settingsStore.setSyncMark(System.currentTimeMillis(), TimetableInfoAudit.hostOf(url))
                 Notifications.cancelSyncFailed(context)
                 FetchResult.Success(preview, sectionsUpdated)
             }
