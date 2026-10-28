@@ -43,6 +43,7 @@ internal fun PreviewContent(
     onToggleConflicts: (Boolean) -> Unit,
     onConfirm: () -> Unit,
     onCancel: () -> Unit,
+    sectionHint: String? = null,
 ) {
     val colors = LocalCourseColors.current
     Column(Modifier.fillMaxSize()) {
@@ -60,6 +61,14 @@ internal fun PreviewContent(
             )
             Spacer(Modifier.weight(1f))
             TapTextButton(onClick = onCancel) { Text("重新选择") }
+        }
+        if (sectionHint != null) {
+            Text(
+                text = sectionHint,
+                color = colors.accent,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
+            )
         }
         HorizontalDivider(color = colors.border)
         LazyColumn(Modifier.weight(1f)) {
@@ -96,10 +105,11 @@ internal fun PreviewContent(
         Button(
             onClick = onConfirm,
             interactionSource = confirmSource,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp)
-                .buttonFeedback(confirmSource, pressedScale = 0.97f),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp)
+                    .buttonFeedback(confirmSource, pressedScale = 0.97f),
         ) { Text("确认导入") }
     }
 }
@@ -107,12 +117,13 @@ internal fun PreviewContent(
 @Composable
 internal fun ChangeRow(change: ImportChange) {
     val colors = LocalCourseColors.current
-    val (label, badgeColor) = when (change.kind) {
-        ImportChangeKind.ADDED -> "新增" to Color(0xFF2BB673)
-        ImportChangeKind.CHANGED -> "变更" to Color(0xFFF59E0B)
-        ImportChangeKind.REMOVED -> "取消" to Color(0xFFEF4444)
-        ImportChangeKind.UNCHANGED -> "无变化" to colors.textMuted
-    }
+    val (label, badgeColor) =
+        when (change.kind) {
+            ImportChangeKind.ADDED -> "新增" to Color(0xFF2BB673)
+            ImportChangeKind.CHANGED -> "变更" to Color(0xFFF59E0B)
+            ImportChangeKind.REMOVED -> "取消" to Color(0xFFEF4444)
+            ImportChangeKind.UNCHANGED -> "无变化" to colors.textMuted
+        }
     Row(
         Modifier
             .fillMaxWidth()

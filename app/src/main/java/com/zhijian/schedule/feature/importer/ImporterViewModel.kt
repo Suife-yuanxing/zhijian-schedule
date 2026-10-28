@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.zhijian.schedule.core.jw.SectionTimeDraft
 import com.zhijian.schedule.core.model.CourseDraft
 import com.zhijian.schedule.core.model.ImportPreview
 import com.zhijian.schedule.core.model.ImportSource
@@ -48,6 +49,8 @@ data class OcrReviewState(
     val drafts: List<CourseDraft>,
     val warnings: List<String>,
     val totalWeeks: Int = 20,
+    /** 截图时间轴上读到的作息 */
+    val sectionTimes: List<SectionTimeDraft> = emptyList(),
 )
 
 @HiltViewModel
@@ -167,7 +170,13 @@ class ImporterViewModel @Inject constructor(
                 )
                 return@launch
             }
-            ocrReview = OcrReviewState(result.drafts, warnings + result.warnings, totalWeeks)
+            ocrReview =
+                OcrReviewState(
+                    result.drafts,
+                    warnings + result.warnings,
+                    totalWeeks,
+                    result.sectionTimes,
+                )
             state = ImportUiState.OcrReview
         }
     }
@@ -191,7 +200,13 @@ class ImporterViewModel @Inject constructor(
             return
         }
         viewModelScope.launch {
-            val preview = repository.buildPreview(review.drafts, ImportSource.OCR)
+            // 截图上的时间轴比本地默认作息权威：跟着课表一起更新
+            val preview =
+                repository.buildPreview(
+                    review.drafts,
+                    ImportSource.OCR,
+                    sectionTimes = review.sectionTimes,
+                )
             state = ImportUiState.Preview(preview)
         }
     }
@@ -255,7 +270,12 @@ class ImporterViewModel @Inject constructor(
             state = ImportUiState.Error(result.warnings.firstOrNull() ?: "未解析到课程数据")
             return
         }
-        val preview = repository.buildPreview(result.drafts, source)
+        val preview =
+            repository.buildPreview(
+                result.drafts,
+                source,
+                sectionTimes = result.sectionTimes,
+            )
         state = ImportUiState.Preview(preview)
     }
 

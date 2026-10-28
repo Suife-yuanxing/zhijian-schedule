@@ -222,7 +222,13 @@ class JwImportViewModel @Inject constructor(
                 is JwScriptOutput.ParseResult.Invalid -> errorMessage = out.reason
                 is JwScriptOutput.ParseResult.Ok -> {
                     scriptNotice = out.warnings.takeIf { it.isNotEmpty() }?.joinToString("；")
-                    preview = repository.buildPreview(out.drafts, ImportSource.JW, syncMode = false)
+                    preview =
+                        repository.buildPreview(
+                            out.drafts,
+                            ImportSource.JW,
+                            syncMode = false,
+                            sectionTimes = out.sectionTimes,
+                        )
                 }
             }
         }

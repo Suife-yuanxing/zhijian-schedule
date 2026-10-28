@@ -1,5 +1,6 @@
 package com.zhijian.schedule.feature.importer.ocr
 
+import com.zhijian.schedule.core.jw.SectionTimes
 import com.zhijian.schedule.core.model.CourseDraft
 import com.zhijian.schedule.core.util.WeekMask
 import com.zhijian.schedule.feature.importer.parsers.ParseResult
@@ -28,7 +29,10 @@ object OcrTimetableParser {
         }
         val merged = merge(drafts)
         if (merged.isEmpty() && warnings.isEmpty()) warnings += "没有识别出课程"
-        return ParseResult(merged, warnings = warnings)
+        // 截图上的时间轴比本地写死的作息更可信：左侧时间轴 + 时段头的所有文字都喂给抽取器
+        val texts = pages.flatten().map { it.text }.filter { it.isNotBlank() }
+        val sectionTimes = SectionTimes.fromLines(texts)
+        return ParseResult(merged, warnings = warnings, sectionTimes = sectionTimes)
     }
 
     // ---------- 页面级 ----------

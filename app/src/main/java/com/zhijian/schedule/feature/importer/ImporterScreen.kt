@@ -152,6 +152,7 @@ fun ImporterScreen(
                         onToggleConflicts = { viewModel.updateApplyConflicts(it) },
                         onConfirm = { viewModel.apply() },
                         onCancel = { viewModel.reset() },
+                        sectionHint = s.preview.sectionHint(),
                     )
                     is ImportUiState.Done -> DoneContent(s.summary, onBack)
                     is ImportUiState.Error -> ErrorContent(s.message, onRetry = { viewModel.reset() })

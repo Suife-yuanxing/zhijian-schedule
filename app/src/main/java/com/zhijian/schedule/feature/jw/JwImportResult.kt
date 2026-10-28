@@ -47,9 +47,10 @@ internal fun JwPreviewSheet(
     onApply: () -> Unit,
 ) {
     val colors = LocalCourseColors.current
-    val sheetState = rememberModalBottomSheetState(
-        skipPartiallyExpanded = true,
-    )
+    val sheetState =
+        rememberModalBottomSheetState(
+            skipPartiallyExpanded = true,
+        )
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -61,15 +62,19 @@ internal fun JwPreviewSheet(
                 color = colors.text,
                 fontWeight = FontWeight.SemiBold,
             )
+            preview.sectionHint()?.let { hint ->
+                Text(text = hint, color = colors.accent, fontSize = 12.sp)
+            }
             Spacer(Modifier.height(10.dp))
             LazyColumn(Modifier.height(320.dp)) {
                 items(preview.changes) { change ->
-                    val label = when (change.kind) {
-                        ImportChangeKind.ADDED -> "新增"
-                        ImportChangeKind.CHANGED -> "变更"
-                        ImportChangeKind.REMOVED -> "取消"
-                        ImportChangeKind.UNCHANGED -> "无变化"
-                    }
+                    val label =
+                        when (change.kind) {
+                            ImportChangeKind.ADDED -> "新增"
+                            ImportChangeKind.CHANGED -> "变更"
+                            ImportChangeKind.REMOVED -> "取消"
+                            ImportChangeKind.UNCHANGED -> "无变化"
+                        }
                     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
                         Text(
                             text = label,
@@ -98,9 +103,10 @@ internal fun JwPreviewSheet(
                 Button(
                     onClick = onApply,
                     interactionSource = applySource,
-                    modifier = Modifier
-                        .weight(1f)
-                        .buttonFeedback(applySource, pressedScale = 0.97f),
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .buttonFeedback(applySource, pressedScale = 0.97f),
                 ) {
                     Text("应用变更")
                 }
