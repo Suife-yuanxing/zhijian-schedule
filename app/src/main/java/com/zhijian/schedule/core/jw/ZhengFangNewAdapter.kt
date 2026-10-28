@@ -63,11 +63,11 @@ object ZhengFangNewAdapter : JwAdapter {
         }
     }
 
-    override suspend fun fetch(
+    override suspend fun fetchSchedule(
         client: OkHttpClient,
         baseUrl: String,
         totalWeeks: Int,
-    ): List<CourseDraft> = withContext(Dispatchers.IO) {
+    ): JwFetchResult = withContext(Dispatchers.IO) {
         val base = normalizeBase(baseUrl)
         val referer = "${base}xtgl/index_initMenu.html"
 
@@ -83,7 +83,10 @@ object ZhengFangNewAdapter : JwAdapter {
                 val body = post(client, "${base}$path", "${base}$INDEX_PATH", xnm, xqm)
                 if (isSessionDeadPage(body)) throw JwException.NeedsLogin()
                 val drafts = parseJson(body, totalWeeks)
-                if (drafts.isNotEmpty()) return@withContext drafts
+                if (drafts.isNotEmpty()) {
+                    // kbList 只有节次序号，没有时分；只在课表页 HTML 里出现时间表时才带上
+                    return@withContext JwFetchResult(drafts, SectionTimes.fromHtml(indexHtml))
+                }
                 lastError = "学期 $xnm/$xqm 未返回课程"
             }
         }

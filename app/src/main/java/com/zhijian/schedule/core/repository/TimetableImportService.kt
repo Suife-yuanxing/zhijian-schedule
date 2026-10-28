@@ -2,9 +2,11 @@ package com.zhijian.schedule.core.repository
 
 import androidx.room.withTransaction
 import com.zhijian.schedule.core.data.db.AppDatabase
+import com.zhijian.schedule.core.data.db.CourseEntity
 import com.zhijian.schedule.core.data.db.ImportSnapshotEntity
 import com.zhijian.schedule.core.data.db.SectionTimeEntity
 import com.zhijian.schedule.core.data.prefs.SettingsStore
+import com.zhijian.schedule.core.jw.SectionTimeDraft
 import com.zhijian.schedule.core.model.CourseDraft
 import com.zhijian.schedule.core.model.ImportChange
 import com.zhijian.schedule.core.model.ImportChangeKind
@@ -24,7 +26,6 @@ internal class TimetableImportService(
     private val settingsStore: SettingsStore,
     private val json: Json,
 ) {
-
     /** 当前生效课表 id（activeTableId 失效时回落到第一条）。 */
     suspend fun currentTableId(): Long? {
         val s = settingsStore.settings.first()
@@ -40,6 +41,7 @@ internal class TimetableImportService(
         drafts: List<CourseDraft>,
         source: ImportSource,
         syncMode: Boolean = false,
+        sectionTimes: List<SectionTimeDraft> = emptyList(),
     ): ImportPreview {
         val tableId = currentTableId() ?: return ImportPreview(source, emptyList())
         val totalWeeks = db.timetableDao().getById(tableId)?.totalWeeks ?: 20
@@ -51,84 +53,101 @@ internal class TimetableImportService(
 
         // 教务按大节返回的连堂课先并成一条，预览与落库都不会再拆开
         AdjacentCourseMerge.drafts(drafts, totalWeeks, sectionsFor(tableId)).forEach { normalized ->
-            val exact = existing.firstOrNull {
-                !matchedIds.contains(it.id) &&
-                    it.name == normalized.name &&
-                    it.dayOfWeek == normalized.dayOfWeek &&
-                    it.startSection == normalized.startSection
-            }
-            val overlapped = exact ?: existing.firstOrNull {
-                !matchedIds.contains(it.id) &&
-                    it.name == normalized.name &&
-                    it.dayOfWeek == normalized.dayOfWeek
-            }
-            if (overlapped == null) {
-                changes += ImportChange(
-                    kind = ImportChangeKind.ADDED,
-                    name = normalized.name,
-                    detail = courseSummary(normalized),
-                    draft = normalized,
-                )
-            } else {
-                matchedIds += overlapped.id
-                val same = overlapped.room == normalized.room &&
-                    overlapped.teacher == normalized.teacher &&
-                    overlapped.startSection == normalized.startSection &&
-                    overlapped.endSection == normalized.endSection &&
-                    overlapped.weekMask == normalized.weekMask
-                if (same) {
-                    changes += ImportChange(
-                        kind = ImportChangeKind.UNCHANGED,
-                        name = normalized.name,
-                        detail = "",
-                        existingId = overlapped.id,
-                    )
-                } else {
-                    changes += ImportChange(
-                        kind = ImportChangeKind.CHANGED,
-                        name = normalized.name,
-                        detail = courseDiffLine(overlapped, normalized),
-                        draft = normalized,
-                        existingId = overlapped.id,
-                        conflict = overlapped.manuallyEdited,
-                    )
-                }
-            }
+            val matched = matchExisting(existing, matchedIds, normalized)
+            if (matched != null) matchedIds += matched.id
+            changes += diffOf(normalized, matched)
         }
 
         if (syncMode && !firstJwSync) {
             existing.filter { !matchedIds.contains(it.id) && !it.manuallyEdited }.forEach { old ->
-                changes += ImportChange(
-                    kind = ImportChangeKind.REMOVED,
-                    name = old.name,
-                    detail = courseSummary(old.toDraft()),
-                    existingId = old.id,
-                )
+                changes +=
+                    ImportChange(
+                        kind = ImportChangeKind.REMOVED,
+                        name = old.name,
+                        detail = courseSummary(old.toDraft()),
+                        existingId = old.id,
+                    )
             }
         }
-        val warning = if (syncMode && source == ImportSource.JW) {
-            ImportGuard.evaluate(
-                existingCount = existing.size,
-                addedCount = changes.count { it.kind == ImportChangeKind.ADDED },
-                removedCount = changes.count { it.kind == ImportChangeKind.REMOVED },
-                firstSync = firstJwSync,
+        val warning =
+            if (syncMode && source == ImportSource.JW) {
+                ImportGuard.evaluate(
+                    existingCount = existing.size,
+                    addedCount = changes.count { it.kind == ImportChangeKind.ADDED },
+                    removedCount = changes.count { it.kind == ImportChangeKind.REMOVED },
+                    firstSync = firstJwSync,
+                )
+            } else {
+                null
+            }
+        return ImportPreview(source, changes, warning, sectionTimes)
+    }
+
+    /** 同一天同一门课优先按起始节次认，其次按「同名同日」认（节次被挪过的变更） */
+    private fun matchExisting(
+        existing: List<CourseEntity>,
+        matchedIds: Set<Long>,
+        draft: CourseDraft,
+    ): CourseEntity? {
+        val candidates =
+            existing.filter {
+                it.id !in matchedIds && it.name == draft.name && it.dayOfWeek == draft.dayOfWeek
+            }
+        return candidates.firstOrNull { it.startSection == draft.startSection } ?: candidates.firstOrNull()
+    }
+
+    /** 一门草稿相对本地记录的变更类型与说明 */
+    private fun diffOf(
+        draft: CourseDraft,
+        matched: CourseEntity?,
+    ): ImportChange {
+        if (matched == null) {
+            return ImportChange(
+                kind = ImportChangeKind.ADDED,
+                name = draft.name,
+                detail = courseSummary(draft),
+                draft = draft,
+            )
+        }
+        val same =
+            matched.room == draft.room &&
+                matched.teacher == draft.teacher &&
+                matched.startSection == draft.startSection &&
+                matched.endSection == draft.endSection &&
+                matched.weekMask == draft.weekMask
+        return if (same) {
+            ImportChange(
+                kind = ImportChangeKind.UNCHANGED,
+                name = draft.name,
+                detail = "",
+                existingId = matched.id,
             )
         } else {
-            null
+            ImportChange(
+                kind = ImportChangeKind.CHANGED,
+                name = draft.name,
+                detail = courseDiffLine(matched, draft),
+                draft = draft,
+                existingId = matched.id,
+                conflict = matched.manuallyEdited,
+            )
         }
-        return ImportPreview(source, changes, warning)
     }
 
     /** 应用导入：新增/变更（手动编辑冲突跳过）/取消 */
-    suspend fun applyImport(preview: ImportPreview, applyConflicts: Boolean = false) {
+    suspend fun applyImport(
+        preview: ImportPreview,
+        applyConflicts: Boolean = false,
+    ) {
         val tableId = currentTableId() ?: return
         preview.changes.forEach { change ->
             when (change.kind) {
-                ImportChangeKind.ADDED -> change.draft?.let { d ->
-                    db.courseDao().insert(
-                        d.toEntity(tableId, if (d.color == 0) defaultCourseColor(d.name) else d.color)
-                    )
-                }
+                ImportChangeKind.ADDED ->
+                    change.draft?.let { d ->
+                        db.courseDao().insert(
+                            d.toEntity(tableId, if (d.color == 0) defaultCourseColor(d.name) else d.color),
+                        )
+                    }
                 ImportChangeKind.CHANGED -> {
                     if (change.conflict && !applyConflicts) return@forEach
                     val draft = change.draft ?: return@forEach
@@ -141,13 +160,15 @@ internal class TimetableImportService(
                             startSection = draft.startSection,
                             endSection = draft.endSection,
                             weekMask = draft.weekMask,
-                        )
+                        ),
                     )
                 }
                 ImportChangeKind.REMOVED -> change.existingId?.let { db.courseDao().deleteById(it) }
                 ImportChangeKind.UNCHANGED -> Unit
             }
         }
+        // 作息跟着课表一起变：来源写了时间就以来源为准（不硬编码）
+        applySectionTimes(preview)
         // 手动导入不会清理旧记录：把新旧数据里残留的连堂课再归并一次
         mergeAdjacentCourses(tableId)
         val drafts = preview.changes.mapNotNull { it.draft }
@@ -180,19 +201,56 @@ internal class TimetableImportService(
     }
 
     /** 保存导入快照，只保留最近 20 份。 */
-    suspend fun saveSnapshot(source: ImportSource, drafts: List<CourseDraft>) {
+    suspend fun saveSnapshot(
+        source: ImportSource,
+        drafts: List<CourseDraft>,
+    ) {
         val tableId = currentTableId() ?: return
         db.importSnapshotDao().insert(
             ImportSnapshotEntity(
                 tableId = tableId,
                 payload = json.encodeToString(drafts),
                 source = source.name,
-            )
+            ),
         )
         // 只保留最近 20 份快照
         val keep = db.importSnapshotDao().keepLatest(tableId, 20)
         if (keep.isNotEmpty()) {
             db.importSnapshotDao().deleteExcept(tableId, keep.map { it.id })
+        }
+    }
+
+    /**
+     * 把预览里来源带的作息写进当前课表；来源没带时间就原样保留用户的作息。
+     */
+    suspend fun applySectionTimes(preview: ImportPreview) {
+        val incoming = preview.sectionTimes
+        if (incoming.isEmpty()) return
+        val tableId = currentTableId()
+        val mode = tableId?.let { db.timeModeDao().getPrimaryMode(it) }
+        if (mode != null) {
+            val current = db.timeModeDao().getSections(mode.id)
+            val neededEnd = preview.changes.mapNotNull { it.draft?.endSection }.maxOrNull() ?: 0
+            SectionTimePlan.plan(current, incoming, neededEnd)?.let { plan ->
+                writeSections(current, plan)
+            }
+        }
+    }
+
+    /** 更新已有小节、补齐新增小节（作息比本地更长时） */
+    private suspend fun writeSections(
+        current: List<SectionTimeEntity>,
+        plan: List<SectionTimeEntity>,
+    ) {
+        val existing = current.mapTo(HashSet()) { it.sectionNo }
+        db.withTransaction {
+            plan.forEach { section ->
+                if (section.sectionNo in existing) {
+                    db.timeModeDao().updateSection(section)
+                } else {
+                    db.timeModeDao().insertSections(listOf(section))
+                }
+            }
         }
     }
 

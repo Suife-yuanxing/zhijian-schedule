@@ -8,9 +8,9 @@ import com.zhijian.schedule.core.jw.GradeFetcher
 import com.zhijian.schedule.core.jw.JwAdapter
 import com.zhijian.schedule.core.jw.JwAdapterRegistry
 import com.zhijian.schedule.core.jw.JwException
+import com.zhijian.schedule.core.jw.JwFetchResult
 import com.zhijian.schedule.core.jw.QiangZhiAdapter
 import com.zhijian.schedule.core.jw.toEntity
-import com.zhijian.schedule.core.model.CourseDraft
 import com.zhijian.schedule.core.model.ImportPreview
 import com.zhijian.schedule.core.model.ImportSource
 import com.zhijian.schedule.core.repository.ScheduleRepository
@@ -38,7 +38,11 @@ class JwSyncManager @Inject constructor(
 ) {
 
     sealed interface FetchResult {
-        data class Success(val preview: ImportPreview) : FetchResult
+        /** [sectionsUpdated] 表示本次抓取顺带改写了作息时间 */
+        data class Success(
+            val preview: ImportPreview,
+            val sectionsUpdated: Boolean = false,
+        ) : FetchResult
         data class Failed(
             val message: String,
             val needsLogin: Boolean = false,
@@ -67,15 +71,30 @@ class JwSyncManager @Inject constructor(
                         "可先用 Excel / CSV 导入",
                     retryable = false,
                 )
-            val drafts = fetchWithRetry(adapter, url, totalWeeks)
+            val fetched = fetchWithRetry(adapter, url, totalWeeks)
+            val drafts = fetched.courses
             if (drafts.isEmpty()) {
                 FetchResult.Failed("未解析到课程数据，请确认已进入课表页面")
             } else {
                 if (adapter.id == QiangZhiAdapter.id) syncGradesBestEffort(url)
-                val preview = repository.buildPreview(drafts, ImportSource.JW, syncMode = syncMode)
+                // 手动抓取：作息随预览走，用户确认导入时才落库（取消就什么都不改）
+                // 自动同步：没有确认环节，抓到即应与课表一起生效
+                val sectionsUpdated =
+                    if (syncMode) {
+                        repository.applySectionTimes(fetched.sectionTimes, drafts)
+                    } else {
+                        fetched.sectionTimes.isNotEmpty()
+                    }
+                val preview =
+                    repository.buildPreview(
+                        drafts,
+                        ImportSource.JW,
+                        syncMode = syncMode,
+                        sectionTimes = fetched.sectionTimes,
+                    )
                 settingsStore.setLastSyncTime(System.currentTimeMillis())
                 Notifications.cancelSyncFailed(context)
-                FetchResult.Success(preview)
+                FetchResult.Success(preview, sectionsUpdated)
             }
         } catch (e: JwException.NeedsLogin) {
             FetchResult.Failed(e.message ?: "会话已过期", needsLogin = true)
@@ -94,11 +113,11 @@ class JwSyncManager @Inject constructor(
         adapter: JwAdapter,
         url: String,
         totalWeeks: Int,
-    ): List<CourseDraft> {
+    ): JwFetchResult {
         var last: Exception? = null
         repeat(FETCH_ATTEMPTS) { attempt ->
             try {
-                return adapter.fetch(client, url, totalWeeks)
+                return adapter.fetchSchedule(client, url, totalWeeks)
             } catch (e: JwException.NeedsLogin) {
                 throw e
             } catch (e: JwException.NetworkFailed) {

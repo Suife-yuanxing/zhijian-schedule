@@ -70,11 +70,11 @@ object Eams5Adapter : JwAdapter {
     }
 
     @Suppress("SwallowedException")
-    override suspend fun fetch(
+    override suspend fun fetchSchedule(
         client: OkHttpClient,
         baseUrl: String,
         totalWeeks: Int,
-    ): List<CourseDraft> =
+    ): JwFetchResult =
         withContext(Dispatchers.IO) {
             val base = normalizeBase(baseUrl)
             val pageUrl = courseTableUrl(baseUrl, base)
@@ -86,14 +86,17 @@ object Eams5Adapter : JwAdapter {
                 }
             if (isLoginPage(page)) throw JwException.NeedsLogin()
 
+            // eams5 的时间信息跟课表格子在同一份 HTML 里，随每一条路一起带回来
             val draft = fetchByPrintData(client, base, page, totalWeeks)
-            if (draft.isNotEmpty()) return@withContext draft
+            if (draft.courses.isNotEmpty()) return@withContext draft
 
             val byDatum = fetchByDatum(client, base, page, totalWeeks)
-            if (byDatum.isNotEmpty()) return@withContext byDatum
+            if (byDatum.courses.isNotEmpty()) return@withContext byDatum
 
             val inline = HtmlTableScheduleParser.parse(page, totalWeeks)
-            if (inline.isNotEmpty()) return@withContext inline
+            if (inline.isNotEmpty()) {
+                return@withContext JwFetchResult(inline, SectionTimes.fromHtml(page))
+            }
 
             throw JwException.ParseFailed(
                 "eams5 未返回可解析的课表：请先在网页中进入「我的课表」再导入",
@@ -107,16 +110,16 @@ object Eams5Adapter : JwAdapter {
         base: String,
         page: String,
         totalWeeks: Int,
-    ): List<CourseDraft> {
-        val ids = idsOf(page) ?: return emptyList()
+    ): JwFetchResult {
+        val ids = idsOf(page) ?: return JwFetchResult(emptyList())
         val url = "${base}for-std/course-table/print-data/${ids.second}/${ids.first}"
         val body =
             try {
                 get(client, url, base)
             } catch (e: IOException) {
-                return emptyList()
+                return JwFetchResult(emptyList())
             }
-        return parsePayload(body, totalWeeks)
+        return parsePayloadWithTimes(body, totalWeeks)
     }
 
     /** 第三段兜底：`get-data` 拿 lessonIds，再 POST `datum` 取课表文本 */
@@ -126,10 +129,34 @@ object Eams5Adapter : JwAdapter {
         base: String,
         page: String,
         totalWeeks: Int,
-    ): List<CourseDraft> {
-        val ids = idsOf(page) ?: return emptyList()
-        val body = datumBody(client, base, ids) ?: return emptyList()
-        return parsePayload(body, totalWeeks)
+    ): JwFetchResult {
+        val ids = idsOf(page) ?: return JwFetchResult(emptyList())
+        val body = datumBody(client, base, ids) ?: return JwFetchResult(emptyList())
+        return parsePayloadWithTimes(body, totalWeeks)
+    }
+
+    /** 同 [parsePayload]，但同时把 HTML 里的时间文字抽成作息 */
+    private fun parsePayloadWithTimes(
+        body: String,
+        totalWeeks: Int,
+    ): JwFetchResult {
+        val drafts = parsePayload(body, totalWeeks)
+        if (drafts.isEmpty()) return JwFetchResult(emptyList())
+        val htmlBlocks = htmlFragmentsOf(body) + body
+        val times =
+            htmlBlocks
+                .firstNotNullOfOrNull { html ->
+                    SectionTimes.fromHtml(html).takeIf { it.isNotEmpty() }
+                }.orEmpty()
+        return JwFetchResult(drafts, times)
+    }
+
+    /** JSON 信封里内嵌的 HTML 片段；不是 JSON 时返回空，交给调用方用原文 */
+    private fun htmlFragmentsOf(body: String): List<String> {
+        val trimmed = body.trimStart()
+        if (!trimmed.startsWith(JSON_OBJECT) && !trimmed.startsWith(JSON_ARRAY)) return emptyList()
+        val root = runCatching { Json.parseToJsonElement(body) as? JsonObject }.getOrNull() ?: return emptyList()
+        return htmlStrings(root)
     }
 
     /** `get-data` 取 lessonIds，再 POST `datum`；任一步失败返回 null，交给上层的页面兜底 */

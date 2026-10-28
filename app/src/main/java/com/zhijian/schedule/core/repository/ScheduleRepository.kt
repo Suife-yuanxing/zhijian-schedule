@@ -9,6 +9,8 @@ import com.zhijian.schedule.core.data.db.TimeModeEntity
 import com.zhijian.schedule.core.data.db.TimetableEntity
 import com.zhijian.schedule.core.data.prefs.AppSettings
 import com.zhijian.schedule.core.data.prefs.SettingsStore
+import com.zhijian.schedule.core.jw.SectionTimeDraft
+import com.zhijian.schedule.core.jw.SectionTimes
 import com.zhijian.schedule.core.model.CourseDraft
 import com.zhijian.schedule.core.model.ExamDraft
 import com.zhijian.schedule.core.model.ImportPreview
@@ -149,6 +151,42 @@ class ScheduleRepository @Inject constructor(
 
     suspend fun updateSectionTime(section: SectionTimeEntity) = db.timeModeDao().updateSection(section)
 
+    /**
+     * 用来源（教务页面 / 截图 / 日历）带回来的上课时间重建当前课表的作息。
+     *
+     * 作息不再硬编码：抓到什么时间就用什么时间。页面没给的节次保留本地值，
+     * 课程用到但两处都没有的节次按上一个小节顺推补齐。
+     *
+     * @param incoming 来源带的作息；为空表示来源没有时间信息，直接返回 false
+     * @param drafts 即将落库的课程，决定至少要多少个小节
+     * @return true 表示作息被改写
+     */
+    suspend fun applySectionTimes(
+        incoming: List<SectionTimeDraft>,
+        drafts: List<CourseDraft> = emptyList(),
+    ): Boolean {
+        if (incoming.isEmpty()) return false
+        val tableId = currentTableId() ?: return false
+        val mode = db.timeModeDao().getPrimaryMode(tableId) ?: return false
+        val current = db.timeModeDao().getSections(mode.id)
+        val neededEnd = drafts.maxOfOrNull { it.endSection } ?: 0
+        val plan = SectionTimePlan.plan(current, incoming, neededEnd) ?: return false
+        if (plan.map { it.startTime to it.endTime } == current.map { it.startTime to it.endTime }) {
+            return false
+        }
+        db.withTransaction {
+            val existing = current.associateBy { it.sectionNo }
+            plan.forEach { section ->
+                if (existing[section.sectionNo] != null) {
+                    db.timeModeDao().updateSection(section)
+                } else {
+                    db.timeModeDao().insertSections(listOf(section))
+                }
+            }
+        }
+        return true
+    }
+
     // ---------- 考试 ----------
 
     /** 手动保存考试；新建或编辑均视为手动，教务同步永不覆盖 */
@@ -211,7 +249,8 @@ class ScheduleRepository @Inject constructor(
         drafts: List<CourseDraft>,
         source: ImportSource,
         syncMode: Boolean = false,
-    ): ImportPreview = importer.buildPreview(drafts, source, syncMode)
+        sectionTimes: List<SectionTimeDraft> = emptyList(),
+    ): ImportPreview = importer.buildPreview(drafts, source, syncMode, sectionTimes)
 
     /** 应用导入结果；实现见 [TimetableImportService.applyImport]。 */
     suspend fun applyImport(preview: ImportPreview, applyConflicts: Boolean = false) =
@@ -222,33 +261,21 @@ class ScheduleRepository @Inject constructor(
         importer.saveSnapshot(source, drafts)
 
     companion object {
-        /** 默认作息（方案 4.9 ②）：45+5+45 */
-        fun defaultSections(modeId: Long): List<SectionTimeEntity> {
-            val times = listOf(
-                // 大节 1
-                Triple(1, "08:20", "09:05"), Triple(2, "09:10", "09:55"),
-                // 大节 2
-                Triple(3, "10:10", "10:55"), Triple(4, "11:00", "11:45"),
-                // 大节 3
-                Triple(5, "14:20", "15:05"), Triple(6, "15:10", "15:55"),
-                // 大节 4
-                Triple(7, "16:05", "16:50"), Triple(8, "16:55", "17:40"),
-                // 大节 5
-                Triple(9, "18:20", "19:05"), Triple(10, "19:10", "19:55"),
-                // 大节 6
-                Triple(11, "20:00", "20:45"), Triple(12, "20:50", "21:35"),
-            )
-            return times.map { (no, start, end) ->
-                val period = (no + 1) / 2
+        /**
+         * 首次建表时的初始作息。数字来自 [SectionTimes.defaults]，
+         * 与截图识别、教务抓取共用同一套拆分规则，这里不再另抄一份时间表。
+         */
+        fun defaultSections(modeId: Long): List<SectionTimeEntity> =
+            SectionTimes.defaults().map { draft ->
+                val period = (draft.sectionNo - 1) / SectionTimes.SECTIONS_PER_PERIOD + 1
                 SectionTimeEntity(
                     modeId = modeId,
-                    sectionNo = no,
+                    sectionNo = draft.sectionNo,
                     periodNo = period,
                     session = if (period <= 2) "AM" else "PM",
-                    startTime = start,
-                    endTime = end,
+                    startTime = draft.startTime,
+                    endTime = draft.endTime,
                 )
             }
-        }
     }
 }

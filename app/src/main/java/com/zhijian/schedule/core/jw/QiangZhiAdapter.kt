@@ -54,11 +54,11 @@ object QiangZhiAdapter : JwAdapter {
     override fun ssoEntry(baseUrl: String): String? =
         runCatching { "${normalizeBase(baseUrl)}sso.jsp" }.getOrNull()
 
-    override suspend fun fetch(
+    override suspend fun fetchSchedule(
         client: OkHttpClient,
         baseUrl: String,
         totalWeeks: Int,
-    ): List<CourseDraft> = withContext(Dispatchers.IO) {
+    ): JwFetchResult = withContext(Dispatchers.IO) {
         try {
             fetchCourses(client, baseUrl, totalWeeks)
         } catch (e: JwException.NeedsLogin) {
@@ -72,7 +72,7 @@ object QiangZhiAdapter : JwAdapter {
         client: OkHttpClient,
         baseUrl: String,
         totalWeeks: Int,
-    ): List<CourseDraft> = withContext(Dispatchers.IO) {
+    ): JwFetchResult = withContext(Dispatchers.IO) {
         val base = normalizeBase(baseUrl)
         val referer = "${base}framework/xsMain.jsp"
         val candidates = listOf(
@@ -91,7 +91,9 @@ object QiangZhiAdapter : JwAdapter {
             }
             if (isLoginPage(html)) throw JwException.NeedsLogin()
             val drafts = parse(html, totalWeeks)
-            if (drafts.isNotEmpty()) return@withContext drafts
+            if (drafts.isNotEmpty()) {
+                return@withContext JwFetchResult(drafts, SectionTimes.fromHtml(html))
+            }
             lastError = "未在页面中找到课表数据"
         }
         throw JwException.ParseFailed("抓取失败：${lastError ?: "页面结构不匹配"}")

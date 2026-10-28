@@ -74,11 +74,11 @@ object UrpAdapter : JwAdapter {
         }
     }
 
-    override suspend fun fetch(
+    override suspend fun fetchSchedule(
         client: OkHttpClient,
         baseUrl: String,
         totalWeeks: Int,
-    ): List<CourseDraft> =
+    ): JwFetchResult =
         withContext(Dispatchers.IO) {
             val referer = refererOf(baseUrl)
             val targets = targetsOf(baseUrl)
@@ -95,7 +95,9 @@ object UrpAdapter : JwAdapter {
                     }
                 if (isLoginPage(body)) throw JwException.NeedsLogin()
                 val drafts = parseBody(body, totalWeeks)
-                if (drafts.isNotEmpty()) return@withContext drafts
+                if (drafts.isNotEmpty()) {
+                    return@withContext JwFetchResult(drafts, SectionTimes.fromHtml(body))
+                }
                 lastError = "未解析到课程：$target"
             }
             throw JwException.ParseFailed(

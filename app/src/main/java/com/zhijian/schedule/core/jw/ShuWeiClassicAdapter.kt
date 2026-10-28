@@ -1,6 +1,5 @@
 package com.zhijian.schedule.core.jw
 
-import com.zhijian.schedule.core.model.CourseDraft
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl
@@ -61,11 +60,11 @@ object ShuWeiClassicAdapter : JwAdapter {
         }
     }
 
-    override suspend fun fetch(
+    override suspend fun fetchSchedule(
         client: OkHttpClient,
         baseUrl: String,
         totalWeeks: Int,
-    ): List<CourseDraft> =
+    ): JwFetchResult =
         withContext(Dispatchers.IO) {
             val base = normalizeBase(baseUrl)
             val referer = "${base}coursetable/courseTableForStd!index.action"
@@ -83,7 +82,9 @@ object ShuWeiClassicAdapter : JwAdapter {
                     }
                 if (isLoginPage(html)) throw JwException.NeedsLogin()
                 val drafts = HtmlTableScheduleParser.parse(html, totalWeeks)
-                if (drafts.isNotEmpty()) return@withContext drafts
+                if (drafts.isNotEmpty()) {
+                    return@withContext JwFetchResult(drafts, SectionTimes.fromHtml(html))
+                }
                 lastError = "未找到课表表格：$url"
             }
             throw JwException.ParseFailed(

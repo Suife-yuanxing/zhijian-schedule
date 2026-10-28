@@ -1,10 +1,13 @@
 package com.zhijian.schedule.core.jw.script
 
+import com.zhijian.schedule.core.jw.SectionTimeDraft
+import com.zhijian.schedule.core.jw.SectionTimes
 import com.zhijian.schedule.core.jw.ZhengFangNewAdapter
 import com.zhijian.schedule.core.model.CourseDraft
 import com.zhijian.schedule.core.util.WeekMask
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
@@ -22,12 +25,19 @@ object JwScriptOutput {
             val drafts: List<CourseDraft>,
             val totalWeeks: Int?,
             val warnings: List<String>,
+            /** 脚本可选返回的作息时间；空表示该教务页没有时间信息 */
+            val sectionTimes: List<SectionTimeDraft> = emptyList(),
         ) : ParseResult
 
         data class Invalid(val reason: String) : ParseResult
     }
 
     private val json = Json { ignoreUnknownKeys = true }
+    private const val MAX_HOUR = 23
+    private const val MAX_MINUTE = 59
+
+    /** 分钟允许一位：脚本作者常写 "9:5"，等同于 "09:05" */
+    private val CLOCK = Regex("""^(\d{1,2})\s*[:：]\s*(\d{1,2})$""")
 
     fun parse(raw: String, totalWeeks: Int): ParseResult {
         val root = runCatching { json.parseToJsonElement(raw).jsonObject }.getOrNull()
@@ -56,7 +66,57 @@ object JwScriptOutput {
             drafts = ZhengFangNewAdapter.mergeDuplicates(drafts),
             totalWeeks = root.totalWeeksOrNull(),
             warnings = warnings,
+            sectionTimes = sectionTimesOf(root, warnings),
         )
+    }
+
+    /**
+     * 脚本可选字段 `sectionTimes: [{section, start, end}]`：逐条校验后使用，
+     * 坏条目丢弃并计 warning；全坏等于「脚本没给作息」，不改用户现有设置。
+     */
+    private fun sectionTimesOf(
+        root: JsonObject,
+        warnings: MutableList<String>,
+    ): List<SectionTimeDraft> {
+        val array = root["sectionTimes"] as? JsonArray ?: return emptyList()
+        val out = mutableListOf<SectionTimeDraft>()
+        array.forEachIndexed { i, el ->
+            val slot = slotOf(el, i + 1, warnings)
+            if (slot != null) out += slot
+        }
+        return out.sortedBy { it.sectionNo }
+    }
+
+    /** 单条作息（序号 + 起止）；任一项不合法返回 null 并记 warning */
+    private fun slotOf(
+        el: JsonElement,
+        ordinal: Int,
+        warnings: MutableList<String>,
+    ): SectionTimeDraft? {
+        val obj = el as? JsonObject
+        val no = obj?.let { it.intAt("section") ?: it.intAt("sectionNo") }
+        val start = obj?.let { normalizeClock(it.str("start").ifBlank { it.str("startTime") }) }
+        val end = obj?.let { normalizeClock(it.str("end").ifBlank { it.str("endTime") }) }
+        val valid =
+            no != null &&
+                start != null &&
+                end != null &&
+                no in 1..SectionTimes.MAX_SECTIONS &&
+                start < end
+        if (!valid) {
+            warnings += "作息第 $ordinal 条格式不对，已跳过"
+            return null
+        }
+        return SectionTimeDraft(no, start, end)
+    }
+
+    /** `8:5` / `08：05` 统一成 `08:05`；非法返回 null */
+    private fun normalizeClock(raw: String): String? {
+        val m = CLOCK.find(raw.trim()) ?: return null
+        val h = m.groupValues[1].toIntOrNull() ?: return null
+        val min = m.groupValues[2].toIntOrNull() ?: return null
+        if (h !in 0..MAX_HOUR || min !in 0..MAX_MINUTE) return null
+        return "%02d:%02d".format(h, min)
     }
 
     private fun JsonObject.totalWeeksOrNull(): Int? =

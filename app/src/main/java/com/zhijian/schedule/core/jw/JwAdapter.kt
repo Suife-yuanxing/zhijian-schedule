@@ -44,14 +44,25 @@ interface JwAdapter {
     fun ssoEntry(baseUrl: String): String? = null
 
     /**
-     * 抓取并解析为标准课程列表；未登录时抛 [JwException.NeedsLogin]。
+     * 抓取课表，连同页面里写着的作息时间一起返回；未登录时抛 [JwException.NeedsLogin]。
+     *
+     * 作息是教务自己的排课时间，比本地默认值权威，所以顺手带回；
+     * 页面没有时间文字时 [JwFetchResult.sectionTimes] 为空，表示「没法更新」。
+     *
      * @param baseUrl 用户在 WebView 中登录的教务入口地址
      */
+    suspend fun fetchSchedule(
+        client: OkHttpClient,
+        baseUrl: String,
+        totalWeeks: Int,
+    ): JwFetchResult
+
+    /** 只要课程列表的旧调用面；实现见各适配器的 [fetchSchedule]。 */
     suspend fun fetch(
         client: OkHttpClient,
         baseUrl: String,
         totalWeeks: Int,
-    ): List<CourseDraft>
+    ): List<CourseDraft> = fetchSchedule(client, baseUrl, totalWeeks).courses
 }
 
 sealed class JwException(
