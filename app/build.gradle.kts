@@ -128,7 +128,7 @@ ktlint {
     // 版本显式钉死，避免将来升级 Gradle 插件时 ktlint 规则集跟着漂移：
     // 插件升级与规则升级必须分成两次可 review 的改动（14.2.0 的默认值就是 1.5.0）。
     version.set("1.5.0")
-    // 现有 180 个 .kt 的历史违例冻结在 baseline 中；新增代码违规会 fail。
+    // 现有 300 个 .kt 的历史违例（3551 条）冻结在 baseline 中；新增代码违规会 fail。
     baseline.set(rootProject.file("config/ktlint/baseline.xml"))
     // 报告与 baseline 里的文件路径一律用"相对仓库根"的形式。
     // 这一行是跨机器可用的前提：本机仓库路径是 D:\课程表（含中文），

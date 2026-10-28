@@ -1,0 +1,27 @@
+# =============================================================================
+#  换行符归属：只钉死「工具链自己解析」的两个文件，其余一律交给 git core.autocrlf
+#
+#  为什么不写 * text=auto 或 *.kt text：
+#   · 本仓库 index 侧已 100% 是 LF、工作区混存（见 .editorconfig 里 end_of_line 一节），
+#     再全局声明 text 会触发一次全仓 renormalize，产出成千上万行「只有换行符不同」的
+#     diff，把 blame 冲掉。收益为零，代价很大。
+#   · 真正会因换行符出错的只有两个壳脚本：
+#       gradlew      POSIX sh，CRLF 会让内核把 \r 当成解释器路径的一部分 →
+#                    `./gradlew: /bin/sh^M: bad interpreter`（Windows 本地 Git Bash 常见）
+#       gradlew.bat  cmd.exe 解析 .bat，LF-only 在带 label/goto 的脚本上有已知坑
+#     这两条各自显式声明，行为可预测，且不影响任何 Kotlin/文档文件。
+# =============================================================================
+
+gradlew      text eol=lf
+gradlew.bat  text eol=crlf
+
+# 二进制资源：不做文本化处理，diff 直接显示为 Binary files
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.webp  binary
+*.jks   binary
+*.keystore binary
+*.jar   binary
+*.apk   binary
+*.aab   binary

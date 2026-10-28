@@ -18,10 +18,15 @@ insert_final_newline = true
 trim_trailing_whitespace = true
 
 # max_line_length = 120 的取舍（实测数据，不是拍的）：
-#   · 现状：180 个 .kt 里，超 120 列的行 455 行（涉及 144 个文件），超 100 列的行 1679 行。
+#   · 现状（2026-10-29 按**字符数**重测，300 个已入库 .kt / 42944 行）：
+#     超 120 列 31 行（涉及 19 个文件），超 100 列 367 行；
+#     其中一部分已冻结在 config/ktlint/baseline.xml 的 max-line-length，
+#     剩余随改动顺手收敛，新增超长行仍会 fail。
 #   · Kotlin 官方编码规范给的上限是 120；Android Studio 的 Android 风格建议 100。
-#     这里取 120，与 ktlint_official 的默认一致，避免"文档说 120、工具说 100"的双标准，
-#     也避免为了 100 去动 1200+ 行与逻辑无关的换行（那是另一种形式的噪音）。
+#     这里取 120，与 ktlint_official 的默认一致，避免"文档说 120、工具说 100"的双标准。
+#   · 统计口径的坑（曾经踩过）：别用 grep -P "^.{121,}$" 数超长行——它按**字节**计宽，
+#     40 个汉字（=120 字节）的注释行会被算成超长，于是数出「几百行超长」这种假数字。
+#     复核请用按字符计数的脚本（len(line)），不要相信 grep 的字节计数。
 #   · 代价：120 列在双栏 diff / 窄屏审阅时偏长，长表达式仍可能截断阅读体验。
 #     若将来要收紧到 100：一次性跑 `./gradlew ktlintFormat` 并**重新生成 baseline**
 #     （见 config/ktlint/baseline.xml 顶部说明），不要留下半新半旧的缩进。
@@ -32,20 +37,23 @@ max_line_length = 120
 #
 #   1) 本仓库 git core.autocrlf=true（**仓库级**配置，不是全局）。检出时 git 把 index 里的
 #      LF 写成工作区 CRLF，入库时再把 CRLF 归一化回 LF。
-#      实测 `git ls-files --eol`：99 个文件 w/crlf、136 个 w/lf、1 个 w/mixed ——
+#      实测 `git ls-files --eol`（2026-10-29）：255 个 w/crlf、137 个 w/lf、
+#      13 个 w/-text（二进制 png/jks 等）——
 #      工作区里换行符本来就是混存的，而 index 侧 100% 是 i/lf，所以 `git status` 干净：
 #      "混存"在当前配置下是正常且零 diff 的状态。
 #   2) 一旦在这里写死 end_of_line = lf（或 crlf），编辑器与格式化器会按该值整体重写文件正文，
 #      产出成千上万行"只有换行符不同"的 diff，污染 blame、淹没真实改动。
 #      更糟的是它与 autocrlf 互相抵消后，同一份代码在 `git checkout` 前后会得到相反的
 #      lint 结论 —— 今天绿、明天红的抖动。baseline 也会随之反复失效。
-#   3) 仓库当前没有 .gitattributes。在不改 git 配置、也不做 `git add --renormalize` 的前提下，
-#      "不表态"是唯一既不批量改写工作区、也不污染历史的选项。
+#   3) 仓库已有 .gitattributes（2026-10-29 补），但它**只钉死两个 wrapper 脚本**
+#      （gradlew=eol:lf、gradlew.bat=eol:crlf）与二进制标记，没有写 `* text=auto`：
+#      后者会触发一次全仓 renormalize，产出成千上万行只有换行符不同的 diff。
+#      换句话说，源码与文档的换行符**仍然**由 core.autocrlf 管，EditorConfig 照样不表态。
 #
-#   结论：换行符统一交给 git core.autocrlf 管理，EditorConfig 不越权。
-#   将来若要显式锁定，正确顺序是**另起一次改动**：
-#     先加 .gitattributes（* text=auto eol=lf）→ 跑一次 renormalize 提交 →
-#     再回到这里补 end_of_line = lf。别和本次基建混做（唯一的例外见下方 *.bat）。
+#   结论：换行符统一交给 git core.autocrlf（+ .gitattributes 的两个例外）管理，
+#   EditorConfig 不越权。将来若要全仓锁定 eol=lf，正确顺序是**另起一次改动**：
+#     在 .gitattributes 加 `* text=auto eol=lf` → 跑一次 renormalize 提交 →
+#     再回到这里补 end_of_line = lf。别和日常改动混做。
 # -----------------------------------------------------------------------------
 
 # -----------------------------------------------------------------------------
@@ -90,11 +98,15 @@ trim_trailing_whitespace = true
 end_of_line = crlf
 
 # -----------------------------------------------------------------------------
-# 数据/资源文件不做缩进与尾空格规整的外科手术式豁免
+# 生成物豁免：只在「人工编辑不会产生收益」的地方让规则退让
 # -----------------------------------------------------------------------------
-[*.{json,jsonc}]
-insert_final_newline = true
+# Room 导出的 schema（app/schemas/**/*.json）由 KSP 生成，结尾不带换行：
+# 编辑器若照全局规则补一个尾换行，下次构建 KSP 重写又抹掉，形成永久的抖动 diff。
+# 这里显式对齐生成器的真实输出，规则与工具不再互相打脸。
+[app/schemas/**/*.json]
+insert_final_newline = false
 
+# 二进制资源不做文本规整（缩进 / 尾空格 / 尾换行都无意义）
 [*.{png,jpg,jpeg,gif,webp,jar,zip,keystore,jks,apk,aab}]
 insert_final_newline = false
 trim_trailing_whitespace = false

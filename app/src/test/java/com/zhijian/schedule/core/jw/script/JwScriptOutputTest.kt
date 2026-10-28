@@ -1,4 +1,4 @@
-﻿package com.zhijian.schedule.core.jw.script
+package com.zhijian.schedule.core.jw.script
 
 import com.zhijian.schedule.core.util.WeekMask
 import org.junit.Assert.assertEquals

@@ -96,8 +96,8 @@ subst Z: /D          # 用完解除映射
 三条必须知道的机制（读配置即可确认，不要当成 bug）：
 
 1. **存量放行、增量拦截**：历史违例冻结在 `config/ktlint/baseline.xml` 与 `config/detekt/baseline.xml` 里；**新增或被修改的文件一旦违规，任务立即失败**。所以不要往 baseline 里加豁免，那等于把违规合法化。要整体收紧规则时重新生成 baseline：`./gradlew ktlintGenerateBaseline` / `./gradlew detektBaseline`。
-2. **`max_line_length = 120`**：与 ktlint 官方风格默认值一致（实测仓库里有 455 行超过 120 列，收紧到 100 会引入上千行与逻辑无关的换行）。
-3. **`.editorconfig` 故意不设 `end_of_line`**：本仓库 `core.autocrlf=true`，工作区换行符混存（`git ls-files --eol` 可见 w/crlf 与 w/lf 并存）而 index 侧全是 LF，属于正常状态；写死该值会让编辑器整体重写文件，产出海量无意义 diff。
+2. **`max_line_length = 120`**：与 ktlint 官方风格默认值一致（2026-10-29 按字符数重测：300 个 `.kt` / 42944 行里，超 120 列只剩 31 行、涉及 19 个文件；超 100 列 367 行）。统计要用 `len(line)` 按字符数数，`grep -P '^.{121,}$'` 是**字节**计数，会把 40 个汉字的注释行误判成超长。
+3. **`.editorconfig` 故意不设 `end_of_line`**：本仓库 `core.autocrlf=true`，工作区换行符混存（`git ls-files --eol` 可见 w/crlf 与 w/lf 并存）而 index 侧全是 LF，属于正常状态；写死该值会让编辑器整体重写文件，产出海量无意义 diff。仓库根的 `.gitattributes` 只钉死 `gradlew`（lf）与 `gradlew.bat`（crlf）这两个壳脚本，**没有** `* text=auto`——原因同上。
 
 从现有代码可以验证的项目约定（与工具无关，长期有效）：
 
@@ -114,7 +114,7 @@ subst Z: /D          # 用完解除映射
 
 ### 分支
 
-现状：单人开发，109 个提交**全部直接在 `main` 上**，历史线性、无 merge 提交。
+现状：单人开发，135 个提交**全部直接在 `main` 上**，历史线性、无 merge 提交（`git log --merges` 为空）。
 
 需要多步特性或多人协作时，开短分支并把历史保持线性：
 
@@ -130,7 +130,7 @@ git switch -c feat/xxx      # 或 fix/xxx
 ```
 
 - `type` 取 `feat` / `fix` / `docs` / `test` / `chore` / `style` / `refactor`
-- `scope` 用模块名，历史中实际出现过：`script` · `ui` · `exam` · `jw` · `today` · `alarm` · `capsule` · `grades` · `update` · `db` · `mock-jw` · `spec` · `plan`
+- `scope` 用模块名，历史中实际出现过（按频次）：`ui` · `script` · `exam` · `jw` · `changelog` · `spec` · `research` · `mock-jw` · `today` · `capsule` · `grades` · `update` · `db` · `alarm` · `plan` · `quality`
 
 真实例子（可直接 `git log` 复核）：
 
@@ -141,7 +141,7 @@ docs(spec): 教务脚本引擎设计（页面上下文注入 + 最小契约 + �
 chore(db): 提交 Room v3 导出 schema
 ```
 
-规范化程度（截至 v1.0.12，109 个提交）：`feat` 33 · `fix` 7 · `docs` 3 · `test` 2 · `style` 1 · `chore` 1，其余 62 条是规范引入前的历史提交（无前缀）。**新提交一律带前缀**；一个提交只做一件事，提交信息写"做了什么、为什么"，不写"改了一下"。
+规范化程度（截至 v1.0.14，135 个提交）：`feat` 40 · `docs` 16 · `fix` 9 · `test` 2 · `chore` 2 · `style` 1 · `refactor` 1，其余 64 条是规范引入前的历史提交（无前缀）。**新提交一律带前缀**；一个提交只做一件事，提交信息写"做了什么、为什么"，不写"改了一下"。
 
 ### 仓库硬约定
 
@@ -161,8 +161,8 @@ chore(db): 提交 Room v3 导出 schema
 
 App 的更新检查直接读 GitHub Releases（`core/update/UpdateChecker.kt` → `api.github.com/repos/Suife-yuanxing/zhijian-schedule/releases/latest`），所以发版节奏由 Release 决定：
 
-1. 同步改 `app/build.gradle.kts` 的 `versionCode` 与 `versionName`（例如 13 / "1.0.12"）。
-2. 提交：`版本号提升至 v1.0.13（versionCode 14）准备发布构建`。
+1. 同步改 `app/build.gradle.kts` 的 `versionCode` 与 `versionName`（当前是 15 / "1.0.14"）。
+2. 提交：`版本号提升至 v1.0.15（versionCode 16）准备发布构建`（照这次的格式，填下一版的号）。
 3. 构建：`./gradlew assembleRelease`。
 4. 在 `Suife-yuanxing/zhijian-schedule` 建 Release：
    - **tag 必须是 `vX.Y.Z`** —— App 会去掉 `v` 前缀后与本地 `versionName` 做逐位数值比较；
