@@ -37,6 +37,11 @@
 - docs(research): 新增 `docs/research/2026-10-28-jelly-capsule-motion.md`——六条外部规范、波形推导的逐值表，以及**真机逐帧实测**（一加 PKG110 / Android 16：宽度 312→357→282→309，峰谷都落在位移途中，实测 +15.5%/−8.7% vs 推导 +16%/−8.8%）
 - docs(spec): 新增 `docs/specs/2026-10-27-multi-vendor-live-notification-design.md`——把流体云胶囊抽象成统一适配层，给出原生提升 / 通知扩展参数 / 厂商生态卡片三档路线的成本判断与逐厂商接入契约
 - docs(research): 新增四份实时通知厂商文档证据档——Android 16 与 Apple 原生、OPPO / 小米 / 荣耀、vivo / 华为分册，按【官网原文】/【二手】/【未取到】分级并逐条附 URL
+- feat(jw): **作息时间跟随导入的课表，不再硬编码**——设置页原本写死 12 节（08:20 起、每节 45 分钟），换学校换学期都不变；现在抓取教务时会一并读出课表页的节次时间并写入，课程用到的节次也跟着补齐。手动抓取只在用户点「确认导入」时落库，取消则完全不变；自动同步随课表一起生效。预览页顶部会提示「作息时间将同步更新（第 N 节 HH:mm 起，共 M 节）」
+- feat(jw): 作息解析覆盖 6 个后端的页面形态——强智 jsxsd 读表头行首的大节时段、正方新版与青果 / 树维 classic / URP 读「星期 × 节次」表格的时间列（含 `08:20<br>09:55` 这种分行写法）、树维 eams5 在 `print-data` 与 `get-data` 兜底两路都取；行首写「第一大节 08:20-09:55」与纯节次数字两种标签都能认，出现时间倒退则整批丢弃、退回本地值
+- feat(jw): 截图 / 文本 / 脚本导入也带作息——识别出的时段文字走同一条管线，脚本解析结果新增可选字段 `sectionTimes`；时段头「上午 08:20 - 11:45」按表头丢弃，大节再切成 4 小节
+- refactor(jw): 出厂的 12 节时间表从 `ScheduleRepository.defaultSections()` 删除，改为 `SectionTimes.defaults()` 由 6 个大节区间派生，全仓库只剩一处时间来源
+- test(jw): 新增 `SectionTimesTest`、`SectionTimesLinesTest`、`SectionTimePlanTest`、`QiangZhiFetchTest`、`QingGuoFetchTest`、`OcrSectionTimesTest`、`JwScriptSectionTimesTest`、`ImportPreviewSectionHintTest`、`ScreenshotSectionTimesAcceptanceTest`、`ScreenshotToSettingsEndToEndTest`——含按真实课表截图与设置页截图逐行比对的端到端验收
 
 ### Changed
 
