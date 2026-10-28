@@ -114,7 +114,7 @@ CapsuleNotifier.post()
 
 **资格条件**（提升为 Live Update 的必要条件）：
 
-- 样式必须是 `Standard` / `BigTextStyle` / `CallStyle` / `ProgressStyle` 之一；
+- 样式必须是 `Standard` / `BigTextStyle` / `CallStyle` / `ProgressStyle` / `MetricStyle` 之一（`MetricStyle` 是 **API 37** 才加的，`compileSdk=36` 下引用不到，实际可用集是前四种）；
 - 必须是常驻通知 + 用户主动发起 + 时效性活动；
 - **不得着色、不得分组摘要、不得自定义视图**；
 - 需要用户在系统里为本应用放行实时通知。
@@ -132,6 +132,10 @@ CapsuleNotifier.post()
 
 **在 `compileSdk=36` 下的正确写法**：无法调用 36.1 的 setter，所以用字符串 key 请求提升——项目当前已经这么做（`addExtras(Bundle().putBoolean("android.requestPromotedOngoing", true))`），这部分是对的。
 
+> **2026-10-28 校验**：本机 `android.jar`（android-36, rev 2）里确实没有 `setRequestPromotedOngoing`、`EXTRA_REQUEST_PROMOTED_ONGOING` 与 `POST_PROMOTED_NOTIFICATIONS` 常量，字符串 key 是唯一可行写法；
+> 但 `androidx.core:core:1.17.0`（项目已依赖）**已经提供** `NotificationCompat.Builder.setRequestPromotedOngoing(boolean)`、`setShortCriticalText(String)` 与 `NotificationCompat.ProgressStyle`（含 `Segment` / `Point`，`setProgressSegments` / `setProgressPoints` / `setProgressTrackerIcon` / `setStyledByProgress`），
+> 因此提升请求可以不必手写字符串——用 Compat 的 `setRequestPromotedOngoing(true)` 等价，且能顺带解决 API 36 以下的无操作降级。
+
 **引导用户开启提升**：
 
 ```kotlin
@@ -143,6 +147,9 @@ if (intent.resolveActivity(context.packageManager) != null) {
     context.startActivity(intent)
 }
 ```
+
+> 常量名已在 2026-10-28 双向核对：官方指南与 `android-36` 的 `Settings` 常量表里都是 `ACTION_APP_NOTIFICATION_PROMOTION_SETTINGS`（值 `android.settings.APP_NOTIFICATION_PROMOTION_SETTINGS`）。
+> 早前证据档里写过的 `ACTION_MANAGE_APP_PROMOTED_NOTIFICATIONS` **在 API 中并不存在**，若照抄会编译不过——该笔误已在三份证据档原位更正。
 
 **不适用场景（重要）**：官方明确把「即将到来的日历事件」列为**不适合**提升的内容。课表本质上接近这一类，因此：
 
