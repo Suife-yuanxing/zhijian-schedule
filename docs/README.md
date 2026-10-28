@@ -39,6 +39,8 @@
 - [2026-10-28-jelly-capsule-motion.md](research/2026-10-28-jelly-capsule-motion.md) — 底部浮岛胶囊「果冻」动效规范与灵感调研：六条可落地的外部规范（NN/g 时长、迪士尼 squash & stretch、follow-through、Reduce Motion、Apple 两参数弹簧模型）、「移动途中先拉长再回收」的双瓣波形推导与逐值表、一加 PKG110 上的逐帧实测数据，以及取不到原文的部分据实标注。
 
 > **学校目录数据**：`app/src/main/assets/jw/schools.tsv`（1144 条，随 APK 打包）由 [tools/gen_school_catalog.py](../tools/gen_school_catalog.py) 从学校目录快照生成，只收录「协议属于本应用已实现解析器 + 带教务入口 URL」的条目。`verified=1` 表示目录标记为「已实现配置」，`0` 表示「待验证·可尝试」——**两者都不代表该校当前实测可用**，UI 里必须区分展示。目录快照本身不入库，重建时把快照路径作为第一个参数传给脚本即可。
+>
+> **例外：校级适配器不走这条生成链路。** 有三类信息是社区快照给不了的——门户主机不是教务首页（如广西工程职业学院 `zhxy.gxgcedu.com`，教务在同域 `/academic/`）、校外端口被拦、以及单位自建的统一认证路径。这类条目直接写进 [SchoolCatalog](../app/src/main/java/com/zhijian/schedule/core/jw/SchoolCatalog.kt) 的 `builtIn` 表，与 `schools.tsv` 合并使用；写进 TSV 反而会在下次重新生成时被冲掉。
 
 ## plans/ — 实施计划
 
@@ -61,7 +63,7 @@
 ## testing/ — 测试夹具
 
 - [mock-jw.md](testing/mock-jw.md) — 本地模拟教务服务的使用说明：`node tools/mock-jw/server.mjs` 起服，模拟正方新版与强智 jsxsd，覆盖 WebView → 共享 Cookie → 适配器 → 预览 → 落库整条客户端链路，无需真实学校账号。
-- [2026-10-27-real-device-jw.md](testing/2026-10-27-real-device-jw.md) — 真机实测记录：6 个适配器（强智 / 树维 classic / URP / eams5 / 青果 / 正方新版）的识别链路在 Android 16 上逐家验证，含填写地址、识别文案与页面可达性，截图见 `testing/shots/jw-real-device/`。
+- [2026-10-27-real-device-jw.md](testing/2026-10-27-real-device-jw.md) — 真机实测记录：6 个适配器（强智 / 树维 classic / URP / eams5 / 青果 / 正方新版）的识别链路在 Android 16 上逐家验证，含填写地址、识别文案、页面可达性与「抓取失败的定制指引」对照表；12 张证据截图在 [`testing/shots/jw-real-device/`](testing/shots/jw-real-device/)，文档内有逐张说明表（每张证明哪一环），不留「只看文件名猜」的图。
 
 ## adr/ — 架构决策记录
 

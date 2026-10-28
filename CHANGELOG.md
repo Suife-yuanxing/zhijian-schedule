@@ -12,9 +12,22 @@
 
 ## [Unreleased]
 
-## [1.0.14] - 2026-10-29
+### Added
 
-*提交区间：v1.0.13..v1.0.14（21 个提交）— 作息时间跟随课表、多厂商实时通知适配、底部胶囊果冻与深度阶梯*
+- feat(jw): 抓取后提示核对课表信息（学期为空 / 换了学校或校区）——`TimetableInfoAudit` 纯逻辑 + `ImportPreview.infoHint` 透到预览弹层；课表信息仍不跟随抓取改写，只提醒不动手
+- test(jw): 新增 `TimetableInfoAuditTest`（6 例）与 `ImportPreviewInfoHintTest`（3 例）
+- feat(jw): 单列广西工程职业学院（`gxgc`）——智慧校园门户 `zhxy.gxgcedu.com` 的主机识别 + 校外端口拦截提示，解析复用 URP；校方 2022 年通知里的 `http://edu.gxgcedu.com/` 已 NXDOMAIN，条目写进 `SchoolCatalog` 内置表以免被 `tools/gen_school_catalog.py` 重新生成时覆盖
+- test(jw): 新增 `GxgcSchoolProfileTest`（6 例）与 `GuangXiGcAdapterTest`（14 例）
+
+### Changed
+
+- chore(repo): 仓库规范化——补 `.gitattributes`（只钉死 `gradlew`/`gradlew.bat` 的换行符 + 二进制标记，不做全仓 renormalize）；`.editorconfig` 补 Room schema 生成物的尾换行豁免（生成器不写尾换行，之前规则与工具互相打架）
+- docs: 把散在各处的陈旧统计按实测重算并写清统计口径（`.kt` 300 个 / 42924 行 / 超 120 列 32 行；提交 135 个、`git log --merges` 为空；截图 12 张），`CHANGELOG` 的 v1.0.13 / v1.0.14 段补回缺失的发布日期、提交区间与版本号表条目
+- test(jw): 去掉 `JwScriptOutputTest.kt` 的 UTF-8 BOM（`.editorconfig` 声明的是 `charset = utf-8`，BOM 会让首个 token 带不可见前缀）
+
+## [1.0.14] - 2026-10-28
+
+*提交区间：v1.0.13..v1.0.14（23 个提交）— 作息时间跟随课表、多厂商实时通知适配、底部胶囊果冻与深度阶梯*
 
 ### Added
 
@@ -27,7 +40,7 @@
 - feat(jw): 抓取指引按厂商定制（`JwAdapter.steps`）——引导条第二段与失败提示改由适配器提供，强智「学生课表」、URP「个人管理 → 本学期课表」、eams5「我的课表」各有专属文案与注意事项，未识别时退回通用文案
 - feat(tools): 新增 `tools/gen_school_catalog.py`，从学校目录快照重新生成 `schools.tsv`（可复现，不把快照本身放进仓库）
 - test(jw): 新增 `QingGuoParseTest`（4 例）、`UrpParseTest`（6 例）、`ShuWeiClassicParseTest`（6 例）、`Eams5ParseTest`（6 例）、`SchoolCatalogTest`（10 例）、`AdapterStepsTest`（10 例）
-- docs(testing): 新增真机实测记录 `docs/testing/2026-10-27-real-device-jw.md`——6 个适配器的识别链路在 OnePlus PKG110 / Android 16 上全部通过，强智（东莞职院）另跑通了「抓取 → 解析 → 预览」全链路，附 9 张截图
+- docs(testing): 新增真机实测记录 `docs/testing/2026-10-27-real-device-jw.md`——6 个适配器的识别链路在 OnePlus PKG110 / Android 16 上全部通过，强智（东莞职院）另跑通了「抓取 → 解析 → 预览」全链路，附 12 张截图（`docs/testing/shots/jw-real-device/`）
 - feat(capsule): 抽出厂商无关的实时通知适配层——`LiveContent` 内容投影 + `LiveSurfaceRenderer` 渲染器接口 + `LiveSurfaceRenderers` 注册表，`CapsuleNotifier` 只保留「状态机 → 内容 → 原生骨架」，后续接 vivo / 华为 / OPPO 泛在服务不必再改核心文件
 - feat(capsule): 接入小米超级岛（HyperOS OS3）——按官方 `param_v2` 协议挂 `miui.focus.param` 扩展参数，无需 SDK 与额外权限；处理了 `timeout`（分钟）与 `islandTimeout`（秒）单位不同、图标走 `miui.focus.pics` Bundle 不内联、整串 3072 字节超限降级三个易错点
 - feat(capsule): 新增 `LiveSurfaceSupport` 能力探测——把「能否请求提升」（API 36 即可）与「能否真正被提升」（需 Android 16 QPR1 / API 36.1）拆成两个判断，避免 API 36.0 用户把「胶囊不出现」误当 bug
@@ -63,9 +76,9 @@
 - fix(capsule): 用户划掉的实时卡片不再自动重发——原实现每 30s 检测 `activeNotifications`，卡片不在就无条件重建，无法区分「系统 `timeoutAfter` 正常退场」与「用户手动划掉」；官方明确要求不得重新发布用户已关闭的动态，否则可能被撤销整个应用的通知权限。改用 `setDeleteIntent` 区分两者，并新增 `CapsuleDismissTracker` 按场次记账，同一节课内不再重发、离开实时态自动清账
 - fix(capsule): 实时卡片移除遗留的 `setColor` 调用——它并非失格项（真正的一票否决是 `setColorized`），但与「提升通知不着色」的语义冲突，课程色统一只走进度段 `Segment.setColor`；注释中写明两者区别防止后人误加 `setColorized`
 
-## [1.0.13] - 2026-10-27
+## [1.0.13] - 2026-10-26
 
-*提交区间：v1.0.12..v1.0.13（3 个提交）— 代码规范化：包结构重整、超长文件拆分、静态检查与 CI 基建*
+*提交区间：v1.0.12..v1.0.13（4 个提交）— 代码规范化：包结构重整、超长文件拆分、静态检查与 CI 基建*
 
 ### Added
 
@@ -88,7 +101,6 @@
 - fix(ui): 入口卡展开圆角在进度越过 1 时可能算出微小负值（`coerceAtMost` → `coerceIn(0f, 短边一半)`）
 - fix(ui): `RevealMath` 里 `revealRadius` 的 KDoc 误挂在 `smoothstep` 上，文档归位
 - fix(test): `ProfileEntryGeometryTest` 起手圆角期望未考虑短边夹紧、`IslandIndicatorLayoutTest` 前缘/后缘基准误用网格中心线，两处断言与生产行为对齐
-
 
 ## [1.0.12] - 2026-10-26
 
@@ -349,11 +361,15 @@ Android 侧 `versionName` 与 SemVer 对齐，`versionCode` 单调递增且与�
 | 1.0.9 | 10 | v1.0.9 |
 | 1.0.10 | 11 | v1.0.10 |
 | 1.0.11 | 12 | v1.0.11 |
-| 1.0.12 | 13 | v1.0.12（当前 versionName / versionCode，见 `app/build.gradle.kts`） |
+| 1.0.12 | 13 | v1.0.12 |
+| 1.0.13 | 14 | v1.0.13 |
+| 1.0.14 | 15 | v1.0.14（当前 versionName / versionCode，见 `app/build.gradle.kts`） |
 
 发版流程见 [CONTRIBUTING.md](CONTRIBUTING.md#7-发版)。
 
-[Unreleased]: https://github.com/Suife-yuanxing/zhijian-schedule/compare/v1.0.12...HEAD
+[Unreleased]: https://github.com/Suife-yuanxing/zhijian-schedule/compare/v1.0.14...HEAD
+[1.0.14]: https://github.com/Suife-yuanxing/zhijian-schedule/compare/v1.0.13...v1.0.14
+[1.0.13]: https://github.com/Suife-yuanxing/zhijian-schedule/compare/v1.0.12...v1.0.13
 [1.0.12]: https://github.com/Suife-yuanxing/zhijian-schedule/compare/v1.0.11...v1.0.12
 [1.0.11]: https://github.com/Suife-yuanxing/zhijian-schedule/compare/v1.0.10...v1.0.11
 [1.0.10]: https://github.com/Suife-yuanxing/zhijian-schedule/compare/v1.0.9...v1.0.10
