@@ -12,7 +12,6 @@ import org.junit.Test
  * 于是翻页即展开。这里把判定逻辑从 Compose 里剥出来单测。
  */
 class IslandTopEdgeTrackerTest {
-
     @Test
     fun `首次激活就已在顶部不算回到顶部`() {
         val tracker = IslandTopEdgeTracker()
@@ -28,9 +27,9 @@ class IslandTopEdgeTrackerTest {
     @Test
     fun `先离开顶部再回到顶部才算回到顶部`() {
         val tracker = IslandTopEdgeTracker()
-        assertFalse(tracker.observe(atTop = true))   // 初始基线
-        assertFalse(tracker.observe(atTop = false))  // 往下滚
-        assertTrue(tracker.observe(atTop = true))    // 滚回顶部 → 展开
+        assertFalse(tracker.observe(atTop = true)) // 初始基线
+        assertFalse(tracker.observe(atTop = false)) // 往下滚
+        assertTrue(tracker.observe(atTop = true)) // 滚回顶部 → 展开
     }
 
     @Test

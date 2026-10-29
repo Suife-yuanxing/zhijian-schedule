@@ -33,7 +33,11 @@ import com.zhijian.schedule.feature.schedule.ScheduleUiState
 
 /** 时段标题：编辑式是「上午 ——— 08:20 – 11:45」，色块制是一条浅底纹条 */
 @Composable
-internal fun BandHeader(band: GridBand, style: String, metrics: GridMetrics) {
+internal fun BandHeader(
+    band: GridBand,
+    style: String,
+    metrics: GridMetrics,
+) {
     val colors = LocalCourseColors.current
     val guide = lerp(colors.border, colors.text, 0.18f)
     if (style == GridStyles.BLOCK) {
@@ -47,8 +51,7 @@ internal fun BandHeader(band: GridBand, style: String, metrics: GridMetrics) {
                 .background(
                     strip,
                     RoundedCornerShape(topEnd = 9.dp, bottomEnd = 9.dp),
-                )
-                .padding(start = 10.dp, end = 10.dp),
+                ).padding(start = 10.dp, end = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
@@ -79,7 +82,7 @@ internal fun BandHeader(band: GridBand, style: String, metrics: GridMetrics) {
                 Modifier
                     .weight(1f)
                     .height(1.dp)
-                    .background(guide.copy(alpha = 0.6f))
+                    .background(guide.copy(alpha = 0.6f)),
             )
             Spacer(Modifier.width(8.dp))
             Text(text = band.timeRange, color = microText(colors), fontSize = 9.sp)
@@ -103,10 +106,11 @@ internal fun BandBody(
     val density = LocalDensity.current
     val guide = lerp(colors.border, colors.text, 0.18f)
     val sectionPx = with(density) { metrics.sectionHeight.toPx() }
-    val bandSections = ui.sections.subList(
-        band.startIndex,
-        (band.startIndex + band.count).coerceAtMost(ui.sections.size),
-    )
+    val bandSections =
+        ui.sections.subList(
+            band.startIndex,
+            (band.startIndex + band.count).coerceAtMost(ui.sections.size),
+        )
     val boundaries = remember(band.startIndex, band.count) { layout.periodBoundaries(band) }
 
     Row(Modifier.fillMaxWidth().height(metrics.sectionHeight * band.count)) {
@@ -150,8 +154,10 @@ internal fun BandBody(
                         // 列分隔：旧实现用的是 1.23:1 的 border，等于没画
                         drawLine(
                             guide.copy(alpha = 0.35f),
-                            androidx.compose.ui.geometry.Offset(size.width - 0.5f, 0f),
-                            androidx.compose.ui.geometry.Offset(size.width - 0.5f, size.height),
+                            androidx.compose.ui.geometry
+                                .Offset(size.width - 0.5f, 0f),
+                            androidx.compose.ui.geometry
+                                .Offset(size.width - 0.5f, size.height),
                             strokeWidth = 1f,
                         )
                         // 段内「大节分界」hairline；色块制不画线，用底纹条分层
@@ -160,19 +166,20 @@ internal fun BandBody(
                                 val y = index * sectionPx
                                 drawLine(
                                     guide.copy(alpha = 0.55f),
-                                    androidx.compose.ui.geometry.Offset(0f, y),
-                                    androidx.compose.ui.geometry.Offset(size.width, y),
+                                    androidx.compose.ui.geometry
+                                        .Offset(0f, y),
+                                    androidx.compose.ui.geometry
+                                        .Offset(size.width, y),
                                     strokeWidth = 1f,
                                 )
                             }
                         }
-                    }
-                    .pointerInput(week, day, band.startIndex, band.count) {
+                    }.pointerInput(week, day, band.startIndex, band.count) {
                         detectTapGestures { offset ->
                             val local = (offset.y / sectionPx).toInt().coerceIn(0, band.count - 1)
                             onEmptyTap(day, band.startIndex + local + 1)
                         }
-                    }
+                    },
             )
         }
     }

@@ -24,8 +24,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.zhijian.schedule.core.jw.JwAdapterRegistry
 import com.zhijian.schedule.core.jw.script.JwScriptRunner
 import com.zhijian.schedule.core.net.ExpiredCertTolerance
-import java.net.URI
 import org.json.JSONObject
+import java.net.URI
 
 /**
  * 教务导入页的 WebView 宿主：唯一一处直接配置 WebView 的地方
@@ -94,7 +94,7 @@ private fun ssoRecoverJs(entryUrl: String?): String {
             }
           } catch (e) {}
         })()
-    """.trimIndent()
+        """.trimIndent()
 }
 
 /**
@@ -275,132 +275,146 @@ internal fun WebViewBox(
     val lastLoaded = remember { mutableStateOf<WebLoadRequest?>(null) }
     // WAF 5xx 自动重试计数；每次新的加载请求归零
     val wafRetries = remember { IntArray(1) }
-    val ssoEntry = remember(request.url) {
-        runCatching { JwAdapterRegistry.forUrl(request.url)?.ssoEntry(request.url) }.getOrNull()
-    }
+    val ssoEntry =
+        remember(request.url) {
+            runCatching { JwAdapterRegistry.forUrl(request.url)?.ssoEntry(request.url) }.getOrNull()
+        }
     val ssoJs = remember(ssoEntry) { ssoRecoverJs(ssoEntry) }
     AndroidView(
         modifier = modifier,
         factory = { context ->
-            WebView(context).apply {
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                // 不再设 setDatabaseEnabled：WebSQL 数据库 API 已被 Android 废弃、引擎侧也已移除
-                // （Chrome 119 起），现行做法是用上面的 DOM storage 承载页面本地存储
-                settings.userAgentString = WEB_UA
-                settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-                // 支持页面 viewport meta，按手机宽度布局；否则老教务页会以桌面宽度渲染而被横向裁切
-                settings.useWideViewPort = true
-                settings.loadWithOverviewMode = true
-                settings.setSupportZoom(true)
-                settings.builtInZoomControls = true
-                settings.displayZoomControls = false
-                // 办事大厅 / WebVPN 门户的卡片用 window.open 打开新页，
-                // 不开启多窗口支持会导致点击后毫无反应（弹窗被静默丢弃）
-                settings.setSupportMultipleWindows(true)
-                CookieManager.getInstance().setAcceptCookie(true)
-                CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-                // 脚本执行桥：创建时永久注入（运行时注入对已加载页面不保证生效）
-                addJavascriptInterface(JwScriptRunner.PaperJavascriptBridge(), "PaperBridge")
-                webChromeClient = object : WebChromeClient() {
-                    override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                        onProgress(newProgress)
-                    }
-
-                    // 把弹窗页面直接载入当前 WebView（应用内单窗口方案）
-                    override fun onCreateWindow(
-                        view: WebView?,
-                        isDialog: Boolean,
-                        isUserGesture: Boolean,
-                        resultMsg: Message?,
-                    ): Boolean {
-                        val transport = resultMsg?.obj as? WebView.WebViewTransport ?: return false
-                        transport.webView = view
-                        resultMsg.sendToTarget()
-                        return true
-                    }
-                }
-                webViewClient = object : WebViewClient() {
-                    override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-                        url?.takeIf { it.isNotBlank() }?.let(onPageUrl)
-                    }
-
-                    override fun onPageFinished(view: WebView?, url: String?) {
-                        url?.takeIf { it.isNotBlank() }?.let(onPageUrl)
-                        // 先补视口高度：白屏页面在这里被救回来，后面的脚本才有可用的版面
-                        view?.evaluateJavascript(VIEWPORT_HEIGHT_REPAIR_JS, null)
-                        view?.evaluateJavascript(FIT_VIEWPORT_JS, null)
-                        if (ssoJs.isNotEmpty()) view?.evaluateJavascript(ssoJs, null)
-                        view?.evaluateJavascript(JW_SHELL_FIX_JS, null)
-                        // WAF 错误页可能以 200 返回：先查正文；GET 页自动重试，登录 POST 直接提示
-                        view?.evaluateJavascript(WAF_ERROR_CHECK_JS) { result ->
-                            val code = result?.trim('"')?.toIntOrNull() ?: 0
-                            if (code == 0) {
-                                wafRetries[0] = 0
-                                return@evaluateJavascript
+            WebView(context)
+                .apply {
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = true
+                    // 不再设 setDatabaseEnabled：WebSQL 数据库 API 已被 Android 废弃、引擎侧也已移除
+                    // （Chrome 119 起），现行做法是用上面的 DOM storage 承载页面本地存储
+                    settings.userAgentString = WEB_UA
+                    settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                    // 支持页面 viewport meta，按手机宽度布局；否则老教务页会以桌面宽度渲染而被横向裁切
+                    settings.useWideViewPort = true
+                    settings.loadWithOverviewMode = true
+                    settings.setSupportZoom(true)
+                    settings.builtInZoomControls = true
+                    settings.displayZoomControls = false
+                    // 办事大厅 / WebVPN 门户的卡片用 window.open 打开新页，
+                    // 不开启多窗口支持会导致点击后毫无反应（弹窗被静默丢弃）
+                    settings.setSupportMultipleWindows(true)
+                    CookieManager.getInstance().setAcceptCookie(true)
+                    CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                    // 脚本执行桥：创建时永久注入（运行时注入对已加载页面不保证生效）
+                    addJavascriptInterface(JwScriptRunner.PaperJavascriptBridge(), "PaperBridge")
+                    webChromeClient =
+                        object : WebChromeClient() {
+                            override fun onProgressChanged(
+                                view: WebView?,
+                                newProgress: Int,
+                            ) {
+                                onProgress(newProgress)
                             }
-                            val isLoginPost = url?.contains("LoginToXk", ignoreCase = true) == true
-                            if (!isLoginPost && wafRetries[0] < WAF_MAX_RETRIES) {
-                                wafRetries[0]++
-                                view?.postDelayed({ view.reload() }, WAF_RETRY_DELAY_MS)
-                            } else {
-                                onHttpError(code)
+
+                            // 把弹窗页面直接载入当前 WebView（应用内单窗口方案）
+                            override fun onCreateWindow(
+                                view: WebView?,
+                                isDialog: Boolean,
+                                isUserGesture: Boolean,
+                                resultMsg: Message?,
+                            ): Boolean {
+                                val transport = resultMsg?.obj as? WebView.WebViewTransport ?: return false
+                                transport.webView = view
+                                resultMsg.sendToTarget()
+                                return true
                             }
                         }
-                    }
+                    webViewClient =
+                        object : WebViewClient() {
+                            override fun onPageStarted(
+                                view: WebView?,
+                                url: String?,
+                                favicon: Bitmap?,
+                            ) {
+                                url?.takeIf { it.isNotBlank() }?.let(onPageUrl)
+                            }
 
-                    override fun onReceivedError(
-                        view: WebView?,
-                        req: WebResourceRequest?,
-                        error: WebResourceError?,
-                    ) {
-                        if (req?.isForMainFrame == true) {
-                            onError(error?.description?.toString() ?: "网络错误")
-                        }
-                    }
+                            override fun onPageFinished(
+                                view: WebView?,
+                                url: String?,
+                            ) {
+                                url?.takeIf { it.isNotBlank() }?.let(onPageUrl)
+                                // 先补视口高度：白屏页面在这里被救回来，后面的脚本才有可用的版面
+                                view?.evaluateJavascript(VIEWPORT_HEIGHT_REPAIR_JS, null)
+                                view?.evaluateJavascript(FIT_VIEWPORT_JS, null)
+                                if (ssoJs.isNotEmpty()) view?.evaluateJavascript(ssoJs, null)
+                                view?.evaluateJavascript(JW_SHELL_FIX_JS, null)
+                                // WAF 错误页可能以 200 返回：先查正文；GET 页自动重试，登录 POST 直接提示
+                                view?.evaluateJavascript(WAF_ERROR_CHECK_JS) { result ->
+                                    val code = result?.trim('"')?.toIntOrNull() ?: 0
+                                    if (code == 0) {
+                                        wafRetries[0] = 0
+                                        return@evaluateJavascript
+                                    }
+                                    val isLoginPost = url?.contains("LoginToXk", ignoreCase = true) == true
+                                    if (!isLoginPost && wafRetries[0] < WAF_MAX_RETRIES) {
+                                        wafRetries[0]++
+                                        view?.postDelayed({ view.reload() }, WAF_RETRY_DELAY_MS)
+                                    } else {
+                                        onHttpError(code)
+                                    }
+                                }
+                            }
 
-                    override fun onReceivedHttpError(
-                        view: WebView?,
-                        req: WebResourceRequest?,
-                        errorResponse: WebResourceResponse?,
-                    ) {
-                        if (req?.isForMainFrame == true) {
-                            val code = errorResponse?.statusCode ?: 0
-                            // 5xx 交给正文检测：可能以 200 返回，且要先自动重试再提示
-                            if (code in 400..499) onHttpError(code)
-                        }
-                    }
+                            override fun onReceivedError(
+                                view: WebView?,
+                                req: WebResourceRequest?,
+                                error: WebResourceError?,
+                            ) {
+                                if (req?.isForMainFrame == true) {
+                                    onError(error?.description?.toString() ?: "网络错误")
+                                }
+                            }
 
-                    /**
-                     * 校方证书过期（`SSL_DATE_INVALID`）时按 [ExpiredCertTolerance] 放行，
-                     * 其余 SSL 错误一律拦下。
-                     *
-                     * 只有"这台主机的证书过期"这一种情况能过：主机名精确匹配 +
-                     * 过期天数在窗口内。放行时把实话告诉用户（[onCertNotice]），
-                     * 不做成"证书错误已忽略"这种糊弄。
-                     */
-                    override fun onReceivedSslError(
-                        view: WebView?,
-                        handler: SslErrorHandler?,
-                        error: SslError?,
-                    ) {
-                        // SslCertificate 的 getter 是 getValidNotAfterDate()，Kotlin 侧属性名随之
-                        val expiredAt =
-                            runCatching { error?.certificate?.validNotAfterDate?.time }.getOrNull()
-                        val now = System.currentTimeMillis()
-                        val tolerated =
-                            isCertDateError(error) &&
-                                ExpiredCertTolerance.shouldProceedOnSslError(error?.url, expiredAt, now)
-                        if (tolerated) {
-                            handler?.proceed()
-                            onCertNotice(ExpiredCertTolerance.sslNotice(expiredAt ?: 0L, now))
-                        } else {
-                            handler?.cancel()
-                            onError("HTTPS 证书校验失败（${error?.url ?: "未知地址"}）")
+                            override fun onReceivedHttpError(
+                                view: WebView?,
+                                req: WebResourceRequest?,
+                                errorResponse: WebResourceResponse?,
+                            ) {
+                                if (req?.isForMainFrame == true) {
+                                    val code = errorResponse?.statusCode ?: 0
+                                    // 5xx 交给正文检测：可能以 200 返回，且要先自动重试再提示
+                                    if (code in 400..499) onHttpError(code)
+                                }
+                            }
+
+                            /**
+                             * 校方证书过期（`SSL_DATE_INVALID`）时按 [ExpiredCertTolerance] 放行，
+                             * 其余 SSL 错误一律拦下。
+                             *
+                             * 只有"这台主机的证书过期"这一种情况能过：主机名精确匹配 +
+                             * 过期天数在窗口内。放行时把实话告诉用户（[onCertNotice]），
+                             * 不做成"证书错误已忽略"这种糊弄。
+                             */
+                            override fun onReceivedSslError(
+                                view: WebView?,
+                                handler: SslErrorHandler?,
+                                error: SslError?,
+                            ) {
+                                // SslCertificate 的 getter 是 getValidNotAfterDate()，Kotlin 侧属性名随之
+                                val expiredAt =
+                                    runCatching { error?.certificate?.validNotAfterDate?.time }.getOrNull()
+                                val now = System.currentTimeMillis()
+                                val tolerated =
+                                    isCertDateError(error) &&
+                                        ExpiredCertTolerance.shouldProceedOnSslError(error?.url, expiredAt, now)
+                                if (tolerated) {
+                                    handler?.proceed()
+                                    onCertNotice(ExpiredCertTolerance.sslNotice(expiredAt ?: 0L, now))
+                                } else {
+                                    handler?.cancel()
+                                    onError("HTTPS 证书校验失败（${error?.url ?: "未知地址"}）")
+                                }
+                            }
                         }
-                    }
-                }
-            }.also(onWebView)
+                }.also(onWebView)
         },
         update = { webView ->
             if (lastLoaded.value != request) {

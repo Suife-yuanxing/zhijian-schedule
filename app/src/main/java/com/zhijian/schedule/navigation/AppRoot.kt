@@ -64,7 +64,10 @@ import com.zhijian.schedule.feature.update.UpdatePromptViewModel
  * 路由契约见 [Routes]。
  */
 @Composable
-fun AppRoot(openTodayCount: Int = 0, openJwImportCount: Int = 0) {
+fun AppRoot(
+    openTodayCount: Int = 0,
+    openJwImportCount: Int = 0,
+) {
     val appViewModel: AppViewModel = hiltViewModel()
     val updatePrompt: UpdatePromptViewModel = hiltViewModel()
     val settings by appViewModel.settings.collectAsStateWithLifecycle()
@@ -87,19 +90,19 @@ fun AppRoot(openTodayCount: Int = 0, openJwImportCount: Int = 0) {
     ) {
         // 扩散浮层要盖住导航、底栏与所有页面，所以挂在主题壳的根部
         CompositionLocalProvider(LocalClock provides appClock) {
-        RevealHost(state = reveal) {
-            AppScaffold(
-                openTodayCount = openTodayCount,
-                openJwImportCount = openJwImportCount,
-                reveal = reveal,
-            )
+            RevealHost(state = reveal) {
+                AppScaffold(
+                    openTodayCount = openTodayCount,
+                    openJwImportCount = openJwImportCount,
+                    reveal = reveal,
+                )
 
-            // 进入应用自动检查更新：静默检查，发现新版本才弹更新窗口（失败/已最新不打扰）
-            LaunchedEffect(Unit) { updatePrompt.checkOnLaunch() }
-            if (updatePrompt.promptVersion != null) {
-                UpdateDialog(onDismiss = { updatePrompt.dismiss() })
+                // 进入应用自动检查更新：静默检查，发现新版本才弹更新窗口（失败/已最新不打扰）
+                LaunchedEffect(Unit) { updatePrompt.checkOnLaunch() }
+                if (updatePrompt.promptVersion != null) {
+                    UpdateDialog(onDismiss = { updatePrompt.dismiss() })
+                }
             }
-        }
         }
     }
 }
@@ -125,11 +128,12 @@ private fun AppScaffold(
     val islandCollapse = rememberIslandCollapseState()
     val navState = remember { AppNavHostState(reveal, islandCollapse, entryTransitions, entryLayer) }
     val colors = LocalCourseColors.current
-    val tabs = listOf(
-        TabItem(Routes.TODAY_TAB, Routes.TODAY, "今日", Icons.Filled.Star, Icons.Outlined.Star),
-        TabItem(Routes.SCHEDULE_TAB, Routes.SCHEDULE, "课表", Icons.Filled.DateRange, Icons.Outlined.DateRange),
-        TabItem(Routes.PROFILE_TAB, Routes.PROFILE, "我的", Icons.Filled.Person, Icons.Outlined.Person),
-    )
+    val tabs =
+        listOf(
+            TabItem(Routes.TODAY_TAB, Routes.TODAY, "今日", Icons.Filled.Star, Icons.Outlined.Star),
+            TabItem(Routes.SCHEDULE_TAB, Routes.SCHEDULE, "课表", Icons.Filled.DateRange, Icons.Outlined.DateRange),
+            TabItem(Routes.PROFILE_TAB, Routes.PROFILE, "我的", Icons.Filled.Person, Icons.Outlined.Person),
+        )
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
     // 课表的入场回合：只要「当前目的地」变成课表根页就自增一次（entry 一变就是一次导航）。
@@ -159,20 +163,20 @@ private fun AppScaffold(
                 .fillMaxSize()
                 .padding(padding)
                 .consumeWindowInsets(padding)
-                .onGloballyPositioned { entryTransitions.updateContentBounds(it.boundsInWindow()) }
+                .onGloballyPositioned { entryTransitions.updateContentBounds(it.boundsInWindow()) },
         ) {
             AppNavHost(
                 navController = navController,
                 state = navState,
                 currentDestination = currentDestination,
-                modifier = Modifier
-                    .glassBackdropSource(
-                        backdrop = backdrop,
-                        clock = glassClock,
-                        enabled = showBottomBar,
-                        baseColor = colors.bg,
-                    )
-                    .onGloballyPositioned { backdrop?.onContentPositioned(it.boundsInWindow().topLeft) },
+                modifier =
+                    Modifier
+                        .glassBackdropSource(
+                            backdrop = backdrop,
+                            clock = glassClock,
+                            enabled = showBottomBar,
+                            baseColor = colors.bg,
+                        ).onGloballyPositioned { backdrop?.onContentPositioned(it.boundsInWindow().topLeft) },
             )
 
             // 点实时胶囊进「今日」：计数变化时切一次 tab（等首帧后再导航，确保 NavHost 已就绪）
@@ -197,15 +201,18 @@ private fun AppScaffold(
             AnimatedVisibility(
                 visible = showBottomBar,
                 modifier = Modifier.align(Alignment.BottomCenter),
-                enter = slideInVertically(animationSpec = Motion.SlideSpring, initialOffsetY = { it }) +
-                    fadeIn(tween(durationMillis = Motion.DurMedium, easing = Motion.EaseOut)),
-                exit = slideOutVertically(animationSpec = Motion.SlideSpring, targetOffsetY = { it }) +
-                    fadeOut(tween(durationMillis = Motion.DurFast)),
+                enter =
+                    slideInVertically(animationSpec = Motion.SlideSpring, initialOffsetY = { it }) +
+                        fadeIn(tween(durationMillis = Motion.DUR_MEDIUM, easing = Motion.EaseOut)),
+                exit =
+                    slideOutVertically(animationSpec = Motion.SlideSpring, targetOffsetY = { it }) +
+                        fadeOut(tween(durationMillis = Motion.DUR_FAST)),
             ) {
                 FloatingIslandBar(
-                    selectedIndex = tabs.indexOfFirst { tab ->
-                        currentDestination?.hierarchy?.any { it.route == tab.route } == true
-                    },
+                    selectedIndex =
+                        tabs.indexOfFirst { tab ->
+                            currentDestination?.hierarchy?.any { it.route == tab.route } == true
+                        },
                     itemCount = tabs.size,
                     clock = glassClock,
                     tilt = glassTilt,

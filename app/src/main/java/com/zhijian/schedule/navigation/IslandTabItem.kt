@@ -59,14 +59,14 @@ internal fun RowScope.IslandTabItem(
     val contentColor by animateColorAsState(
         targetValue = if (selected) island.selected else island.muted,
         // 与胶囊滑动同拍渐变，避免图标先行变色、胶囊还在路上的割裂感
-        animationSpec = tween(Motion.DurMedium, easing = Motion.EaseOut),
+        animationSpec = tween(Motion.DUR_MEDIUM, easing = Motion.EaseOut),
         label = "tabContentColor",
     )
     // 标签的显隐：收敛到一半以下就淡出，让浮岛落成「纯图标胶囊」。
     // 用目标态而不是逐帧插值驱动 alpha——逐帧淡出会在慢速滚动时糊成半透明废影。
     val labelAlpha by animateFloatAsState(
         targetValue = if (collapse == null || collapse.expanded) 1f else 0f,
-        animationSpec = tween(Motion.DurFast),
+        animationSpec = tween(Motion.DUR_FAST),
         label = "tabLabelAlpha",
     )
     Column(
@@ -102,7 +102,7 @@ internal fun RowScope.IslandTabItem(
         // 给得紧一点就会被 clipToBounds 切掉字的下缘（首版给了 15dp 就裁掉了半截）
         val labelSlot by animateDpAsState(
             targetValue = if (collapse == null || collapse.expanded) 19.dp else 0.dp,
-            animationSpec = tween(Motion.DurFast),
+            animationSpec = tween(Motion.DUR_FAST),
             label = "tabLabelSlot",
         )
         Box(Modifier.height(labelSlot).clipToBounds()) {
@@ -182,18 +182,19 @@ private fun BouncyTabIcon(
     AnimatedContent(
         targetState = selected,
         transitionSpec = {
-            (fadeIn(tween(Motion.DurFast)) + scaleIn(tween(Motion.DurFast), initialScale = 0.7f))
-                .togetherWith(fadeOut(tween(Motion.DurFast)) + scaleOut(tween(Motion.DurFast), targetScale = 0.7f))
+            (fadeIn(tween(Motion.DUR_FAST)) + scaleIn(tween(Motion.DUR_FAST), initialScale = 0.7f))
+                .togetherWith(fadeOut(tween(Motion.DUR_FAST)) + scaleOut(tween(Motion.DUR_FAST), targetScale = 0.7f))
         },
         contentAlignment = Alignment.Center,
         label = "tabIconMorph",
-        modifier = Modifier.graphicsLayer {
-            val p = bounce.value
-            scaleX = restScale * press * keyframed(p, *TAB_BUMP_X)
-            scaleY = restScale * press * keyframed(p, *TAB_BUMP_Y)
-            translationY = keyframed(p, *TAB_HOP_Y).dp.toPx()
-            rotationZ = keyframed(p, *TAB_TILT_Z)
-        },
+        modifier =
+            Modifier.graphicsLayer {
+                val p = bounce.value
+                scaleX = restScale * press * keyframed(p, *TAB_BUMP_X)
+                scaleY = restScale * press * keyframed(p, *TAB_BUMP_Y)
+                translationY = keyframed(p, *TAB_HOP_Y).dp.toPx()
+                rotationZ = keyframed(p, *TAB_TILT_Z)
+            },
     ) { sel ->
         Icon(
             imageVector = if (sel) filled else outlined,

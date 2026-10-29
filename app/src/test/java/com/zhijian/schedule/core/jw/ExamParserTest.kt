@@ -5,14 +5,14 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ExamParserTest {
-
-    private val page = """
+    private val page =
+        """
         <html><body><table id="dataList">
         <tr><th>序号</th><th>课程名称</th><th>考试时间</th><th>考场</th><th>座位号</th><th>备注</th></tr>
         <tr><td>1</td><td>高等数学</td><td>2026-11-02 14:00~15:50</td><td>教305</td><td>12</td><td>闭卷</td></tr>
         <tr><td>2</td><td>大学英语</td><td>2026-11-05 08:20-10:00</td><td>教102</td><td>3</td><td></td></tr>
         </table></body></html>
-    """.trimIndent()
+        """.trimIndent()
 
     @Test fun `解析课程名 考场 座位 与开考时刻`() {
         val list = ExamParser.parse(page)

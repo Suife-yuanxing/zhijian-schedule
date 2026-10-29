@@ -8,7 +8,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class QrPayloadTest {
-
     private fun course(
         name: String,
         teacher: String = "",
@@ -31,11 +30,28 @@ class QrPayloadTest {
 
     @Test
     fun `encode 后 decode 保留课程字段`() {
-        val courses = listOf(
-            course(name = "包装材料与检测", teacher = "王老师", room = "6A308", day = 1, start = 1, end = 4, mask = "11001100110011001100"),
-            course(name = "毛泽东思想概论", room = "1-201", day = 2, start = 3, end = 4),
-            course(name = "数字媒体技术", teacher = "李四", room = "实验楼305", day = 5, start = 5, end = 8, mask = "10101010101010101010"),
-        )
+        val courses =
+            listOf(
+                course(
+                    name = "包装材料与检测",
+                    teacher = "王老师",
+                    room = "6A308",
+                    day = 1,
+                    start = 1,
+                    end = 4,
+                    mask = "11001100110011001100",
+                ),
+                course(name = "毛泽东思想概论", room = "1-201", day = 2, start = 3, end = 4),
+                course(
+                    name = "数字媒体技术",
+                    teacher = "李四",
+                    room = "实验楼305",
+                    day = 5,
+                    start = 5,
+                    end = 8,
+                    mask = "10101010101010101010",
+                ),
+            )
         val result = QrPayload.decode(QrPayload.encode(courses), totalWeeks = 20)
         assertEquals(3, result.drafts.size)
         val first = result.drafts[0]
@@ -78,26 +94,36 @@ class QrPayloadTest {
 
     @Test
     fun `四十门课的密集课表仍装得进单张二维码`() {
-        val bases = listOf(
-            "数字媒体技术基础", "包装材料与检测", "包装插画设计", "毛泽东思想概论",
-            "习近平新时代思想", "劳动教育实践", "大学英语听说写", "高等数学A",
-            "计算机程序设计", "体育选项羽毛球",
-        )
-        val dense = (0 until 40).map { i ->
-            course(
-                name = bases[i % bases.size] + ('A' + i / bases.size),
-                teacher = "王老师李四".take(2 + i % 3),
-                room = if (i % 2 == 0) "6A30$i" else "实验楼4-0$i",
-                day = 1 + i % 5,
-                start = 1 + (i % 6) * 2,
-                end = 2 + (i % 6) * 2,
-                mask = when (i % 3) {
-                    0 -> "1".repeat(20)
-                    1 -> "10".repeat(10)
-                    else -> "110".repeat(7).take(20)
-                },
+        val bases =
+            listOf(
+                "数字媒体技术基础",
+                "包装材料与检测",
+                "包装插画设计",
+                "毛泽东思想概论",
+                "习近平新时代思想",
+                "劳动教育实践",
+                "大学英语听说写",
+                "高等数学A",
+                "计算机程序设计",
+                "体育选项羽毛球",
             )
-        }
+        val dense =
+            (0 until 40).map { i ->
+                course(
+                    name = bases[i % bases.size] + ('A' + i / bases.size),
+                    teacher = "王老师李四".take(2 + i % 3),
+                    room = if (i % 2 == 0) "6A30$i" else "实验楼4-0$i",
+                    day = 1 + i % 5,
+                    start = 1 + (i % 6) * 2,
+                    end = 2 + (i % 6) * 2,
+                    mask =
+                        when (i % 3) {
+                            0 -> "1".repeat(20)
+                            1 -> "10".repeat(10)
+                            else -> "110".repeat(7).take(20)
+                        },
+                )
+            }
         val size = QrPayload.encode(dense).size
         assertTrue("载荷 $size 字节，超出单张二维码容量 ${QrPayload.MAX_QR_BYTES}", size <= QrPayload.MAX_QR_BYTES)
         // 解码侧同样完整

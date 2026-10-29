@@ -73,12 +73,15 @@ fun Modifier.glassBackdropSource(
     enabled: Boolean,
     baseColor: Color,
 ): Modifier =
-    if (backdrop == null || !enabled) this
-    else this.drawWithContent {
-        if (clock != null) clock.value
-        backdrop.layer.record {
-            drawRect(baseColor)
+    if (backdrop == null || !enabled) {
+        this
+    } else {
+        this.drawWithContent {
+            if (clock != null) clock.value
+            backdrop.layer.record {
+                drawRect(baseColor)
+                this@drawWithContent.drawContent()
+            }
             this@drawWithContent.drawContent()
         }
-        this@drawWithContent.drawContent()
     }

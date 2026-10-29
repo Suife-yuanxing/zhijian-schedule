@@ -17,15 +17,15 @@ import org.junit.Test
  * 从此以后任何新主题只要忘了给浮岛做对比度求解，这里就会红。
  */
 class IslandContrastTest {
-
-    private val allPresets = listOf(
-        ThemePresets.paper,
-        ThemePresets.dynamic,
-        ThemePresets.minimal,
-        ThemePresets.amoled,
-        ThemePresets.candy,
-        ThemePresets.glass,
-    )
+    private val allPresets =
+        listOf(
+            ThemePresets.paper,
+            ThemePresets.dynamic,
+            ThemePresets.minimal,
+            ThemePresets.amoled,
+            ThemePresets.candy,
+            ThemePresets.glass,
+        )
 
     @Test
     fun `未选中标签在每套主题每一种明暗下都达到 AA`() {

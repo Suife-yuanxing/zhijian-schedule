@@ -57,26 +57,28 @@ internal fun DayPill(
         label = "pillScale",
     )
     val background by animateColorAsState(
-        targetValue = when {
-            selected -> colors.accent
-            isCurrentWeek -> colors.surfaceVariant
-            else -> Color.Transparent
-        },
-        animationSpec = tween(durationMillis = Motion.DurMedium, easing = Motion.EaseOut),
+        targetValue =
+            when {
+                selected -> colors.accent
+                isCurrentWeek -> colors.surfaceVariant
+                else -> Color.Transparent
+            },
+        animationSpec = tween(durationMillis = Motion.DUR_MEDIUM, easing = Motion.EaseOut),
         label = "pillBg",
     )
     val ring by animateColorAsState(
         targetValue = if (selected || isCurrentWeek) colors.accent else colors.border,
-        animationSpec = tween(durationMillis = Motion.DurFast),
+        animationSpec = tween(durationMillis = Motion.DUR_FAST),
         label = "pillRing",
     )
     val textColor by animateColorAsState(
-        targetValue = when {
-            selected -> colors.onAccent
-            past -> colors.textMuted.copy(alpha = 0.6f)
-            else -> colors.text
-        },
-        animationSpec = tween(durationMillis = Motion.DurFast),
+        targetValue =
+            when {
+                selected -> colors.onAccent
+                past -> colors.textMuted.copy(alpha = 0.6f)
+                else -> colors.text
+            },
+        animationSpec = tween(durationMillis = Motion.DUR_FAST),
         label = "pillText",
     )
 
@@ -86,16 +88,14 @@ internal fun DayPill(
             .graphicsLayer {
                 scaleX = popScale
                 scaleY = popScale
-            }
-            .clip(RoundedCornerShape(10.dp))
+            }.clip(RoundedCornerShape(10.dp))
             .background(background)
             .border(1.dp, ring, RoundedCornerShape(10.dp))
             .clickable(
                 interactionSource = pressSource,
                 indication = LocalIndication.current,
                 onClick = onClick,
-            )
-            .padding(horizontal = 10.dp, vertical = 5.dp),
+            ).padding(horizontal = 10.dp, vertical = 5.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
@@ -124,17 +124,20 @@ internal fun DayCourseRow(
     val startTime = sections.getOrNull(course.startSection - 1)?.startTime.orEmpty()
     val endTime = sections.getOrNull(course.endSection - 1)?.endTime.orEmpty()
 
-    val status = if (isToday) {
-        val st = TimeUtils.parseTime(startTime)
-        val et = TimeUtils.parseTime(endTime)
-        val t = now.toLocalTime()
-        when {
-            st == null || et == null -> null
-            t.isAfter(et) -> "已结束"
-            t.isBefore(st) -> "即将开始"
-            else -> "进行中"
+    val status =
+        if (isToday) {
+            val st = TimeUtils.parseTime(startTime)
+            val et = TimeUtils.parseTime(endTime)
+            val t = now.toLocalTime()
+            when {
+                st == null || et == null -> null
+                t.isAfter(et) -> "已结束"
+                t.isBefore(st) -> "即将开始"
+                else -> "进行中"
+            }
+        } else {
+            null
         }
-    } else null
     val tag = status ?: if (past) "已结束" else null
 
     Row(
@@ -170,9 +173,10 @@ internal fun DayCourseRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            val sub = listOf(course.room, course.teacher)
-                .filter { it.isNotBlank() }
-                .joinToString(" · ")
+            val sub =
+                listOf(course.room, course.teacher)
+                    .filter { it.isNotBlank() }
+                    .joinToString(" · ")
             if (sub.isNotBlank()) {
                 Text(text = sub, fontSize = 12.sp, color = colors.textMuted, maxLines = 1)
             }

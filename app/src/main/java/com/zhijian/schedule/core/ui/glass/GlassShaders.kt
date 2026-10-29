@@ -15,7 +15,6 @@ package com.zhijian.schedule.core.ui.glass
  *   ——真实实时折射（滚动同步）、输出不透明覆盖；水膜运算与浮岛水体同一套。
  */
 object GlassShaders {
-
     private const val SD_ROUND_RECT = """float sdRoundRect(float2 p, float2 b, float r) {
     float2 q = abs(p) - b + r;
     return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
@@ -26,9 +25,10 @@ object GlassShaders {
      * 前置局部变量：inside（SDF 内距）、n（边缘法线）、uSize/uRadius/uBand/uTime/uSpec/uFlow/uTilt/uTiltSpec。
      * 产出局部变量：hiA（白色反光 alpha）、bodyA（着色主体 alpha）。[c] 为浮岛局部坐标表达式。
      */
-    private fun waterFilmOps(c: String): String = """
-    float x = ${c}.x / uSize.x;
-    float y = ${c}.y / uSize.y;
+    private fun waterFilmOps(c: String): String =
+        """
+    float x = $c.x / uSize.x;
+    float y = $c.y / uSize.y;
 
     // 流动光带：三条错速斜向带，fract 循环无缝；纵向轻摆像水面缓流
     float wob = 0.02 * sin(y * 6.0 + uTime * 0.5);
@@ -70,7 +70,8 @@ object GlassShaders {
     float bodyA = uBodyAlpha * mix(0.90, 1.10, y) * (1.0 + 0.85 * thick);
 """
 
-    fun buildWaterGlassSource(): String = """
+    fun buildWaterGlassSource(): String =
+        """
 uniform float2 uSize;
 uniform float uRadius;
 uniform float uBand;
@@ -98,9 +99,10 @@ ${waterFilmOps("fragCoord")}
     float3 premul = float3(1.0, 1.0, 1.0) * hiA + uTint * (bodyA * (1.0 - hiA));
     return half4(premul.r, premul.g, premul.b, outA);
 }
-""".trimIndent()
+        """.trimIndent()
 
-    fun buildLensGlassSource(): String = """
+    fun buildLensGlassSource(): String =
+        """
 uniform shader uContent;
 uniform float2 uOrigin;
 uniform float2 uSize;
@@ -150,9 +152,10 @@ half4 main(float2 fragCoord) {
     // 效果输入为线性光、输出不回编：显式编码回 sRGB，折射结果才与原内容同亮度
     return half4(lin2srgb(base), 1.0);
 }
-""".trimIndent()
+        """.trimIndent()
 
-    fun buildDropletSource(): String = """
+    fun buildDropletSource(): String =
+        """
 uniform float2 uSize;
 uniform float uRadius;
 uniform float uTime;
@@ -198,5 +201,5 @@ half4 main(float2 fragCoord) {
     float3 premul = float3(1.0, 1.0, 1.0) * hiA + uTint * (bodyA * (1.0 - hiA));
     return half4(premul.r, premul.g, premul.b, outA);
 }
-""".trimIndent()
+        """.trimIndent()
 }

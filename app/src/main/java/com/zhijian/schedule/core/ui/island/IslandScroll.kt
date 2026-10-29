@@ -27,7 +27,6 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
  * 到一次「不在顶部」，之后回到顶部才展开。
  */
 internal class IslandTopEdgeTracker {
-
     /** null = 本次激活还没观察过；否则是上一次观察到的 atTop */
     private var lastAtTop: Boolean? = null
 
@@ -73,9 +72,10 @@ fun Modifier.islandScrollObserver(
         if (!active) return@LaunchedEffect
         if (edge.observe(atTop)) state.expandNow(scope)
     }
-    val connection = remember(state, scope, active) {
-        state.connection(scope) { frozenNow() || !active }
-    }
+    val connection =
+        remember(state, scope, active) {
+            state.connection(scope) { frozenNow() || !active }
+        }
     return this.nestedScroll(connection)
 }
 

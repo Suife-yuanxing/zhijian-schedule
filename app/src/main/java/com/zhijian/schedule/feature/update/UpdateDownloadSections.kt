@@ -128,10 +128,11 @@ private fun mirrorHint(ui: UpdateUiState): String {
             "关闭中：有新版本时只用 GitHub 直连"
         }
     }
-    val reason = DownloadSourceSet.mirrorDisabledReason(
-        digest = ui.updateInfo.apkDigest,
-        mirrorsEnabled = ui.mirrorsEnabled,
-    )
+    val reason =
+        DownloadSourceSet.mirrorDisabledReason(
+            digest = ui.updateInfo.apkDigest,
+            mirrorsEnabled = ui.mirrorsEnabled,
+        )
     return when (reason) {
         null -> "直连不通时自动换镜像重试（推荐）"
         "镜像加速已关闭" -> "关闭中：只用 GitHub 直连（可用浏览器下载兜底）"
@@ -144,13 +145,18 @@ private fun mirrorHint(ui: UpdateUiState): String {
  * 浏览器下载兜底：优先用带官方摘要的镜像地址。
  * 应用内下载走 FGS，系统省电策略可能中断；浏览器交给系统下载器，成功率更高。
  */
-private fun openInBrowser(context: Context, info: UpdateChecker.UpdateInfo) {
+private fun openInBrowser(
+    context: Context,
+    info: UpdateChecker.UpdateInfo,
+) {
     val directUrl = info.apkUrl ?: return
-    val mirror = DownloadSourceSet.availableSources(
-        directUrl = directUrl,
-        digest = info.apkDigest,
-        mirrors = DownloadSourceSet.MIRRORS,
-    ).firstOrNull { it.id != DownloadSourceSet.DIRECT_ID }
+    val mirror =
+        DownloadSourceSet
+            .availableSources(
+                directUrl = directUrl,
+                digest = info.apkDigest,
+                mirrors = DownloadSourceSet.MIRRORS,
+            ).firstOrNull { it.id != DownloadSourceSet.DIRECT_ID }
     val target = mirror?.url ?: directUrl
     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(target))) }
 }

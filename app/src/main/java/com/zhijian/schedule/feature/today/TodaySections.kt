@@ -59,24 +59,26 @@ internal fun EmptyToday(ui: TodayUiState) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = when {
-                ui.week == null -> "假期中"
-                holiday?.isOffDay == true -> "「${holiday.name}」放假中"
-                holiday != null -> "调休上班日"
-                else -> "今天没有课"
-            },
+            text =
+                when {
+                    ui.week == null -> "假期中"
+                    holiday?.isOffDay == true -> "「${holiday.name}」放假中"
+                    holiday != null -> "调休上班日"
+                    else -> "今天没有课"
+                },
             style = MaterialTheme.typography.titleMedium,
             color = colors.text,
             fontWeight = FontWeight.SemiBold,
         )
         Spacer(Modifier.height(6.dp))
         Text(
-            text = when {
-                ui.week == null -> "不在学期周次范围内"
-                holiday?.isOffDay == true -> "今日课表课程按停课处理"
-                holiday != null -> "补课安排以学校通知为准"
-                else -> "好好休息一下"
-            },
+            text =
+                when {
+                    ui.week == null -> "不在学期周次范围内"
+                    holiday?.isOffDay == true -> "今日课表课程按停课处理"
+                    holiday != null -> "补课安排以学校通知为准"
+                    else -> "好好休息一下"
+                },
             style = MaterialTheme.typography.bodyMedium,
             color = colors.textMuted,
         )
@@ -85,7 +87,10 @@ internal fun EmptyToday(ui: TodayUiState) {
 
 /** 上午 / 下午 / 晚上分隔：小标题 + 细线，让长列表有呼吸和节奏 */
 @Composable
-internal fun DayPartHeader(part: DayPart, count: Int) {
+internal fun DayPartHeader(
+    part: DayPart,
+    count: Int,
+) {
     val colors = LocalCourseColors.current
     Row(
         Modifier
@@ -104,7 +109,7 @@ internal fun DayPartHeader(part: DayPart, count: Int) {
             Modifier
                 .weight(1f)
                 .height(1.dp)
-                .background(colors.border.copy(alpha = 0.55f))
+                .background(colors.border.copy(alpha = 0.55f)),
         )
         Spacer(Modifier.width(9.dp))
         Text(

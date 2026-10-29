@@ -10,16 +10,22 @@ class ExamMergeTest {
     private val t1 = 1_760_000_000_000L
     private val t2 = 1_760_100_000_000L
 
-    private fun old(id: Long, name: String, time: Long, room: String = "旧考场", manual: Boolean = false) =
-        ExamEntity(id = id, tableId = 1, name = name, room = room, examTime = time, manuallyEdited = manual)
+    private fun old(
+        id: Long,
+        name: String,
+        time: Long,
+        room: String = "旧考场",
+        manual: Boolean = false,
+    ) = ExamEntity(id = id, tableId = 1, name = name, room = room, examTime = time, manuallyEdited = manual)
 
     @Test fun `教务新增_变更_取消分别归入对应操作`() {
         val existing = listOf(old(1, "高等数学", t1), old(2, "大学英语", t2))
-        val fetched = listOf(
-            ExamDraft(name = "高等数学", room = "教305", examTime = t1), // 变更
-            ExamDraft(name = "数据结构", examTime = t2),                 // 新增
-            // 大学英语消失 → 取消
-        )
+        val fetched =
+            listOf(
+                ExamDraft(name = "高等数学", room = "教305", examTime = t1), // 变更
+                ExamDraft(name = "数据结构", examTime = t2), // 新增
+                // 大学英语消失 → 取消
+            )
         val r = ExamMergePlan.plan(existing, fetched)
         assertEquals(listOf("数据结构"), r.toInsert.map { it.name })
         assertEquals(listOf(1L), r.toUpdate.map { it.id })
@@ -30,13 +36,14 @@ class ExamMergeTest {
 
     @Test fun `手动编辑的考试永不覆盖也不删除`() {
         val existing = listOf(old(1, "高等数学", t1, manual = true), old(2, "大学英语", t2))
-        val fetched = listOf(
-            ExamDraft(name = "高等数学", room = "教888", examTime = t1),
-            ExamDraft(name = "数据结构", examTime = t2),
-        )
+        val fetched =
+            listOf(
+                ExamDraft(name = "高等数学", room = "教888", examTime = t1),
+                ExamDraft(name = "数据结构", examTime = t2),
+            )
         val r = ExamMergePlan.plan(existing, fetched)
-        assertEquals(0, r.toUpdate.size)          // 手动项不更新
-        assertEquals(listOf(2L), r.toDeleteIds)   // 非手动且教务已消失的正常取消
+        assertEquals(0, r.toUpdate.size) // 手动项不更新
+        assertEquals(listOf(2L), r.toDeleteIds) // 非手动且教务已消失的正常取消
         assertEquals(1, r.keptManual)
     }
 

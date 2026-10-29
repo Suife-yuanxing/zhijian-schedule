@@ -9,7 +9,6 @@ class ParserInput(
     val bytes: ByteArray? = null,
     val fileName: String? = null,
 ) {
-
     /** 去掉 BOM 与前导空白的正文，供文本类格式嗅探使用。 */
     val trimmedText: String
         get() = text.trimStart(*SNIFF_TRIM)
@@ -32,7 +31,6 @@ class ParserInput(
         }
 
     companion object {
-
         private const val SNIFF_BYTES = 64
         private val SNIFF_TRIM = charArrayOf('\uFEFF', ' ', '\n', '\r', '\t')
 
@@ -40,7 +38,10 @@ class ParserInput(
         fun ofText(text: String): ParserInput = ParserInput(text)
 
         /** 文件通道的输入：原始字节、解码后的正文与文件名。 */
-        fun ofFile(bytes: ByteArray, text: String, fileName: String? = null): ParserInput =
-            ParserInput(text = text, bytes = bytes, fileName = fileName)
+        fun ofFile(
+            bytes: ByteArray,
+            text: String,
+            fileName: String? = null,
+        ): ParserInput = ParserInput(text = text, bytes = bytes, fileName = fileName)
     }
 }

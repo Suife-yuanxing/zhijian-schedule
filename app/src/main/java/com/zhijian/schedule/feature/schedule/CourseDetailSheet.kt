@@ -2,8 +2,6 @@ package com.zhijian.schedule.feature.schedule
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,7 +14,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -49,8 +49,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.zhijian.schedule.core.data.db.CourseEntity
 import com.zhijian.schedule.core.theme.LocalCourseColors
-import com.zhijian.schedule.core.theme.LocalIsDark
 import com.zhijian.schedule.core.theme.LocalCoursePreset
+import com.zhijian.schedule.core.theme.LocalIsDark
 import com.zhijian.schedule.core.theme.courseTone
 import com.zhijian.schedule.core.ui.StaggerIn
 import com.zhijian.schedule.core.ui.pressScale
@@ -80,9 +80,10 @@ fun CourseDetailSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val isDark = LocalIsDark.current
     val preset = LocalCoursePreset.current
-    val tone = remember(course.color, isDark, preset.toneBias) {
-        courseTone(Color(course.color), isDark, preset.toneBias)
-    }
+    val tone =
+        remember(course.color, isDark, preset.toneBias) {
+            courseTone(Color(course.color), isDark, preset.toneBias)
+        }
 
     LaunchedEffect(sheetState) {
         snapshotFlow { sheetState.targetValue != SheetValue.Hidden }
@@ -117,8 +118,7 @@ fun CourseDetailSheet(
                             .graphicsLayer {
                                 scaleX = chipScale
                                 scaleY = chipScale
-                            }
-                            .clip(RoundedCornerShape(6.dp))
+                            }.clip(RoundedCornerShape(6.dp))
                             .background(Color(course.color)),
                     )
                     Spacer(Modifier.width(12.dp))
@@ -137,16 +137,19 @@ fun CourseDetailSheet(
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     HeroPill(
-                        text = "${TimeUtils.dayName(course.dayOfWeek)} · 第 ${course.startSection}-${course.endSection} 节",
+                        text = "${TimeUtils.dayName(
+                            course.dayOfWeek,
+                        )} · 第 ${course.startSection}-${course.endSection} 节",
                         tone = tone,
                     )
                     HeroPill(text = WeekMask.toExpression(course.weekMask), tone = tone)
                 }
             }
 
-            val hasDetails = course.room.isNotBlank() ||
-                course.teacher.isNotBlank() ||
-                course.note.isNotBlank()
+            val hasDetails =
+                course.room.isNotBlank() ||
+                    course.teacher.isNotBlank() ||
+                    course.note.isNotBlank()
             if (hasDetails) {
                 Spacer(Modifier.height(16.dp))
                 StaggerIn(index = 1) {
@@ -178,13 +181,15 @@ fun CourseDetailSheet(
                             onEdit()
                         },
                         interactionSource = editSource,
-                        modifier = Modifier
-                            .weight(1f)
-                            .pressScale(editSource, pressedScale = 0.96f),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = colors.accent,
-                            contentColor = colors.onAccent,
-                        ),
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                .pressScale(editSource, pressedScale = 0.96f),
+                        colors =
+                            ButtonDefaults.buttonColors(
+                                containerColor = colors.accent,
+                                contentColor = colors.onAccent,
+                            ),
                     ) {
                         Icon(
                             Icons.Filled.Edit,
@@ -201,9 +206,10 @@ fun CourseDetailSheet(
                             onDelete()
                         },
                         interactionSource = deleteSource,
-                        modifier = Modifier
-                            .weight(1f)
-                            .pressScale(deleteSource, pressedScale = 0.96f),
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                .pressScale(deleteSource, pressedScale = 0.96f),
                     ) {
                         Icon(
                             Icons.Filled.Delete,
@@ -219,4 +225,3 @@ fun CourseDetailSheet(
         }
     }
 }
-

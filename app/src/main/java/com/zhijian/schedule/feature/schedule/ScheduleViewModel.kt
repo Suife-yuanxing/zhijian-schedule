@@ -12,14 +12,14 @@ import com.zhijian.schedule.core.data.prefs.AppSettings
 import com.zhijian.schedule.core.repository.ScheduleRepository
 import com.zhijian.schedule.core.util.TimeUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
-import java.time.LocalDate
-import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.time.LocalDate
+import javax.inject.Inject
 
 data class ScheduleUiState(
     val timetable: TimetableEntity? = null,
@@ -39,68 +39,86 @@ data class ScheduleUiState(
     val periodCount: Int get() = sections.maxOfOrNull { it.periodNo } ?: 0
 
     /** 显示第 week 周、周几 的课程 */
-    fun coursesAt(week: Int, day: Int): List<CourseEntity> = courses.filter { c ->
-        c.dayOfWeek == day && com.zhijian.schedule.core.util.WeekMask.contains(c.weekMask, week)
-    }.sortedBy { it.startSection }
+    fun coursesAt(
+        week: Int,
+        day: Int,
+    ): List<CourseEntity> =
+        courses
+            .filter { c ->
+                c.dayOfWeek == day &&
+                    com.zhijian.schedule.core.util.WeekMask
+                        .contains(c.weekMask, week)
+            }.sortedBy { it.startSection }
 
-    fun dateOf(week: Int, day: Int): LocalDate = TimeUtils.dateOfWeekDay(startDate, week, day)
+    fun dateOf(
+        week: Int,
+        day: Int,
+    ): LocalDate = TimeUtils.dateOfWeekDay(startDate, week, day)
 
     /** 展示的第 week 周是否含调休补班日（补班日强制显示对应周末列） */
-    fun weekHasMakeupWorkday(week: Int): Boolean = (6..7).any { dow ->
-        holidays[dateOf(week, dow).toString()]?.isOffDay == false
-    }
+    fun weekHasMakeupWorkday(week: Int): Boolean =
+        (6..7).any { dow ->
+            holidays[dateOf(week, dow).toString()]?.isOffDay == false
+        }
 }
 
 @HiltViewModel
-class ScheduleViewModel @Inject constructor(
-    private val repository: ScheduleRepository,
-    private val holidayDao: HolidayDao,
-) : ViewModel() {
+class ScheduleViewModel
+    @Inject
+    constructor(
+        private val repository: ScheduleRepository,
+        private val holidayDao: HolidayDao,
+    ) : ViewModel() {
+        private val selectedWeek = MutableStateFlow(0)
 
-    private val selectedWeek = MutableStateFlow(0)
-
-    private data class Base(
-        val timetable: TimetableEntity?,
-        val courses: List<CourseEntity>,
-        val sections: List<SectionTimeEntity>,
-        val settings: AppSettings,
-    )
-
-    private val base = combine(
-        repository.activeTimetable,
-        repository.activeCourses,
-        repository.activeSections,
-        repository.settings,
-    ) { t, c, s, st -> Base(t, c, s, st) }
-
-    val uiState: StateFlow<ScheduleUiState> = combine(base, selectedWeek, holidayDao.observeAll()) { b, sel, holidays ->
-        val today = LocalDate.now()
-        val start = TimeUtils.parseDate(b.timetable?.startDate)
-        val currentWeek = if (start != null && b.timetable != null) {
-            TimeUtils.weekOfSemester(start, b.timetable.totalWeeks, today)
-        } else null
-        val week = when {
-            sel != 0 -> sel
-            currentWeek != null -> currentWeek
-            else -> 1
-        }
-        ScheduleUiState(
-            timetable = b.timetable,
-            courses = b.courses,
-            sections = b.sections,
-            settings = b.settings,
-            selectedWeek = week,
-            currentWeek = currentWeek,
-            today = today,
-            holidays = holidays.associateBy { it.date },
+        private data class Base(
+            val timetable: TimetableEntity?,
+            val courses: List<CourseEntity>,
+            val sections: List<SectionTimeEntity>,
+            val settings: AppSettings,
         )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ScheduleUiState())
 
-    fun selectWeek(week: Int) {
-        selectedWeek.value = week.coerceIn(1, uiState.value.totalWeeks)
-    }
+        private val base =
+            combine(
+                repository.activeTimetable,
+                repository.activeCourses,
+                repository.activeSections,
+                repository.settings,
+            ) { t, c, s, st -> Base(t, c, s, st) }
 
-    fun deleteCourse(id: Long) {
-        viewModelScope.launch { repository.deleteCourse(id) }
+        val uiState: StateFlow<ScheduleUiState> =
+            combine(base, selectedWeek, holidayDao.observeAll()) { b, sel, holidays ->
+                val today = LocalDate.now()
+                val start = TimeUtils.parseDate(b.timetable?.startDate)
+                val currentWeek =
+                    if (start != null && b.timetable != null) {
+                        TimeUtils.weekOfSemester(start, b.timetable.totalWeeks, today)
+                    } else {
+                        null
+                    }
+                val week =
+                    when {
+                        sel != 0 -> sel
+                        currentWeek != null -> currentWeek
+                        else -> 1
+                    }
+                ScheduleUiState(
+                    timetable = b.timetable,
+                    courses = b.courses,
+                    sections = b.sections,
+                    settings = b.settings,
+                    selectedWeek = week,
+                    currentWeek = currentWeek,
+                    today = today,
+                    holidays = holidays.associateBy { it.date },
+                )
+            }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ScheduleUiState())
+
+        fun selectWeek(week: Int) {
+            selectedWeek.value = week.coerceIn(1, uiState.value.totalWeeks)
+        }
+
+        fun deleteCourse(id: Long) {
+            viewModelScope.launch { repository.deleteCourse(id) }
+        }
     }
-}

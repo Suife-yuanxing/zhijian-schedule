@@ -36,7 +36,7 @@ import androidx.compose.ui.unit.sp
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.ui.buttonFeedback
 
-/**
+/*
  * 「我的」页的入口卡控件：大卡（双列主入口）、分组列表卡与行、行间分隔线。
  *
  * 只做外观与点击反馈，不持有任何数据；入口/跳转由调用方注入。
@@ -62,8 +62,7 @@ internal fun HeroEntryCard(
                 interactionSource = pressSource,
                 indication = LocalIndication.current,
                 onClick = onClick,
-            )
-            .padding(13.dp),
+            ).padding(13.dp),
     ) {
         Box(
             Modifier
@@ -130,9 +129,8 @@ internal fun GroupedEntryRow(
                     colors.surfaceVariant.copy(alpha = 0.55f)
                 } else {
                     Color.Transparent
-                }
-            )
-            .then(
+                },
+            ).then(
                 if (onClick != null) {
                     Modifier.clickable(
                         interactionSource = source,
@@ -141,9 +139,8 @@ internal fun GroupedEntryRow(
                     )
                 } else {
                     Modifier
-                }
-            )
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+                },
+            ).padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(

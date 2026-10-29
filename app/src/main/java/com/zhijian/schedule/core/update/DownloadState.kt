@@ -25,8 +25,16 @@ sealed interface DownloadState {
     ) : DownloadState
 
     /** 校验通过、待安装 */
-    data class Ready(val version: String, val file: File, val sizeBytes: Long) : DownloadState
+    data class Ready(
+        val version: String,
+        val file: File,
+        val sizeBytes: Long,
+    ) : DownloadState
 
     /** 失败；canResume 为 true 时卡片给「重试」（从分片续传），否则给「重新下载」 */
-    data class Failed(val version: String, val reason: String, val canResume: Boolean) : DownloadState
+    data class Failed(
+        val version: String,
+        val reason: String,
+        val canResume: Boolean,
+    ) : DownloadState
 }

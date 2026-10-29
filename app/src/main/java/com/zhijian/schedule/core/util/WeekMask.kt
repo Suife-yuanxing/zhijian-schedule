@@ -5,11 +5,18 @@ package com.zhijian.schedule.core.util
  * 如 20 周学期的 "1-16 周" = "11111111111111110000"。
  */
 object WeekMask {
+    /** 周次表达式里的数字片段：「3-5」或单点「7」 */
+    private val NUMBER_TOKEN = Regex("""\d+\s*-\s*\d+|\d+""")
 
-    fun of(totalWeeks: Int, include: Boolean = true): String =
-        (if (include) '1' else '0').toString().repeat(totalWeeks)
+    fun of(
+        totalWeeks: Int,
+        include: Boolean = true,
+    ): String = (if (include) '1' else '0').toString().repeat(totalWeeks)
 
-    fun normalize(mask: String?, totalWeeks: Int): String {
+    fun normalize(
+        mask: String?,
+        totalWeeks: Int,
+    ): String {
         val m = (mask ?: "").filter { it == '0' || it == '1' }
         return when {
             m.length == totalWeeks -> m
@@ -19,20 +26,25 @@ object WeekMask {
     }
 
     /** week 为 1 基 */
-    fun contains(mask: String, week: Int): Boolean {
+    fun contains(
+        mask: String,
+        week: Int,
+    ): Boolean {
         val idx = week - 1
         return idx in mask.indices && mask[idx] == '1'
     }
 
-    fun weeks(mask: String): List<Int> =
-        mask.mapIndexedNotNull { i, c -> if (c == '1') i + 1 else null }
+    fun weeks(mask: String): List<Int> = mask.mapIndexedNotNull { i, c -> if (c == '1') i + 1 else null }
 
     fun count(mask: String): Int = mask.count { it == '1' }
 
     /**
      * 由周次列表构建掩码。
      */
-    fun fromWeeks(totalWeeks: Int, weeks: Collection<Int>): String {
+    fun fromWeeks(
+        totalWeeks: Int,
+        weeks: Collection<Int>,
+    ): String {
         val chars = CharArray(totalWeeks) { '0' }
         weeks.forEach { w -> if (w in 1..totalWeeks) chars[w - 1] = '1' }
         return String(chars)
@@ -43,41 +55,57 @@ object WeekMask {
      * "1-16"、"1~16周"、"1,3,5-9"、"1-16单周"、"2-18双"、"单周"/"双周"
      * @return 掩码，无法解析时返回 null
      */
-    fun parseExpression(totalWeeks: Int, raw: String?): String? {
-        var text = raw?.trim().orEmpty()
-        if (text.isEmpty()) return null
-        text = text.replace("，", ",").replace("－", "-").replace("~", "-").replace("—", "-")
+    fun parseExpression(
+        totalWeeks: Int,
+        raw: String?,
+    ): String? {
+        val text = normalizeExpression(raw)
         val odd = text.contains("单") || text.contains("奇")
         val even = text.contains("双") || text.contains("偶")
-        val nums = Regex("""\d+\s*-\s*\d+|\d+""").findAll(text).map { it.value }.toList()
-        if (nums.isEmpty()) {
-            if (!odd && !even) return null
-        }
-        val weeks = mutableSetOf<Int>()
-        if (nums.isEmpty()) {
-            // "单周" / "双周" 无范围时视为全学期
-            (1..totalWeeks).forEach { weeks += it }
-        }
-        nums.forEach { token ->
-            if (token.contains("-")) {
-                val (a, b) = token.split("-").mapNotNull { it.trim().toIntOrNull() }
-                    .let { it.getOrNull(0) to it.getOrNull(1) }
-                if (a != null && b != null) {
-                    for (w in minOf(a, b)..maxOf(a, b)) weeks += w
-                }
-            } else {
-                token.trim().toIntOrNull()?.let { weeks += it }
-            }
-        }
+        val tokens = NUMBER_TOKEN.findAll(text).map { it.value }.toList()
+        // 既没有数字也没有「单/双」：不是周次表达式
+        if (tokens.isEmpty() && !odd && !even) return null
+        val weeks = collectWeeks(totalWeeks, tokens)
         if (odd || even) {
             weeks.retainAll { w -> if (odd) w % 2 == 1 else w % 2 == 0 }
         }
-        if (weeks.isEmpty()) return null
-        return fromWeeks(totalWeeks, weeks)
+        return weeks.takeIf { it.isNotEmpty() }?.let { fromWeeks(totalWeeks, it) }
     }
 
-    fun parity(totalWeeks: Int, odd: Boolean): String =
-        fromWeeks(totalWeeks, (1..totalWeeks).filter { if (odd) it % 2 == 1 else it % 2 == 0 })
+    /** 全角标点与各种连字符统一成半角，让后面的正则只需要认一种写法 */
+    private fun normalizeExpression(raw: String?): String =
+        raw
+            ?.trim()
+            .orEmpty()
+            .replace("，", ",")
+            .replace("－", "-")
+            .replace("~", "-")
+            .replace("—", "-")
+
+    /** 逐段展开成周次集合；没有任何数字的「单周 / 双周」按全学期算 */
+    private fun collectWeeks(
+        totalWeeks: Int,
+        tokens: List<String>,
+    ): MutableSet<Int> {
+        if (tokens.isEmpty()) return (1..totalWeeks).toMutableSet()
+        val weeks = mutableSetOf<Int>()
+        tokens.forEach { token -> weeks += expandToken(token) }
+        return weeks
+    }
+
+    /** "3-5" 展开成 3..5（两端写反也能兜住），"7" 只取 7 */
+    private fun expandToken(token: String): List<Int> {
+        if (!token.contains("-")) return listOfNotNull(token.trim().toIntOrNull())
+        val edges = token.split("-").mapNotNull { it.trim().toIntOrNull() }
+        val from = edges.getOrNull(0) ?: return emptyList()
+        val to = edges.getOrNull(1) ?: return emptyList()
+        return (minOf(from, to)..maxOf(from, to)).toList()
+    }
+
+    fun parity(
+        totalWeeks: Int,
+        odd: Boolean,
+    ): String = fromWeeks(totalWeeks, (1..totalWeeks).filter { if (odd) it % 2 == 1 else it % 2 == 0 })
 
     /**
      * 掩码转可读表达式："1-4,6,8-10"；全选返回 "全周"。

@@ -51,7 +51,7 @@ fun WeekHeader(
     Row(
         modifier
             .fillMaxWidth()
-            .height(metrics.headerHeight)
+            .height(metrics.headerHeight),
     ) {
         if (alignToTimeAxis) {
             Spacer(Modifier.width(metrics.timeAxisWidth))

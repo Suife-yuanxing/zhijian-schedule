@@ -5,7 +5,6 @@ package com.zhijian.schedule.core.jw
  * 只计「有绩点且非补考重修」的课程——等级制课程与补考记录不参与 GPA 与学分。
  */
 object GradeTrend {
-
     data class TermSummary(
         val term: String,
         /** 加权绩点；该学期无可用绩点时 null */
@@ -16,7 +15,8 @@ object GradeTrend {
     )
 
     fun perTerm(records: List<GradeRecord>): List<TermSummary> =
-        records.asSequence()
+        records
+            .asSequence()
             .filter { it.gpa != null && it.retakeTerm.isBlank() }
             .groupBy { it.term }
             .map { (term, rows) ->
@@ -26,8 +26,7 @@ object GradeTrend {
                     credits = rows.sumOf { it.credit },
                     courseCount = rows.size,
                 )
-            }
-            .sortedByDescending { it.term }
+            }.sortedByDescending { it.term }
 
     /** 最新学期（学期名字典序最大）；无数据时 null */
     fun latest(records: List<GradeRecord>): TermSummary? = perTerm(records).firstOrNull()

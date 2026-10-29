@@ -64,9 +64,10 @@ fun CourseBlock(
     onClick: () -> Unit,
 ) {
     // 课块的「面色」跟随主题：同一门课在素墨是淡墨、在灯下是被灯照到的一小片、在文具盒是便利贴
-    val tone = remember(course.color, isDark, preset.toneBias) {
-        courseTone(Color(course.color), isDark, preset.toneBias)
-    }
+    val tone =
+        remember(course.color, isDark, preset.toneBias) {
+            courseTone(Color(course.color), isDark, preset.toneBias)
+        }
     val shape = RoundedCornerShape(preset.radius.blockDp.dp)
     val span = (course.endSection - course.startSection + 1).coerceAtLeast(1)
     val pressSource = remember { MutableInteractionSource() }
@@ -94,30 +95,28 @@ fun CourseBlock(
     val showFooter = content.showFooter
 
     Column(
-        modifier = modifier
-            .zIndex(if (selected) 1f else 0f)
-            .cascadeIn(entranceDelayMs, restartKey = entranceKey)
-            .graphicsLayer {
-                val scale = press * (1f + 0.045f * lift)
-                scaleX = scale
-                scaleY = scale
-                this.shape = shape
-                clip = true
-            }
-            .background(lerp(tone.container, tone.line, 0.45f * ring))
-            .border(1.dp, tone.line, shape)
-            .let {
-                if (ring > 0.01f) it.border(2.dp, tone.ink.copy(alpha = ring * 0.85f), shape) else it
-            }
-            .clickable(
-                interactionSource = pressSource,
-                indication = LocalIndication.current,
-                onClick = {
-                    tapHaptic()
-                    onClick()
-                },
-            )
-            .padding(start = 6.dp, end = 4.dp, top = 4.dp, bottom = 3.dp),
+        modifier =
+            modifier
+                .zIndex(if (selected) 1f else 0f)
+                .cascadeIn(entranceDelayMs, restartKey = entranceKey)
+                .graphicsLayer {
+                    val scale = press * (1f + 0.045f * lift)
+                    scaleX = scale
+                    scaleY = scale
+                    this.shape = shape
+                    clip = true
+                }.background(lerp(tone.container, tone.line, 0.45f * ring))
+                .border(1.dp, tone.line, shape)
+                .let {
+                    if (ring > 0.01f) it.border(2.dp, tone.ink.copy(alpha = ring * 0.85f), shape) else it
+                }.clickable(
+                    interactionSource = pressSource,
+                    indication = LocalIndication.current,
+                    onClick = {
+                        tapHaptic()
+                        onClick()
+                    },
+                ).padding(start = 6.dp, end = 4.dp, top = 4.dp, bottom = 3.dp),
     ) {
         Text(
             text = course.name,
@@ -158,11 +157,12 @@ fun CourseBlock(
             ) {
                 // 一行只放得下一件事：正在上的课说剩余时间，其余说周次。
                 // 教师名放不下（58dp 块宽容不下两个 9.5sp 字符串），交给详情面板。
-                val footer = when {
-                    remainingMin != null -> "剩 $remainingMin 分"
-                    course.weekMask.isNotBlank() -> WeekMask.toExpression(course.weekMask)
-                    else -> ""
-                }
+                val footer =
+                    when {
+                        remainingMin != null -> "剩 $remainingMin 分"
+                        course.weekMask.isNotBlank() -> WeekMask.toExpression(course.weekMask)
+                        else -> ""
+                    }
                 if (footer.isNotBlank()) {
                     Text(
                         text = footer,

@@ -1,20 +1,23 @@
 package com.zhijian.schedule.core.notifications
 
-import com.zhijian.schedule.core.notifications.ExamAlarms
 import com.zhijian.schedule.core.data.db.ExamEntity
-import java.time.LocalDateTime
-import java.time.ZoneId
+import com.zhijian.schedule.core.notifications.ExamAlarms
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalDateTime
+import java.time.ZoneId
 
 class ExamAlarmsTest {
     private val now: LocalDateTime = LocalDateTime.of(2026, 11, 1, 12, 0)
 
-    private fun examAt(at: LocalDateTime) = ExamEntity(
-        id = 7, tableId = 1, name = "高等数学",
-        examTime = at.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
-    )
+    private fun examAt(at: LocalDateTime) =
+        ExamEntity(
+            id = 7,
+            tableId = 1,
+            name = "高等数学",
+            examTime = at.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+        )
 
     @Test fun `未来考试给出两档提醒`() {
         val slots = ExamAlarms.slots(examAt(now.plusHours(30)), now)

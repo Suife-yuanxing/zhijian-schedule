@@ -21,15 +21,15 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.zhijian.schedule.core.data.db.CourseEntity
+import com.zhijian.schedule.core.ui.LocalClock
 import com.zhijian.schedule.core.ui.StaggerIn
+import com.zhijian.schedule.core.ui.island.IslandCollapseState
 import com.zhijian.schedule.feature.schedule.components.WeekGrid
 import com.zhijian.schedule.feature.schedule.components.WeekHeader
 import com.zhijian.schedule.feature.schedule.components.rememberGridDensity
 import com.zhijian.schedule.feature.schedule.components.rememberGridMetrics
-import com.zhijian.schedule.core.ui.island.IslandCollapseState
-import com.zhijian.schedule.core.ui.LocalClock
-import java.time.LocalDate
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 
 @Composable
 fun ScheduleScreen(
@@ -72,16 +72,18 @@ fun ScheduleScreen(
     val today = remember(clock) { derivedStateOf { clock.value.toLocalDate() } }
 
     // 调休补班周：即使关着「显示周末」也强制显示周末列（补班日在该周）
-    val visibleDays = if (ui.settings.showWeekend || ui.weekHasMakeupWorkday(ui.selectedWeek)) {
-        (1..7).toList()
-    } else {
-        (1..5).toList()
-    }
+    val visibleDays =
+        if (ui.settings.showWeekend || ui.weekHasMakeupWorkday(ui.selectedWeek)) {
+            (1..7).toList()
+        } else {
+            (1..5).toList()
+        }
     val scope = rememberCoroutineScope()
-    val pagerState = rememberPagerState(
-        initialPage = 0,
-        pageCount = { ui.totalWeeks },
-    )
+    val pagerState =
+        rememberPagerState(
+            initialPage = 0,
+            pageCount = { ui.totalWeeks },
+        )
 
     // 课表加载完成、或开学日期/总周数被修改后，重新定位到当前周
     LaunchedEffect(ui.timetable?.id, ui.timetable?.startDate, ui.timetable?.totalWeeks) {

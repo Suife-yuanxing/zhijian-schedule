@@ -3,11 +3,11 @@ package com.zhijian.schedule.core.ui
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.dp
-import kotlin.math.abs
-import kotlin.math.hypot
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.math.abs
+import kotlin.math.hypot
 
 /**
  * 触摸倾动的几何：归一化 → 倾角。
@@ -16,7 +16,6 @@ import org.junit.Test
  * 和越界夹紧，避免以后调参数时把方向或幅度改歪。
  */
 class CardTiltTest {
-
     private val size = Size(100f, 50f)
 
     @Test
@@ -84,14 +83,15 @@ class CardTiltTest {
 
     @Test
     fun `focus card amplifies tilt, glare and lift over the base style`() {
-        val base = CardTiltStyle(
-            maxTiltDegrees = 13f,
-            glareAlpha = 0.4f,
-            liftScale = 0.028f,
-            liftElevation = 24.dp,
-            glareShade = 0.13f,
-            perspectiveScale = 1.45f,
-        )
+        val base =
+            CardTiltStyle(
+                maxTiltDegrees = 13f,
+                glareAlpha = 0.4f,
+                liftScale = 0.028f,
+                liftElevation = 24.dp,
+                glareShade = 0.13f,
+                perspectiveScale = 1.45f,
+            )
         val focus = focusTiltStyle(base)
         assertEquals(17f, focus.maxTiltDegrees, 1e-5f)
         assertEquals(0.42f, focus.glareAlpha, 1e-5f)

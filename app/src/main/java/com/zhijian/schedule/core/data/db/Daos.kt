@@ -78,8 +78,16 @@ interface CourseDao {
     @Query("SELECT * FROM course WHERE id = :id")
     suspend fun getById(id: Long): CourseEntity?
 
-    @Query("SELECT * FROM course WHERE tableId = :tableId AND dayOfWeek = :day AND startSection = :startSection AND name = :name LIMIT 1")
-    suspend fun findMatch(tableId: Long, day: Int, startSection: Int, name: String): CourseEntity?
+    @Query(
+        "SELECT * FROM course WHERE tableId = :tableId AND dayOfWeek = :day" +
+            " AND startSection = :startSection AND name = :name LIMIT 1",
+    )
+    suspend fun findMatch(
+        tableId: Long,
+        day: Int,
+        startSection: Int,
+        name: String,
+    ): CourseEntity?
 
     @Insert
     suspend fun insert(item: CourseEntity): Long
@@ -106,7 +114,10 @@ interface CourseDao {
 @Dao
 interface ImportSnapshotDao {
     @Query("SELECT * FROM import_snapshot WHERE tableId = :tableId ORDER BY fetchTime DESC LIMIT :limit")
-    fun observeLatest(tableId: Long, limit: Int = 10): Flow<List<ImportSnapshotEntity>>
+    fun observeLatest(
+        tableId: Long,
+        limit: Int = 10,
+    ): Flow<List<ImportSnapshotEntity>>
 
     @Query("SELECT * FROM import_snapshot WHERE tableId = :tableId ORDER BY fetchTime DESC LIMIT 1")
     suspend fun getLatest(tableId: Long): ImportSnapshotEntity?
@@ -115,10 +126,16 @@ interface ImportSnapshotDao {
     suspend fun insert(item: ImportSnapshotEntity): Long
 
     @Query("SELECT * FROM import_snapshot WHERE tableId = :tableId ORDER BY fetchTime DESC LIMIT :keep")
-    suspend fun keepLatest(tableId: Long, keep: Int): List<ImportSnapshotEntity>
+    suspend fun keepLatest(
+        tableId: Long,
+        keep: Int,
+    ): List<ImportSnapshotEntity>
 
     @Query("DELETE FROM import_snapshot WHERE id NOT IN (:keepIds) AND tableId = :tableId")
-    suspend fun deleteExcept(tableId: Long, keepIds: List<Long>)
+    suspend fun deleteExcept(
+        tableId: Long,
+        keepIds: List<Long>,
+    )
 }
 
 @Dao

@@ -68,38 +68,43 @@ internal fun ScheduleTopBar(
                     interactionSource = titleSource,
                     indication = LocalIndication.current,
                     onClick = onOpenWeekPicker,
-                )
-                .padding(horizontal = 8.dp, vertical = 4.dp),
+                ).padding(horizontal = 8.dp, vertical = 4.dp),
         ) {
             AnimatedContent(
                 targetState = ui.selectedWeek,
                 transitionSpec = {
                     val dir = if (targetState > initialState) 1 else -1
-                    (slideInVertically(
-                        animationSpec = tween(Motion.DurMedium, easing = Motion.EaseOut),
-                    ) { dir * it / 2 } + fadeIn(tween(Motion.DurMedium, easing = Motion.EaseOut))) togetherWith
-                        (slideOutVertically(
-                            animationSpec = tween(Motion.DurFast),
-                        ) { -dir * it / 2 } + fadeOut(tween(Motion.DurFast)))
+                    (
+                        slideInVertically(
+                            animationSpec = tween(Motion.DUR_MEDIUM, easing = Motion.EaseOut),
+                        ) { dir * it / 2 } + fadeIn(tween(Motion.DUR_MEDIUM, easing = Motion.EaseOut))
+                    ) togetherWith
+                        (
+                            slideOutVertically(
+                                animationSpec = tween(Motion.DUR_FAST),
+                            ) { -dir * it / 2 } + fadeOut(tween(Motion.DUR_FAST))
+                        )
                 },
                 label = "weekTitle",
             ) { week ->
                 val start = ui.dateOf(week, 1)
                 val end = ui.dateOf(week, 7)
-                val subtitle = when {
-                    ui.currentWeek == null && ui.today.isBefore(ui.startDate) -> "第 $week 周 · 未开学"
-                    ui.currentWeek == null -> "第 $week 周 · 学期已结束"
-                    week == ui.currentWeek -> "本周 · 第 $week 周"
-                    else -> "第 $week 周 · 非本周"
-                }
+                val subtitle =
+                    when {
+                        ui.currentWeek == null && ui.today.isBefore(ui.startDate) -> "第 $week 周 · 未开学"
+                        ui.currentWeek == null -> "第 $week 周 · 学期已结束"
+                        week == ui.currentWeek -> "本周 · 第 $week 周"
+                        else -> "第 $week 周 · 非本周"
+                    }
                 Column {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = "${start.monthValue}月${start.dayOfMonth}日 - ${end.monthValue}月${end.dayOfMonth}日",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                // 日期数字用等宽，翻周时宽度不跳
-                                fontFeatureSettings = "tnum",
-                            ),
+                            style =
+                                MaterialTheme.typography.titleMedium.copy(
+                                    // 日期数字用等宽，翻周时宽度不跳
+                                    fontFeatureSettings = "tnum",
+                                ),
                             color = colors.text,
                             fontWeight = FontWeight.SemiBold,
                         )
@@ -107,10 +112,11 @@ internal fun ScheduleTopBar(
                             Icons.Filled.ArrowDropDown,
                             contentDescription = null,
                             tint = colors.textMuted,
-                            modifier = Modifier
-                                .padding(start = 2.dp)
-                                .size(20.dp)
-                                .graphicsLayer { rotationZ = arrowAngle },
+                            modifier =
+                                Modifier
+                                    .padding(start = 2.dp)
+                                    .size(20.dp)
+                                    .graphicsLayer { rotationZ = arrowAngle },
                         )
                     }
                     Text(

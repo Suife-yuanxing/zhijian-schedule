@@ -217,8 +217,8 @@ internal fun TopProgressBar(
 ) {
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn(tween(durationMillis = Motion.DurFast)),
-        exit = fadeOut(tween(durationMillis = Motion.DurMedium, easing = Motion.EaseOut)),
+        enter = fadeIn(tween(durationMillis = Motion.DUR_FAST)),
+        exit = fadeOut(tween(durationMillis = Motion.DUR_MEDIUM, easing = Motion.EaseOut)),
         modifier = modifier,
     ) {
         LinearProgressIndicator(
@@ -239,8 +239,8 @@ internal fun PageErrorOverlay(
 ) {
     AnimatedVisibility(
         visible = error != null,
-        enter = fadeIn(tween(durationMillis = Motion.DurMedium, easing = Motion.EaseOut)),
-        exit = fadeOut(tween(durationMillis = Motion.DurFast)),
+        enter = fadeIn(tween(durationMillis = Motion.DUR_MEDIUM, easing = Motion.EaseOut)),
+        exit = fadeOut(tween(durationMillis = Motion.DUR_FAST)),
     ) {
         Box(
             Modifier
@@ -276,8 +276,8 @@ internal fun LoadingOverlay(
 ) {
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn(tween(durationMillis = Motion.DurMedium, easing = Motion.EaseOut)),
-        exit = fadeOut(tween(durationMillis = Motion.DurFast)),
+        enter = fadeIn(tween(durationMillis = Motion.DUR_MEDIUM, easing = Motion.EaseOut)),
+        exit = fadeOut(tween(durationMillis = Motion.DUR_FAST)),
     ) {
         Box(
             Modifier
@@ -302,11 +302,11 @@ internal fun HttpErrorBanner(
         visible = code >= 400,
         enter =
             slideInVertically(
-                animationSpec = tween(durationMillis = Motion.DurMedium, easing = Motion.EaseOut),
-            ) { -it } + fadeIn(tween(durationMillis = Motion.DurMedium)),
+                animationSpec = tween(durationMillis = Motion.DUR_MEDIUM, easing = Motion.EaseOut),
+            ) { -it } + fadeIn(tween(durationMillis = Motion.DUR_MEDIUM)),
         exit =
-            slideOutVertically(tween(durationMillis = Motion.DurMedium)) { -it } +
-                fadeOut(tween(durationMillis = Motion.DurFast)),
+            slideOutVertically(tween(durationMillis = Motion.DUR_MEDIUM)) { -it } +
+                fadeOut(tween(durationMillis = Motion.DUR_FAST)),
         modifier = modifier,
     ) {
         Row(

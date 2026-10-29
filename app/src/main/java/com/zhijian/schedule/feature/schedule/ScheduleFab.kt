@@ -51,18 +51,19 @@ internal fun ScheduleFab(
         FloatingActionButton(
             onClick = { onAddCourseFromFab(fabBounds) },
             interactionSource = fabSource,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 20.dp, bottom = IslandContentPadding)
-                .size(48.dp)
-                .onGloballyPositioned { fabBounds = it.boundsInRoot() }
-                .buttonFeedback(fabSource, pressedScale = 0.9f)
-                .graphicsLayer {
-                    val s = fabScale.value
-                    scaleX = s
-                    scaleY = s
-                    alpha = s.coerceIn(0f, 1f)
-                },
+            modifier =
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 20.dp, bottom = IslandContentPadding)
+                    .size(48.dp)
+                    .onGloballyPositioned { fabBounds = it.boundsInRoot() }
+                    .buttonFeedback(fabSource, pressedScale = 0.9f)
+                    .graphicsLayer {
+                        val s = fabScale.value
+                        scaleX = s
+                        scaleY = s
+                        alpha = s.coerceIn(0f, 1f)
+                    },
             containerColor = colors.accent,
             contentColor = colors.onAccent,
         ) {

@@ -1,16 +1,15 @@
 package com.zhijian.schedule.feature.exam
 
 import com.zhijian.schedule.feature.exam.ExamCountdown
-import java.time.LocalDateTime
-import java.time.ZoneId
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import java.time.LocalDateTime
+import java.time.ZoneId
 
 class ExamCountdownTest {
     private val now: LocalDateTime = LocalDateTime.of(2026, 11, 1, 12, 0)
 
-    private fun millis(at: LocalDateTime) =
-        at.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    private fun millis(at: LocalDateTime) = at.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
 
     @Test fun `倒计时徽标分档`() {
         assertEquals("3 天", ExamCountdown.badge(millis(now.plusDays(3).plusHours(1)), now))

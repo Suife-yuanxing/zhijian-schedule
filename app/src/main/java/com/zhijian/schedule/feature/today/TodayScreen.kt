@@ -11,8 +11,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,10 +28,10 @@ import com.zhijian.schedule.core.data.db.CourseEntity
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.ui.LocalClock
 import com.zhijian.schedule.core.ui.StaggerIn
-import com.zhijian.schedule.feature.schedule.CourseDetailSheet
 import com.zhijian.schedule.core.ui.island.IslandCollapseState
 import com.zhijian.schedule.core.ui.island.IslandScrollToTop
 import com.zhijian.schedule.core.ui.island.islandScrollObserver
+import com.zhijian.schedule.feature.schedule.CourseDetailSheet
 import com.zhijian.schedule.navigation.IslandContentPadding
 
 @Composable
@@ -73,7 +73,8 @@ fun TodayScreen(
         derivedStateOf {
             val now = clock.value.toLocalTime()
             ui.courses.firstOrNull { item ->
-                val s = item.startTime; val e = item.endTime
+                val s = item.startTime
+                val e = item.endTime
                 s != null && e != null && !now.isBefore(s) && !now.isAfter(e)
             }
         }
@@ -137,11 +138,14 @@ fun TodayScreen(
                     }
                     Spacer(Modifier.height(14.dp))
                 }
-                val groups = DayPart.entries.mapNotNull { part ->
-                    val entries = ui.courses.withIndex()
-                        .filter { dayPartOf(it.value.startTime) == part }
-                    if (entries.isEmpty()) null else part to entries
-                }
+                val groups =
+                    DayPart.entries.mapNotNull { part ->
+                        val entries =
+                            ui.courses
+                                .withIndex()
+                                .filter { dayPartOf(it.value.startTime) == part }
+                        if (entries.isEmpty()) null else part to entries
+                    }
                 var staggerIndex = 2
                 StaggerIn(index = staggerIndex++, skip = !entranceOnce) {
                     Row(verticalAlignment = Alignment.CenterVertically) {

@@ -22,49 +22,52 @@ import com.zhijian.schedule.core.util.TimeUtils
 @Composable
 internal fun TodayHeader(ui: TodayUiState) {
     val colors = LocalCourseColors.current
-        Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = "今天 · ${TimeUtils.dayName(TimeUtils.dayOfWeek(ui.today))}",
+            style = MaterialTheme.typography.headlineMedium,
+            color = colors.text,
+            fontWeight = FontWeight.SemiBold,
+        )
+        ui.todayHoliday?.let { h ->
+            Spacer(Modifier.width(10.dp))
+            val tint = if (h.isOffDay) HolidayColors.REST else HolidayColors.WORK
             Text(
-                text = "今天 · ${TimeUtils.dayName(TimeUtils.dayOfWeek(ui.today))}",
-                style = MaterialTheme.typography.headlineMedium,
-                color = colors.text,
-                fontWeight = FontWeight.SemiBold,
-            )
-            ui.todayHoliday?.let { h ->
-                Spacer(Modifier.width(10.dp))
-                val tint = if (h.isOffDay) HolidayColors.REST else HolidayColors.WORK
-                Text(
-                    text = "${h.name} · ${if (h.isOffDay) "休" else "班"}",
-                    color = tint,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier
+                text = "${h.name} · ${if (h.isOffDay) "休" else "班"}",
+                color = tint,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                modifier =
+                    Modifier
                         .clip(RoundedCornerShape(8.dp))
                         .background(tint.copy(alpha = 0.14f))
                         .padding(horizontal = 8.dp, vertical = 3.dp),
-                )
-            }
+            )
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = buildString {
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text =
+                buildString {
                     append("${ui.today.monthValue}月${ui.today.dayOfMonth}日")
                     if (ui.timetableName.isNotBlank()) append(" · ${ui.timetableName}")
                 },
-                style = MaterialTheme.typography.bodyMedium,
-                color = colors.textMuted,
-                modifier = Modifier.weight(1f),
-            )
-            ui.week?.let { week ->
-                Text(
-                    text = "第 $week 周",
-                    color = colors.accent,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier
+            style = MaterialTheme.typography.bodyMedium,
+            color = colors.textMuted,
+            modifier = Modifier.weight(1f),
+        )
+        ui.week?.let { week ->
+            Text(
+                text = "第 $week 周",
+                color = colors.accent,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier =
+                    Modifier
                         .clip(RoundedCornerShape(8.dp))
                         .background(colors.accent.copy(alpha = 0.12f))
                         .padding(horizontal = 8.dp, vertical = 3.dp),
-                )
-            }
+            )
         }
+    }
 }

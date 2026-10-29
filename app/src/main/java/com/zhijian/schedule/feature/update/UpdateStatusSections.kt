@@ -44,7 +44,7 @@ import com.zhijian.schedule.core.update.DownloadState
 import com.zhijian.schedule.core.update.ResumableDownload
 import com.zhijian.schedule.core.update.UpdateChecker
 
-/**
+/*
  * 更新窗口的状态区块：把 [DownloadState] / 检查结果渲染成一张状态卡片。
  * 一屏只出现一张卡片（[UpdateStatusCard] 负责分发），其余卡片互斥。
  */
@@ -171,9 +171,10 @@ private fun UpdateAvailableCard(info: UpdateChecker.UpdateInfo) {
 @Composable
 private fun RunningCard(state: DownloadState.Running) {
     val colors = LocalCourseColors.current
-    val fraction = state.totalBytes
-        ?.takeIf { it > 0L }
-        ?.let { (state.downloadedBytes.toFloat() / it).coerceIn(0f, 1f) }
+    val fraction =
+        state.totalBytes
+            ?.takeIf { it > 0L }
+            ?.let { (state.downloadedBytes.toFloat() / it).coerceIn(0f, 1f) }
     StatusCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -210,9 +211,10 @@ private fun RunningCard(state: DownloadState.Running) {
 @Composable
 private fun PausedCard(state: DownloadState.Paused) {
     val colors = LocalCourseColors.current
-    val fraction = state.totalBytes
-        ?.takeIf { it > 0L }
-        ?.let { (state.downloadedBytes.toFloat() / it).coerceIn(0f, 1f) }
+    val fraction =
+        state.totalBytes
+            ?.takeIf { it > 0L }
+            ?.let { (state.downloadedBytes.toFloat() / it).coerceIn(0f, 1f) }
     StatusCard {
         Text(
             "下载已暂停",
@@ -268,12 +270,16 @@ private fun ReadyCard(state: DownloadState.Ready) {
 }
 
 @Composable
-private fun FailedCard(state: DownloadState.Failed, mirrorsEnabled: Boolean) {
-    val hint = if (!mirrorsEnabled && isSourceFailure(state.reason)) {
-        "可开启镜像加速，或用浏览器下载"
-    } else {
-        null
-    }
+private fun FailedCard(
+    state: DownloadState.Failed,
+    mirrorsEnabled: Boolean,
+) {
+    val hint =
+        if (!mirrorsEnabled && isSourceFailure(state.reason)) {
+            "可开启镜像加速，或用浏览器下载"
+        } else {
+            null
+        }
     ProblemCard(title = "下载失败", detail = state.reason, hint = hint)
 }
 
@@ -283,7 +289,11 @@ private fun CheckFailedCard(detail: String) {
 }
 
 @Composable
-private fun ProblemCard(title: String, detail: String, hint: String?) {
+private fun ProblemCard(
+    title: String,
+    detail: String,
+    hint: String?,
+) {
     val colors = LocalCourseColors.current
     val error = MaterialTheme.colorScheme.error
     val dark = LocalIsDark.current
@@ -374,11 +384,12 @@ private fun ProgressBar(fraction: Float) {
         label = "updateProgress",
     )
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(6.dp)
-            .clip(RoundedCornerShape(3.dp))
-            .background(colors.border),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(colors.border),
     ) {
         Box(
             Modifier
@@ -394,10 +405,11 @@ private fun ProgressBar(fraction: Float) {
 private fun IndeterminateBar() {
     val colors = LocalCourseColors.current
     LinearProgressIndicator(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(6.dp)
-            .clip(RoundedCornerShape(3.dp)),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp)),
         color = colors.accent,
         trackColor = colors.border,
     )
@@ -406,13 +418,15 @@ private fun IndeterminateBar() {
 private fun runningDetail(state: DownloadState.Running): String {
     // 刚点下载时还在探测/连接源，进度和速度都是 0：给一句明确的「在干活」而不是干巴巴的 0 B
     if (state.downloadedBytes <= 0L && state.bytesPerSecond <= 0L) return "正在连接下载源…"
-    val size = state.totalBytes?.let {
-        "${ResumableDownload.formatBytes(state.downloadedBytes)} / ${ResumableDownload.formatBytes(it)}"
-    } ?: "已下载 ${ResumableDownload.formatBytes(state.downloadedBytes)}"
-    val speed = state.bytesPerSecond
-        .takeIf { it > 0L }
-        ?.let { " · ${ResumableDownload.formatBytes(it)}/s" }
-        .orEmpty()
+    val size =
+        state.totalBytes?.let {
+            "${ResumableDownload.formatBytes(state.downloadedBytes)} / ${ResumableDownload.formatBytes(it)}"
+        } ?: "已下载 ${ResumableDownload.formatBytes(state.downloadedBytes)}"
+    val speed =
+        state.bytesPerSecond
+            .takeIf { it > 0L }
+            ?.let { " · ${ResumableDownload.formatBytes(it)}/s" }
+            .orEmpty()
     val eta = ResumableDownload.etaText(state.etaSeconds)?.let { " · $it" }.orEmpty()
     val source = state.sourceLabel?.let { " · 经 $it" }.orEmpty()
     return size + speed + eta + source

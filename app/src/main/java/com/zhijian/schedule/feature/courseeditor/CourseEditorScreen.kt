@@ -1,4 +1,4 @@
-package com.zhijian.schedule.feature.course_editor
+package com.zhijian.schedule.feature.courseeditor
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -37,7 +37,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -59,13 +58,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.zhijian.schedule.core.theme.LocalCourseColors
+import com.zhijian.schedule.core.theme.LocalCoursePreset
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.SecondaryTopBar
 import com.zhijian.schedule.core.ui.buttonFeedback
 import com.zhijian.schedule.core.ui.pressScale
 import com.zhijian.schedule.core.ui.selectedPop
-import com.zhijian.schedule.core.theme.LocalCourseColors
-import com.zhijian.schedule.core.theme.LocalCoursePreset
 import com.zhijian.schedule.core.util.TimeUtils
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -97,11 +96,12 @@ fun CourseEditorScreen(
                     TextButton(
                         onClick = { viewModel.delete() },
                         interactionSource = deleteSource,
-                        modifier = Modifier.buttonFeedback(
-                            deleteSource,
-                            pressedScale = 0.92f,
-                            hapticType = HapticFeedbackType.LongPress,
-                        ),
+                        modifier =
+                            Modifier.buttonFeedback(
+                                deleteSource,
+                                pressedScale = 0.92f,
+                                hapticType = HapticFeedbackType.LongPress,
+                            ),
                     ) {
                         Text(
                             text = "删除",
@@ -171,9 +171,10 @@ fun CourseEditorScreen(
                         interactionSource = source,
                         colors = editorChipColors(),
                         border = editorChipBorder(selected),
-                        modifier = Modifier
-                            .pressScale(source, pressedScale = 0.92f)
-                            .selectedPop(selected),
+                        modifier =
+                            Modifier
+                                .pressScale(source, pressedScale = 0.92f)
+                                .selectedPop(selected),
                     )
                 }
             }
@@ -240,9 +241,10 @@ fun CourseEditorScreen(
                         interactionSource = source,
                         colors = editorChipColors(),
                         border = editorChipBorder(selected),
-                        modifier = Modifier
-                            .pressScale(source, pressedScale = 0.9f)
-                            .selectedPop(selected, popScale = 1.1f),
+                        modifier =
+                            Modifier
+                                .pressScale(source, pressedScale = 0.9f)
+                                .selectedPop(selected, popScale = 1.1f),
                     )
                 }
             }
@@ -260,7 +262,7 @@ fun CourseEditorScreen(
                     )
                     val ring by animateColorAsState(
                         targetValue = if (selected) colors.text else Color.Transparent,
-                        animationSpec = tween(durationMillis = Motion.DurFast),
+                        animationSpec = tween(durationMillis = Motion.DUR_FAST),
                         label = "swatchRing",
                     )
                     Box(
@@ -270,8 +272,7 @@ fun CourseEditorScreen(
                             .graphicsLayer {
                                 scaleX = popScale
                                 scaleY = popScale
-                            }
-                            .clip(CircleShape)
+                            }.clip(CircleShape)
                             .background(paletteColor)
                             .border(2.dp, ring, CircleShape)
                             .clickable(
@@ -295,12 +296,12 @@ fun CourseEditorScreen(
             Spacer(Modifier.height(28.dp))
             val saveContainer by animateColorAsState(
                 targetValue = if (ui.canSave) colors.accent else colors.textMuted.copy(alpha = 0.14f),
-                animationSpec = tween(durationMillis = Motion.DurFast),
+                animationSpec = tween(durationMillis = Motion.DUR_FAST),
                 label = "saveContainer",
             )
             val saveContent by animateColorAsState(
                 targetValue = if (ui.canSave) colors.onAccent else colors.textMuted,
-                animationSpec = tween(durationMillis = Motion.DurFast),
+                animationSpec = tween(durationMillis = Motion.DUR_FAST),
                 label = "saveContent",
             )
             val saveSource = remember { MutableInteractionSource() }
@@ -308,19 +309,21 @@ fun CourseEditorScreen(
                 onClick = { viewModel.save() },
                 enabled = ui.canSave,
                 interactionSource = saveSource,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .buttonFeedback(
-                        saveSource,
-                        pressedScale = 0.97f,
-                        enabled = ui.canSave,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .buttonFeedback(
+                            saveSource,
+                            pressedScale = 0.97f,
+                            enabled = ui.canSave,
+                        ),
+                colors =
+                    androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = saveContainer,
+                        contentColor = saveContent,
+                        disabledContainerColor = saveContainer,
+                        disabledContentColor = saveContent,
                     ),
-                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                    containerColor = saveContainer,
-                    contentColor = saveContent,
-                    disabledContainerColor = saveContainer,
-                    disabledContentColor = saveContent,
-                ),
             ) {
                 Text("保存", fontWeight = FontWeight.SemiBold)
             }
@@ -342,12 +345,13 @@ private fun FieldLabel(text: String) {
 }
 
 @Composable
-private fun editorChipColors() = FilterChipDefaults.filterChipColors(
-    containerColor = Color.Transparent,
-    labelColor = LocalCourseColors.current.textMuted,
-    selectedContainerColor = LocalCourseColors.current.accent.copy(alpha = 0.20f),
-    selectedLabelColor = LocalCourseColors.current.text,
-)
+private fun editorChipColors() =
+    FilterChipDefaults.filterChipColors(
+        containerColor = Color.Transparent,
+        labelColor = LocalCourseColors.current.textMuted,
+        selectedContainerColor = LocalCourseColors.current.accent.copy(alpha = 0.20f),
+        selectedLabelColor = LocalCourseColors.current.text,
+    )
 
 @Composable
 private fun editorChipBorder(selected: Boolean): BorderStroke {
@@ -359,7 +363,10 @@ private fun editorChipBorder(selected: Boolean): BorderStroke {
 }
 
 @Composable
-private fun WeekQuickAction(text: String, onClick: () -> Unit) {
+private fun WeekQuickAction(
+    text: String,
+    onClick: () -> Unit,
+) {
     val colors = LocalCourseColors.current
     val source = remember { MutableInteractionSource() }
     TextButton(
@@ -398,8 +405,7 @@ private fun SectionDropdown(
                     indication = LocalIndication.current,
                 ) {
                     expanded = true
-                }
-                .padding(start = 12.dp, end = 6.dp, top = 7.dp, bottom = 7.dp),
+                }.padding(start = 12.dp, end = 6.dp, top = 7.dp, bottom = 7.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(label, color = colors.text, fontSize = 14.sp, fontWeight = FontWeight.Medium)
@@ -407,9 +413,10 @@ private fun SectionDropdown(
                 Icons.Filled.ArrowDropDown,
                 contentDescription = null,
                 tint = colors.textMuted,
-                modifier = Modifier
-                    .size(20.dp)
-                    .graphicsLayer { rotationZ = arrow },
+                modifier =
+                    Modifier
+                        .size(20.dp)
+                        .graphicsLayer { rotationZ = arrow },
             )
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
@@ -421,18 +428,19 @@ private fun SectionDropdown(
                             color = if (n == selected) colors.accent else colors.text,
                         )
                     },
-                    trailingIcon = if (n == selected) {
-                        {
-                            Icon(
-                                Icons.Filled.Check,
-                                contentDescription = null,
-                                tint = colors.accent,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        }
-                    } else {
-                        null
-                    },
+                    trailingIcon =
+                        if (n == selected) {
+                            {
+                                Icon(
+                                    Icons.Filled.Check,
+                                    contentDescription = null,
+                                    tint = colors.accent,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        } else {
+                            null
+                        },
                     onClick = {
                         expanded = false
                         onSelect(n)
@@ -445,9 +453,11 @@ private fun SectionDropdown(
 
 /** Compose Color → ARGB Int */
 private fun Color.toArgbInt(): Int =
-    (android.graphics.Color.argb(
-        (alpha * 255).toInt(),
-        (red * 255).toInt(),
-        (green * 255).toInt(),
-        (blue * 255).toInt(),
-    ))
+    (
+        android.graphics.Color.argb(
+            (alpha * 255).toInt(),
+            (red * 255).toInt(),
+            (green * 255).toInt(),
+            (blue * 255).toInt(),
+        )
+    )

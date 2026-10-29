@@ -10,8 +10,10 @@ import okhttp3.HttpUrl
  * OkHttp 抓取课表（HTTP 重放）自动带上会话（方案 4.10）。
  */
 class WebViewCookieJar : CookieJar {
-
-    override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
+    override fun saveFromResponse(
+        url: HttpUrl,
+        cookies: List<Cookie>,
+    ) {
         val manager = CookieManager.getInstance()
         cookies.forEach { cookie ->
             manager.setCookie(url.toString(), cookie.toString())

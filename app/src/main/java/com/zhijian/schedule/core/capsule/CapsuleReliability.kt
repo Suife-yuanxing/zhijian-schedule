@@ -16,11 +16,11 @@ import android.provider.Settings
  * setAlarmClock 兜底（状态栏会短暂出现闹钟图标）。
  */
 object CapsuleReliability {
-
     fun isBatteryOptimizationIgnored(context: Context): Boolean =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             runCatching {
-                context.getSystemService(PowerManager::class.java)
+                context
+                    .getSystemService(PowerManager::class.java)
                     ?.isIgnoringBatteryOptimizations(context.packageName) ?: true
             }.getOrDefault(true)
         } else {
@@ -34,12 +34,14 @@ object CapsuleReliability {
     @SuppressLint("BatteryLife")
     fun requestIgnoreBatteryOptimization(context: Context): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return false
-        val direct = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-            .setData(Uri.parse("package:${context.packageName}"))
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val direct =
+            Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                .setData(Uri.parse("package:${context.packageName}"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         if (runCatching { context.startActivity(direct) }.isSuccess) return true
-        val list = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val list =
+            Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         return runCatching { context.startActivity(list) }.isSuccess
     }
 
@@ -49,7 +51,7 @@ object CapsuleReliability {
             context.startActivity(
                 Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
                     .setData(Uri.parse("package:${context.packageName}"))
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             )
         }.isSuccess
 }

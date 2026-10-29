@@ -31,7 +31,7 @@ import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.ui.TapTextButton
 import com.zhijian.schedule.core.ui.buttonFeedback
 
-/**
+/*
  * 导入流程的最后两步：**预览**（变更清单 + 应用/取消）与**结果**（导入完成提示）。
  *
  * 预览表按 [ImportChangeKind] 标出新增 / 变更 / 取消 / 无变化，用户确认后才真正落库，

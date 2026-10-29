@@ -6,10 +6,11 @@ import kotlin.math.abs
  * OCR 网格几何：表头列布局、节次锚点行映射，以及 OCR 漏读表头时的列插值。
  */
 internal object OcrGrid {
-
     /** 列布局：由表头中心距推出列宽与左右边界，并把一行文本归属到某一列；列外返回 null。 */
-    class ColumnLayout(private val centers: List<Float>, private val colGap: Float) {
-
+    class ColumnLayout(
+        private val centers: List<Float>,
+        private val colGap: Float,
+    ) {
         val leftEdge: Float = centers.first() - colGap / 2f
         val rightEdge: Float = centers.last() + colGap / 2f
 
@@ -54,10 +55,16 @@ internal object OcrGrid {
         return full
     }
 
-    data class Anchor(val n: Int, val big: Boolean, val y: Float)
+    data class Anchor(
+        val n: Int,
+        val big: Boolean,
+        val y: Float,
+    )
 
-    class RowMap(private val ranges: List<IntRange>, private val edges: List<Float>) {
-
+    class RowMap(
+        private val ranges: List<IntRange>,
+        private val edges: List<Float>,
+    ) {
         val medianRowHeight: Float
             get() = if (edges.size >= 2) median(edges.zipWithNext { a, b -> b - a }) else 100f
 
@@ -71,13 +78,22 @@ internal object OcrGrid {
         }
 
         companion object {
-            fun build(anchors: List<Anchor>, gridTop: Float, gridBottom: Float, totalSections: Int): RowMap {
+            fun build(
+                anchors: List<Anchor>,
+                gridTop: Float,
+                gridBottom: Float,
+                totalSections: Int,
+            ): RowMap {
                 if (anchors.size >= 2) {
                     val big = anchors.any { it.big } || anchors.maxOf { it.n } * 2 <= totalSections + 1
-                    val ranges = anchors.map { a ->
-                        if (big) (a.n * 2 - 1)..minOf(a.n * 2, totalSections)
-                        else a.n.coerceIn(1, totalSections).let { it..it }
-                    }
+                    val ranges =
+                        anchors.map { a ->
+                            if (big) {
+                                (a.n * 2 - 1)..minOf(a.n * 2, totalSections)
+                            } else {
+                                a.n.coerceIn(1, totalSections).let { it..it }
+                            }
+                        }
                     val edges = mutableListOf<Float>()
                     edges += gridTop
                     for (k in 1 until anchors.size) edges += (anchors[k - 1].y + anchors[k].y) / 2f

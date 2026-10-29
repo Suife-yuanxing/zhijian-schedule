@@ -6,8 +6,13 @@ import kotlinx.serialization.json.Json
 
 /** manifest 解析结果；失败原因均为用户可读中文 */
 sealed interface ManifestResult {
-    data class Ok(val manifest: JwScriptManifest) : ManifestResult
-    data class Invalid(val reason: String) : ManifestResult
+    data class Ok(
+        val manifest: JwScriptManifest,
+    ) : ManifestResult
+
+    data class Invalid(
+        val reason: String,
+    ) : ManifestResult
 }
 
 /**
@@ -32,17 +37,20 @@ data class JwScriptManifest(
 
         /** 解析失败一律给用户可读的中文原因；未知字段忽略（向前兼容） */
         fun parse(source: String): ManifestResult {
-            val block = manifestComment(source)
-                ?: return ManifestResult.Invalid("脚本缺少 $MARKER 头部说明，无法识别")
+            val block =
+                manifestComment(source)
+                    ?: return ManifestResult.Invalid("脚本缺少 $MARKER 头部说明，无法识别")
             // 多行块注释的每行常带 " * " 装饰，剥掉后才是干净 JSON
-            val cleaned = block.lines().joinToString("\n") { line ->
-                line.trim().removePrefix("*").trim()
-            }
+            val cleaned =
+                block.lines().joinToString("\n") { line ->
+                    line.trim().removePrefix("*").trim()
+                }
             val start = cleaned.indexOf('{')
             val end = cleaned.lastIndexOf('}')
             if (start < 0 || end <= start) return ManifestResult.Invalid("脚本 manifest 不是合法 JSON")
-            val m = runCatching { json.decodeFromString<JwScriptManifest>(cleaned.substring(start, end + 1)) }
-                .getOrElse { return ManifestResult.Invalid("脚本 manifest 解析失败：${it.message}") }
+            val m =
+                runCatching { json.decodeFromString<JwScriptManifest>(cleaned.substring(start, end + 1)) }
+                    .getOrElse { return ManifestResult.Invalid("脚本 manifest 解析失败：${it.message}") }
             if (!ID.matches(m.id)) return ManifestResult.Invalid("脚本 id 非法（只允许小写字母数字与连字符）：${m.id}")
             val name = m.name.trim()
             if (name.isEmpty() || name.length > 30) return ManifestResult.Invalid("脚本名称须为 1~30 字")

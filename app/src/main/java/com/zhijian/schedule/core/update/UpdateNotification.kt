@@ -16,7 +16,6 @@ import com.zhijian.schedule.R
  * 渠道与课程胶囊（capsule）隔离，用户关掉胶囊不会连带丢掉下载进度。
  */
 object UpdateNotification {
-
     const val CH_UPDATE = "update"
     const val NOTIFICATION_ID_PROGRESS = 3101
     const val NOTIFICATION_ID_DONE = 3102
@@ -30,7 +29,7 @@ object UpdateNotification {
                 CH_UPDATE,
                 context.getString(R.string.channel_update_name),
                 NotificationManager.IMPORTANCE_LOW,
-            ).apply { description = context.getString(R.string.channel_update_desc) }
+            ).apply { description = context.getString(R.string.channel_update_desc) },
         )
     }
 
@@ -45,14 +44,16 @@ object UpdateNotification {
         sourceLabel: String? = null,
     ): Notification {
         val source = sourceLabel?.let { " · 经 $it" }.orEmpty()
-        val text = if (totalBytes != null) {
-            val tail = ResumableDownload.etaText(etaSeconds)?.let { " · $it" }.orEmpty()
-            "${ResumableDownload.formatBytes(downloadedBytes)} / " +
-                "${ResumableDownload.formatBytes(totalBytes)}$tail$source"
-        } else {
-            "已下载 ${ResumableDownload.formatBytes(downloadedBytes)}$source"
-        }
-        return NotificationCompat.Builder(context, CH_UPDATE)
+        val text =
+            if (totalBytes != null) {
+                val tail = ResumableDownload.etaText(etaSeconds)?.let { " · $it" }.orEmpty()
+                "${ResumableDownload.formatBytes(downloadedBytes)} / " +
+                    "${ResumableDownload.formatBytes(totalBytes)}$tail$source"
+            } else {
+                "已下载 ${ResumableDownload.formatBytes(downloadedBytes)}$source"
+            }
+        return NotificationCompat
+            .Builder(context, CH_UPDATE)
             .setSmallIcon(R.drawable.ic_stat_notify)
             .setContentTitle("正在下载更新 v$version")
             .setContentText(text)
@@ -67,7 +68,10 @@ object UpdateNotification {
     }
 
     /** 更新前台服务那条通知（同一个 id，重复 notify 会原地替换） */
-    fun postProgress(context: Context, notification: Notification) {
+    fun postProgress(
+        context: Context,
+        notification: Notification,
+    ) {
         runCatching {
             NotificationManagerCompat.from(context).notify(NOTIFICATION_ID_PROGRESS, notification)
         }
@@ -77,14 +81,19 @@ object UpdateNotification {
      * 下载完成、校验通过后的通知。点按只回 App —— 安装前的「未知来源」引导留在设置页卡片里做，
      * 免得在通知里跳系统页体验割裂。
      */
-    fun postDone(context: Context, version: String) {
-        val notification = NotificationCompat.Builder(context, CH_UPDATE)
-            .setSmallIcon(R.drawable.ic_stat_notify)
-            .setContentTitle("更新已下载")
-            .setContentText("点按返回应用完成安装（v$version）")
-            .setAutoCancel(true)
-            .setContentIntent(openAppIntent(context))
-            .build()
+    fun postDone(
+        context: Context,
+        version: String,
+    ) {
+        val notification =
+            NotificationCompat
+                .Builder(context, CH_UPDATE)
+                .setSmallIcon(R.drawable.ic_stat_notify)
+                .setContentTitle("更新已下载")
+                .setContentText("点按返回应用完成安装（v$version）")
+                .setAutoCancel(true)
+                .setContentIntent(openAppIntent(context))
+                .build()
         runCatching {
             NotificationManagerCompat.from(context).notify(NOTIFICATION_ID_DONE, notification)
         }

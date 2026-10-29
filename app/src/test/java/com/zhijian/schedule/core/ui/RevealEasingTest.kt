@@ -16,7 +16,6 @@ import org.junit.Test
  * 免得有人顺手把页面扩散换回旧的前重后轻曲线，或者让反向和正向「曲线打架」而没人发现。
  */
 class RevealEasingTest {
-
     private val accel = Motion.EaseRevealAccelerate
     private val mirror = Motion.EaseRevealDecelerate
 
@@ -112,26 +111,26 @@ class RevealEasingTest {
         // 否则要 560 × 0.837 ≈ 469ms 才「读作换完」，比 280ms 晚近 190ms，起步会被判成卡顿。
         val arriveAtFraction = 0.8369f
         assertEquals(0.779f, accel.transform(arriveAtFraction), 0.003f)
-        for (duration in listOf(Motion.DurReveal, Motion.DurRevealTheme)) {
+        for (duration in listOf(Motion.DUR_REVEAL, Motion.DUR_REVEAL_THEME)) {
             val arriveAt = duration * arriveAtFraction
             assertTrue("时长 $duration 下这一步落在 ${arriveAt}ms，太晚了", arriveAt - 280f < 150f)
         }
         // 反向用镜像曲线（前重后轻），不需要时长补偿；但必须比正向短，保持「收回比张开短一截」
-        assertTrue(Motion.DurRevealBack < Motion.DurReveal)
+        assertTrue(Motion.DUR_REVEAL_BACK < Motion.DUR_REVEAL)
     }
 
     @Test
     fun `时间线分发 页面正向与换主题共用加速曲线 反向走镜像`() {
         val forward = revealTiming(reverse = false, themeSwitch = false)
-        assertEquals(Motion.DurReveal, forward.durationMillis)
+        assertEquals(Motion.DUR_REVEAL, forward.durationMillis)
         assertSame(Motion.EaseRevealAccelerate, forward.easing)
 
         val theme = revealTiming(reverse = false, themeSwitch = true)
-        assertEquals(Motion.DurRevealTheme, theme.durationMillis)
+        assertEquals(Motion.DUR_REVEAL_THEME, theme.durationMillis)
         assertSame(Motion.EaseRevealAccelerate, theme.easing)
 
         val back = revealTiming(reverse = true, themeSwitch = false)
-        assertEquals(Motion.DurRevealBack, back.durationMillis)
+        assertEquals(Motion.DUR_REVEAL_BACK, back.durationMillis)
         assertSame(Motion.EaseRevealDecelerate, back.easing)
 
         // 反向优先：requestNavigationBack 的 toId 恒为 null，两者同时为真不可达，

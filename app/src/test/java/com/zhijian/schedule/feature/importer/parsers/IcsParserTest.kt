@@ -3,24 +3,30 @@ package com.zhijian.schedule.feature.importer.parsers
 import com.zhijian.schedule.core.data.db.SectionTimeEntity
 import com.zhijian.schedule.core.util.WeekMask
 import com.zhijian.schedule.feature.importer.parsers.IcsParser
-import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalDate
 
 class IcsParserTest {
-
     private val semesterStart = LocalDate.of(2026, 8, 31)
 
     private fun sections(): List<SectionTimeEntity> {
-        val times = listOf(
-            Triple(1, "08:20", "09:05"), Triple(2, "09:10", "09:55"),
-            Triple(3, "10:10", "10:55"), Triple(4, "11:00", "11:45"),
-            Triple(5, "14:20", "15:05"), Triple(6, "15:10", "15:55"),
-            Triple(7, "16:05", "16:50"), Triple(8, "16:55", "17:40"),
-            Triple(9, "18:20", "19:05"), Triple(10, "19:10", "19:55"),
-            Triple(11, "20:00", "20:45"), Triple(12, "20:50", "21:35"),
-        )
+        val times =
+            listOf(
+                Triple(1, "08:20", "09:05"),
+                Triple(2, "09:10", "09:55"),
+                Triple(3, "10:10", "10:55"),
+                Triple(4, "11:00", "11:45"),
+                Triple(5, "14:20", "15:05"),
+                Triple(6, "15:10", "15:55"),
+                Triple(7, "16:05", "16:50"),
+                Triple(8, "16:55", "17:40"),
+                Triple(9, "18:20", "19:05"),
+                Triple(10, "19:10", "19:55"),
+                Triple(11, "20:00", "20:45"),
+                Triple(12, "20:50", "21:35"),
+            )
         return times.map { (no, s, e) ->
             SectionTimeEntity(
                 modeId = 1,
@@ -35,7 +41,8 @@ class IcsParserTest {
 
     @Test
     fun parsesWeeklyUntilRule() {
-        val ics = """
+        val ics =
+            """
             BEGIN:VCALENDAR
             BEGIN:VEVENT
             SUMMARY:包装材料与检测
@@ -46,7 +53,7 @@ class IcsParserTest {
             RRULE:FREQ=WEEKLY;UNTIL=20261030T235959Z;BYDAY=TU
             END:VEVENT
             END:VCALENDAR
-        """.trimIndent()
+            """.trimIndent()
 
         val result = IcsParser.parse(ics, totalWeeks = 20, semesterStart = semesterStart, sections = sections())
 
@@ -66,9 +73,10 @@ class IcsParserTest {
 
     @Test
     fun unfoldsSummaryAndHonoursCount() {
-        val ics = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nSUMMARY:数据结构\r\n 与算法\r\n" +
-            "DTSTART;TZID=\"Asia/Shanghai\":20260903T101000\r\nDTEND:20260903T114500\r\n" +
-            "RRULE:FREQ=WEEKLY;COUNT=3;BYDAY=TH\r\nEND:VEVENT\r\nEND:VCALENDAR"
+        val ics =
+            "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nSUMMARY:数据结构\r\n 与算法\r\n" +
+                "DTSTART;TZID=\"Asia/Shanghai\":20260903T101000\r\nDTEND:20260903T114500\r\n" +
+                "RRULE:FREQ=WEEKLY;COUNT=3;BYDAY=TH\r\nEND:VEVENT\r\nEND:VCALENDAR"
 
         val result = IcsParser.parse(ics, totalWeeks = 20, semesterStart = semesterStart, sections = sections())
 
@@ -83,7 +91,8 @@ class IcsParserTest {
 
     @Test
     fun mergesEventsAndSkipsInvalid() {
-        val ics = """
+        val ics =
+            """
             BEGIN:VCALENDAR
             BEGIN:VEVENT
             SUMMARY:线性代数
@@ -104,7 +113,7 @@ class IcsParserTest {
             DTSTART:20260908T082000
             END:VEVENT
             END:VCALENDAR
-        """.trimIndent()
+            """.trimIndent()
 
         val result = IcsParser.parse(ics, totalWeeks = 20, semesterStart = semesterStart, sections = sections())
 
@@ -121,7 +130,8 @@ class IcsParserTest {
 
     @Test
     fun outOfRangeEventsAreDropped() {
-        val ics = """
+        val ics =
+            """
             BEGIN:VCALENDAR
             BEGIN:VEVENT
             SUMMARY:高等数学
@@ -129,7 +139,7 @@ class IcsParserTest {
             RRULE:FREQ=WEEKLY;COUNT=1;BYDAY=TH
             END:VEVENT
             END:VCALENDAR
-        """.trimIndent()
+            """.trimIndent()
 
         val result = IcsParser.parse(ics, totalWeeks = 20, semesterStart = semesterStart, sections = sections())
 
@@ -139,14 +149,15 @@ class IcsParserTest {
 
     @Test
     fun requiresValidSemesterStart() {
-        val ics = """
+        val ics =
+            """
             BEGIN:VCALENDAR
             BEGIN:VEVENT
             SUMMARY:高等数学
             DTSTART:20260903T080000
             END:VEVENT
             END:VCALENDAR
-        """.trimIndent()
+            """.trimIndent()
 
         val result = IcsParser.parse(ics, totalWeeks = 20, semesterStart = null, sections = sections())
 

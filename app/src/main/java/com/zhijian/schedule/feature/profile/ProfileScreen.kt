@@ -52,7 +52,7 @@ import com.zhijian.schedule.feature.update.UpdateDialog
 import com.zhijian.schedule.navigation.IslandContentPadding
 import com.zhijian.schedule.navigation.islandContentPadding
 
-/**
+/*
  * 「我的」页：只保留脚手架与接线。
  *
  * 页面的三个骨架块在这里（顶部标识 / 常用入口 / 更多入口），每块偏好设置与每个入口控件
@@ -109,16 +109,16 @@ fun ProfileScreen(
                 drawContent()
                 val h = islandContentPadding(islandCollapse?.animated?.value ?: 0f).toPx()
                 drawRect(
-                    brush = Brush.verticalGradient(
-                        colors = listOf(colors.bg.copy(alpha = 0f), colors.bg),
-                        startY = size.height - h,
-                        endY = size.height,
-                    ),
+                    brush =
+                        Brush.verticalGradient(
+                            colors = listOf(colors.bg.copy(alpha = 0f), colors.bg),
+                            startY = size.height - h,
+                            endY = size.height,
+                        ),
                     topLeft = Offset(0f, size.height - h),
                     size = Size(size.width, h),
                 )
-            }
-            .islandScrollObserver(state = islandCollapse, scroll = scrollState)
+            }.islandScrollObserver(state = islandCollapse, scroll = scrollState)
             .verticalScroll(scrollState)
             .padding(horizontal = 20.dp),
     ) {
@@ -174,9 +174,10 @@ fun ProfileScreen(
                     ProfileEntryAnchor(
                         key = ProfileEntryKeys.IMPORT,
                         transitions = entryTransitions,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight(),
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                .fillMaxHeight(),
                     ) {
                         HeroEntryCard(
                             modifier = Modifier.fillMaxSize(),
@@ -189,9 +190,10 @@ fun ProfileScreen(
                     ProfileEntryAnchor(
                         key = ProfileEntryKeys.GRADES,
                         transitions = entryTransitions,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight(),
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                .fillMaxHeight(),
                     ) {
                         HeroEntryCard(
                             modifier = Modifier.fillMaxSize(),

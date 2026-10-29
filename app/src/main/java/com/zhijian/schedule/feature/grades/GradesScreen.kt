@@ -67,15 +67,17 @@ fun GradesScreen(
     val colors = LocalCourseColors.current
 
     val term = state.selectedTerm?.takeIf { it in state.terms }
-    val filtered = remember(state.records, term) {
-        if (term == null) state.records else state.records.filter { it.term == term }
-    }
+    val filtered =
+        remember(state.records, term) {
+            if (term == null) state.records else state.records.filter { it.term == term }
+        }
     val stats = remember(filtered) { GradeParser.stats(filtered) }
     val trend = remember(state.records) { GradeTrend.perTerm(state.records) }
     val latestTerm = remember(state.records) { GradeTrend.latest(state.records) }
-    val groups = remember(filtered) {
-        filtered.groupBy { it.term }.toSortedMap(compareByDescending { it })
-    }
+    val groups =
+        remember(filtered) {
+            filtered.groupBy { it.term }.toSortedMap(compareByDescending { it })
+        }
 
     Column(
         Modifier
@@ -107,48 +109,57 @@ fun GradesScreen(
                 }
             }
 
-            state.records.isEmpty() -> EmptyState(
-                needsLogin = state.needsLogin,
-                error = state.error,
-                onRetry = viewModel::refresh,
-                onOpenJwImport = onOpenJwImport,
-            )
+            state.records.isEmpty() ->
+                EmptyState(
+                    needsLogin = state.needsLogin,
+                    error = state.error,
+                    onRetry = viewModel::refresh,
+                    onOpenJwImport = onOpenJwImport,
+                )
 
-            else -> LazyColumn(
-                Modifier.fillMaxSize(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                    start = 20.dp, end = 20.dp, top = 4.dp, bottom = 40.dp,
-                ),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                item(key = "summary") {
-                    Spacer(Modifier.height(4.dp))
-                    SummaryCard(stats, term, state.fetchedAt, state.error != null || state.needsLogin, latestTerm)
-                }
-                if (trend.size >= 2) {
-                    item(key = "trend") { TermTrendCard(trend) }
-                }
-                item(key = "chips") {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TermChip(label = "全部", selected = term == null) {
-                            viewModel.selectTerm(null)
-                        }
-                        state.terms.forEach { t ->
-                            TermChip(label = t, selected = term == t) {
-                                viewModel.selectTerm(t)
+            else ->
+                LazyColumn(
+                    Modifier.fillMaxSize(),
+                    contentPadding =
+                        androidx.compose.foundation.layout.PaddingValues(
+                            start = 20.dp,
+                            end = 20.dp,
+                            top = 4.dp,
+                            bottom = 40.dp,
+                        ),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    item(key = "summary") {
+                        Spacer(Modifier.height(4.dp))
+                        SummaryCard(stats, term, state.fetchedAt, state.error != null || state.needsLogin, latestTerm)
+                    }
+                    if (trend.size >= 2) {
+                        item(key = "trend") { TermTrendCard(trend) }
+                    }
+                    item(key = "chips") {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TermChip(label = "全部", selected = term == null) {
+                                viewModel.selectTerm(null)
+                            }
+                            state.terms.forEach { t ->
+                                TermChip(label = t, selected = term == t) {
+                                    viewModel.selectTerm(t)
+                                }
                             }
                         }
                     }
-                }
-                groups.forEach { (groupTerm, list) ->
-                    item(key = "h_$groupTerm") {
-                        GroupHeader(groupTerm, GradeParser.stats(list))
+                    groups.forEach { (groupTerm, list) ->
+                        item(key = "h_$groupTerm") {
+                            GroupHeader(groupTerm, GradeParser.stats(list))
+                        }
+                        items(
+                            list,
+                            key = { "${it.term}|${it.code}|${it.name}|${it.score}|${it.retakeTerm}" },
+                        ) { record ->
+                            GradeRow(record)
+                        }
                     }
-                    items(list, key = { "${it.term}|${it.code}|${it.name}|${it.score}|${it.retakeTerm}" }) { record ->
-                        GradeRow(record)
-                    }
                 }
-            }
         }
     }
 }
@@ -183,8 +194,9 @@ private fun SummaryCard(
         if (term == null && latestTerm != null) {
             Spacer(Modifier.height(6.dp))
             Text(
-                text = "最新学期 ${latestTerm.term}：绩点 ${format2(latestTerm.gpa)} · " +
-                    "${format1(latestTerm.credits)} 学分",
+                text =
+                    "最新学期 ${latestTerm.term}：绩点 ${format2(latestTerm.gpa)} · " +
+                        "${format1(latestTerm.credits)} 学分",
                 color = colors.textMuted,
                 fontSize = 12.sp,
             )
@@ -194,11 +206,12 @@ private fun SummaryCard(
             Text("加权平均分 ${format1(it)}", color = colors.textMuted, fontSize = 12.sp)
         }
         Spacer(Modifier.height(6.dp))
-        val updateText = when {
-            fetchedAt <= 0L -> "尚未同步，点右上角刷新"
-            failed -> "刷新失败，显示上次缓存 · ${formatTime(fetchedAt)}"
-            else -> "更新于 ${formatTime(fetchedAt)}"
-        }
+        val updateText =
+            when {
+                fetchedAt <= 0L -> "尚未同步，点右上角刷新"
+                failed -> "刷新失败，显示上次缓存 · ${formatTime(fetchedAt)}"
+                else -> "更新于 ${formatTime(fetchedAt)}"
+            }
         Text(
             text = "${term ?: "全部学期"} · $updateText",
             color = if (failed) FAIL_COLOR else colors.textMuted,
@@ -269,7 +282,11 @@ private fun TermTrendCard(summaries: List<GradeTrend.TermSummary>) {
 }
 
 @Composable
-private fun BigStat(value: String, label: String, color: Color) {
+private fun BigStat(
+    value: String,
+    label: String,
+    color: Color,
+) {
     val colors = LocalCourseColors.current
     Column {
         Text(value, color = color, fontSize = 24.sp, fontWeight = FontWeight.Bold)
@@ -278,7 +295,10 @@ private fun BigStat(value: String, label: String, color: Color) {
 }
 
 @Composable
-private fun GroupHeader(term: String, stats: GradeStats) {
+private fun GroupHeader(
+    term: String,
+    stats: GradeStats,
+) {
     val colors = LocalCourseColors.current
     Row(
         Modifier
@@ -311,11 +331,12 @@ private fun GradeRow(record: GradeRecord) {
     ) {
         Column(Modifier.weight(1f)) {
             Text(record.name, color = colors.text, fontSize = 15.sp)
-            val tags = buildList {
-                if (record.retakeTerm.isNotBlank() || record.scoreFlag.isNotBlank()) add("补重修")
-                if (record.category.isNotBlank()) add(record.category)
-                if (record.attr.isNotBlank()) add(record.attr)
-            }
+            val tags =
+                buildList {
+                    if (record.retakeTerm.isNotBlank() || record.scoreFlag.isNotBlank()) add("补重修")
+                    if (record.category.isNotBlank()) add(record.category)
+                    if (record.attr.isNotBlank()) add(record.attr)
+                }
             if (tags.isNotEmpty()) {
                 Text(tags.joinToString(" · "), color = colors.textMuted, fontSize = 11.sp)
             }
@@ -339,7 +360,11 @@ private fun GradeRow(record: GradeRecord) {
 }
 
 @Composable
-private fun TermChip(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun TermChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
     val source = remember { MutableInteractionSource() }
     FilterChip(
         selected = selected,
@@ -348,9 +373,10 @@ private fun TermChip(label: String, selected: Boolean, onClick: () -> Unit) {
         },
         label = { Text(label, fontSize = 12.sp) },
         interactionSource = source,
-        modifier = Modifier
-            .buttonFeedback(source, pressedScale = 0.94f)
-            .selectedPop(selected),
+        modifier =
+            Modifier
+                .buttonFeedback(source, pressedScale = 0.94f)
+                .selectedPop(selected),
     )
 }
 
@@ -365,11 +391,12 @@ private fun EmptyState(
     Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                text = when {
-                    needsLogin -> "尚未登录教务，或登录会话已过期"
-                    error != null -> error
-                    else -> "还没有成绩数据"
-                },
+                text =
+                    when {
+                        needsLogin -> "尚未登录教务，或登录会话已过期"
+                        error != null -> error
+                        else -> "还没有成绩数据"
+                    },
                 color = colors.textMuted,
                 fontSize = 14.sp,
             )
@@ -396,8 +423,11 @@ private fun format1(v: Double): String = trimmed(round2(v))
 
 private fun round2(v: Double): Double = Math.round(v * 100) / 100.0
 
-private fun trimmed(v: Double): String =
-    if (v == v.toLong().toDouble()) v.toLong().toString() else v.toString()
+private fun trimmed(v: Double): String = if (v == v.toLong().toDouble()) v.toLong().toString() else v.toString()
 
 private fun formatTime(epoch: Long): String =
-    Instant.ofEpochMilli(epoch).atZone(ZoneId.systemDefault()).toLocalDateTime().format(UPDATE_FMT)
+    Instant
+        .ofEpochMilli(epoch)
+        .atZone(ZoneId.systemDefault())
+        .toLocalDateTime()
+        .format(UPDATE_FMT)

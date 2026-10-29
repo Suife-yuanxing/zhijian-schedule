@@ -19,7 +19,6 @@ import kotlinx.serialization.json.jsonObject
  * weeks 兼容 int[]（对齐小爱）与字符串表达式（复用 WeekMask 语法）。
  */
 object JwScriptOutput {
-
     sealed interface ParseResult {
         data class Ok(
             val drafts: List<CourseDraft>,
@@ -29,7 +28,9 @@ object JwScriptOutput {
             val sectionTimes: List<SectionTimeDraft> = emptyList(),
         ) : ParseResult
 
-        data class Invalid(val reason: String) : ParseResult
+        data class Invalid(
+            val reason: String,
+        ) : ParseResult
     }
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -39,11 +40,19 @@ object JwScriptOutput {
     /** 分钟允许一位：脚本作者常写 "9:5"，等同于 "09:05" */
     private val CLOCK = Regex("""^(\d{1,2})\s*[:：]\s*(\d{1,2})$""")
 
-    fun parse(raw: String, totalWeeks: Int): ParseResult {
-        val root = runCatching { json.parseToJsonElement(raw).jsonObject }.getOrNull()
-            ?: return ParseResult.Invalid("脚本返回内容不是合法 JSON")
-        val coursesEl = root["courses"] as? JsonArray
-            ?: return ParseResult.Invalid("脚本未返回 courses 列表")
+    /** 课程名里的连续空白压成单个空格 */
+    private val WHITESPACE = Regex("""\s+""")
+
+    fun parse(
+        raw: String,
+        totalWeeks: Int,
+    ): ParseResult {
+        val root =
+            runCatching { json.parseToJsonElement(raw).jsonObject }.getOrNull()
+                ?: return ParseResult.Invalid("脚本返回内容不是合法 JSON")
+        val coursesEl =
+            root["courses"] as? JsonArray
+                ?: return ParseResult.Invalid("脚本未返回 courses 列表")
         if (coursesEl.size > 500) return ParseResult.Invalid("脚本返回课程数异常（${coursesEl.size} 条），已拒绝")
         if (coursesEl.isEmpty()) return ParseResult.Invalid("解析到 0 门课，请确认已打开课表页面再运行脚本")
 
@@ -53,7 +62,11 @@ object JwScriptOutput {
         }
         val drafts = mutableListOf<CourseDraft>()
         coursesEl.forEachIndexed { i, el ->
-            val obj = el as? JsonObject ?: run { warnings += "第 ${i + 1} 条不是对象，已跳过"; return@forEachIndexed }
+            val obj =
+                el as? JsonObject ?: run {
+                    warnings += "第 ${i + 1} 条不是对象，已跳过"
+                    return@forEachIndexed
+                }
             val draft = toDraft(obj, totalWeeks) { warnings += "第 ${i + 1} 条：$it，已跳过" }
             if (draft != null) drafts += draft
         }
@@ -128,23 +141,27 @@ object JwScriptOutput {
         (this[key] as? JsonPrimitive)?.let { it.intOrNull ?: it.contentOrNull?.trim()?.toIntOrNull() }
 
     /** 返回 null = 条目被丢弃，reason 进 warnings */
-    private fun toDraft(obj: JsonObject, totalWeeks: Int, warn: (String) -> Unit): CourseDraft? {
-        val name = obj.str("name").replace(Regex("\\s+"), " ").trim()
-        if (name.isEmpty()) { warn("缺课程名"); return null }
-        val day = obj.intAt("day") ?: run { warn("「$name」星期值非法"); return null }
-        if (day !in 1..7) { warn("「$name」星期值 $day 越界"); return null }
+    private fun toDraft(
+        obj: JsonObject,
+        totalWeeks: Int,
+        warn: (String) -> Unit,
+    ): CourseDraft? {
+        val name = obj.str("name").replace(WHITESPACE, " ").trim()
+        val day = obj.intAt("day")
         val start = obj.intAt("startSection") ?: 1
         val end = obj.intAt("endSection") ?: start
-        if (start !in 1..15 || end !in 1..15 || end < start) {
-            warn("「$name」节次 $start-$end 非法")
+        // 三类丢弃原因一次性判完：缺名 / 星期非法 / 节次非法。守卫子句只留这一个出口。
+        val problem =
+            when {
+                name.isEmpty() -> "缺课程名"
+                day == null -> "「$name」星期值非法"
+                day !in 1..7 -> "「$name」星期值 $day 越界"
+                start !in 1..15 || end !in 1..15 || end < start -> "「$name」节次 $start-$end 非法"
+                else -> null
+            }
+        if (problem != null || day == null) {
+            problem?.let(warn)
             return null
-        }
-        val mask = when (val w = obj["weeks"]) {
-            is JsonArray -> WeekMask.fromWeeks(
-                totalWeeks,
-                w.mapNotNull { (it as? JsonPrimitive)?.intOrNull }.filter { it in 1..totalWeeks },
-            )
-            else -> WeekMask.parseExpression(totalWeeks, obj.str("weeks")) ?: WeekMask.of(totalWeeks)
         }
         return CourseDraft(
             name = name.take(30),
@@ -153,7 +170,21 @@ object JwScriptOutput {
             dayOfWeek = day,
             startSection = start.coerceIn(1, 12),
             endSection = end.coerceIn(1, 12),
-            weekMask = mask,
+            weekMask = weekMaskOf(obj, totalWeeks),
         )
+    }
+
+    /** weeks 既可以是数字数组，也可以是 "1-16单周" 这样的表达式；都给不出时按全学期 */
+    private fun weekMaskOf(
+        obj: JsonObject,
+        totalWeeks: Int,
+    ): String {
+        val raw = obj["weeks"]
+        if (raw is JsonArray) {
+            val picked =
+                raw.mapNotNull { (it as? JsonPrimitive)?.intOrNull }.filter { it in 1..totalWeeks }
+            return WeekMask.fromWeeks(totalWeeks, picked)
+        }
+        return WeekMask.parseExpression(totalWeeks, obj.str("weeks")) ?: WeekMask.of(totalWeeks)
     }
 }

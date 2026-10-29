@@ -5,10 +5,10 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import com.zhijian.schedule.core.util.lerpRect
 import com.zhijian.schedule.core.util.smoothstep
-import kotlin.math.min
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.math.min
 
 /**
  * 入口卡转场的几何与关键帧。
@@ -18,7 +18,6 @@ import org.junit.Test
  * 改关键帧系数时若有端点被破坏，先红在这里，而不是等装机后才发现卡片闪了一下。
  */
 class ProfileEntryGeometryTest {
-
     /** 常见机型的内容区（1080x2376）与一颗入口卡 (100,200)-(300,260) */
     private val content = Size(1080f, 2376f)
     private val card = Rect(left = 100f, top = 200f, right = 300f, bottom = 260f)
@@ -30,12 +29,13 @@ class ProfileEntryGeometryTest {
         scale: Float,
         translationX: Float,
         translationY: Float,
-    ): Rect = Rect(
-        left = clip.left * scale + translationX,
-        top = clip.top * scale + translationY,
-        right = clip.right * scale + translationX,
-        bottom = clip.bottom * scale + translationY,
-    )
+    ): Rect =
+        Rect(
+            left = clip.left * scale + translationX,
+            top = clip.top * scale + translationY,
+            right = clip.right * scale + translationX,
+            bottom = clip.bottom * scale + translationY,
+        )
 
     // ---------- 缓动与插值 ----------
 
@@ -119,12 +119,13 @@ class ProfileEntryGeometryTest {
     @Test
     fun `展开图层在起点把入口卡映射成裁剪框`() {
         val transform = entryCoverTransform(card, content, 0f, cardRadius)
-        val mapped = applyTransform(
-            transform.clipRect,
-            transform.scale,
-            transform.translationX,
-            transform.translationY,
-        )
+        val mapped =
+            applyTransform(
+                transform.clipRect,
+                transform.scale,
+                transform.translationX,
+                transform.translationY,
+            )
         assertRectEquals(card, mapped, 1e-2f)
         assertTrue(transform.scale > 0f)
         // 裁剪框必须落在页面内容里，否则展开首帧会露出空白
@@ -154,12 +155,13 @@ class ProfileEntryGeometryTest {
                     minOf(transform.clipRect.width, transform.clipRect.height) / 2f + 1e-3f,
             )
             // 容器中心与内容中心对齐：内容始终盖住裁剪框，不会在某一侧露出空白
-            val mapped = applyTransform(
-                transform.clipRect,
-                transform.scale,
-                transform.translationX,
-                transform.translationY,
-            )
+            val mapped =
+                applyTransform(
+                    transform.clipRect,
+                    transform.scale,
+                    transform.translationX,
+                    transform.translationY,
+                )
             val container = entryForwardContainer(card, content, p)
             assertEquals(container.center.x, mapped.center.x, 1e-2f)
             assertEquals(container.center.y, mapped.center.y, 1e-2f)
@@ -277,7 +279,11 @@ class ProfileEntryGeometryTest {
         )
     }
 
-    private fun assertRectEquals(expected: Rect, actual: Rect, tolerance: Float) {
+    private fun assertRectEquals(
+        expected: Rect,
+        actual: Rect,
+        tolerance: Float,
+    ) {
         assertEquals("left", expected.left, actual.left, tolerance)
         assertEquals("top", expected.top, actual.top, tolerance)
         assertEquals("right", expected.right, actual.right, tolerance)

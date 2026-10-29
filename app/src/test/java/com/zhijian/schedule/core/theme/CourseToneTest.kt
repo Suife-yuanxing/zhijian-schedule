@@ -2,12 +2,12 @@ package com.zhijian.schedule.core.theme
 
 import androidx.compose.ui.graphics.Color
 import com.zhijian.schedule.core.theme.courseTone
-import kotlin.math.max
-import kotlin.math.min
-import kotlin.math.pow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.pow
 
 /**
  * 课程色 → 同色系色调的硬约束。
@@ -16,24 +16,27 @@ import org.junit.Test
  * 一是对比度不可控（正文只有 3.53:1），二是八种色相被透明度洗成几乎同一个浅橙。
  */
 class CourseToneTest {
-
-    private val sources = listOf(
-        0xFFE5484D, // 红
-        0xFFF2933C, // 橙
-        0xFFD9A400, // 琥珀
-        0xFF4CAF50, // 绿
-        0xFF1E9E8F, // 青
-        0xFF3B82F6, // 蓝
-        0xFF9B7DB8, // 紫（旧实现里色相会算回 0°）
-        0xFF8A8F98, // 中性灰（走中性分支）
-    ).map { Color(it) }
+    private val sources =
+        listOf(
+            0xFFE5484D, // 红
+            0xFFF2933C, // 橙
+            0xFFD9A400, // 琥珀
+            0xFF4CAF50, // 绿
+            0xFF1E9E8F, // 青
+            0xFF3B82F6, // 蓝
+            0xFF9B7DB8, // 紫（旧实现里色相会算回 0°）
+            0xFF8A8F98, // 中性灰（走中性分支）
+        ).map { Color(it) }
 
     private fun luminance(c: Color): Double {
         fun lin(v: Float) = if (v <= 0.04045f) v / 12.92 else ((v + 0.055) / 1.055).pow(2.4)
         return 0.2126 * lin(c.red) + 0.7152 * lin(c.green) + 0.0722 * lin(c.blue)
     }
 
-    private fun contrast(a: Color, b: Color): Double {
+    private fun contrast(
+        a: Color,
+        b: Color,
+    ): Double {
         val la = luminance(a)
         val lb = luminance(b)
         return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
@@ -68,10 +71,11 @@ class CourseToneTest {
     @Test
     fun `eight sources stay eight distinguishable containers`() {
         listOf(false, true).forEach { dark ->
-            val rounded = sources.map { src ->
-                val c = courseTone(src, dark).container
-                Triple((c.red * 255).toInt(), (c.green * 255).toInt(), (c.blue * 255).toInt())
-            }
+            val rounded =
+                sources.map { src ->
+                    val c = courseTone(src, dark).container
+                    Triple((c.red * 255).toInt(), (c.green * 255).toInt(), (c.blue * 255).toInt())
+                }
             assertEquals("dark=$dark 撞色: $rounded", 8, rounded.toSet().size)
         }
     }
@@ -79,8 +83,9 @@ class CourseToneTest {
     @Test
     fun `neutral source produces a neutral container instead of a surprise hue`() {
         val tone = courseTone(Color(0xFF8A8F98), isDark = false)
-        val spread = maxOf(tone.container.red, tone.container.green, tone.container.blue) -
-            minOf(tone.container.red, tone.container.green, tone.container.blue)
+        val spread =
+            maxOf(tone.container.red, tone.container.green, tone.container.blue) -
+                minOf(tone.container.red, tone.container.green, tone.container.blue)
         assertTrue("灰底被上了色: $spread", spread < 0.04f)
     }
 
@@ -98,8 +103,7 @@ class CourseToneTest {
 
     // ---- 交互用的高光 / 暗面：同色相，而不是纯白 + 纯黑 ----
 
-    private fun spread(c: Color): Float =
-        maxOf(c.red, c.green, c.blue) - minOf(c.red, c.green, c.blue)
+    private fun spread(c: Color): Float = maxOf(c.red, c.green, c.blue) - minOf(c.red, c.green, c.blue)
 
     /** 主通道：色相在 sRGB 里最直接的表现就是这个索引没变 */
     private fun dominant(c: Color): Int {

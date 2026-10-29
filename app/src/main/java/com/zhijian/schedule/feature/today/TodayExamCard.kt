@@ -30,7 +30,11 @@ import java.time.LocalDateTime
 
 /** 最近考试倒计时卡：14 天内出现在「下一节」之后，点击进考试页 */
 @Composable
-internal fun ExamCountdownCard(exam: ExamEntity, clock: State<LocalDateTime>, onClick: () -> Unit) {
+internal fun ExamCountdownCard(
+    exam: ExamEntity,
+    clock: State<LocalDateTime>,
+    onClick: () -> Unit,
+) {
     // 只有这张卡需要「天」级时间，自己订阅，页面的其余部分不跟着动
     val now = clock.value
     val colors = LocalCourseColors.current
@@ -66,10 +70,11 @@ internal fun ExamCountdownCard(exam: ExamEntity, clock: State<LocalDateTime>, on
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
             )
-            val where = listOf(
-                exam.room.takeIf { it.isNotBlank() },
-                exam.seat.takeIf { it.isNotBlank() }?.let { "$it 号座" },
-            ).filterNotNull().joinToString(" · ")
+            val where =
+                listOf(
+                    exam.room.takeIf { it.isNotBlank() },
+                    exam.seat.takeIf { it.isNotBlank() }?.let { "$it 号座" },
+                ).filterNotNull().joinToString(" · ")
             Text(
                 listOfNotNull(ExamCountdown.detailLine(exam.examTime), where.ifBlank { null })
                     .joinToString(" · "),

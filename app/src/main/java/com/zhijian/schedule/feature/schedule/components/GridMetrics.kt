@@ -12,8 +12,10 @@ object GridDims {
     val TIME_AXIS_WIDTH: Dp = 60.dp
     val HEADER_HEIGHT: Dp = 56.dp
     val SECTION_HEIGHT: Dp = 46.dp
+
     /** 时段标题（上午 / 下午 / 晚上）行高 */
     val BAND_HEAD_HEIGHT: Dp = 24.dp
+
     /** 时段之间的留白：用间距分层，取代原来的分隔线 */
     val BAND_GAP: Dp = 12.dp
 
@@ -23,6 +25,7 @@ object GridDims {
      * 所以网格最多放到 1.5 倍，其余界面仍然完全跟随系统。
      */
     const val MAX_FONT_SCALE = 1.5f
+
     /** 时间轴只随字体放到 1.4 倍：再宽会把天列挤窄 */
     const val AXIS_FONT_SCALE_CAP = 1.4f
 }
@@ -103,7 +106,10 @@ data class GridBand(
 )
 
 /** 当前时刻落在网格里的位置：[y] 为绝对纵坐标，[inClass] 表示是否正在某一小节内 */
-data class GridSlot(val y: Dp, val inClass: Boolean)
+data class GridSlot(
+    val y: Dp,
+    val inClass: Boolean,
+)
 
 /** 一个课块纵向放得下的内容：标题行数是硬的，其余按剩余空间依次砍 */
 data class BlockContent(
@@ -119,17 +125,21 @@ data class BlockContent(
  * 1.0 倍下返回的就是原来的 2/3/4 行 + 教室 + 教师 + 页脚，视觉不变；
  * 字体放大后从下往上依次让位，保证任何倍率下都不裁字。
  */
-fun blockContentFor(span: Int, metrics: GridMetrics): BlockContent {
+fun blockContentFor(
+    span: Int,
+    metrics: GridMetrics,
+): BlockContent {
     val safeSpan = span.coerceAtLeast(1)
     // 上下内边距 7dp + 块底留白 3dp + 2dp 安全余量
     val inner = metrics.sectionHeight.value * safeSpan - 12f
     val fs = metrics.fontScale
     val titleLine = 15f * fs
-    val baseLines = when {
-        safeSpan <= 1 -> 2
-        safeSpan == 2 -> 3
-        else -> 4
-    }
+    val baseLines =
+        when {
+            safeSpan <= 1 -> 2
+            safeSpan == 2 -> 3
+            else -> 4
+        }
     val titleLines = minOf(baseLines, (inner / titleLine).toInt().coerceAtLeast(1))
     var rest = inner - titleLines * titleLine
 

@@ -1,12 +1,12 @@
 package com.zhijian.schedule.core.update
 
+import kotlinx.serialization.Serializable
 import java.io.File
 import java.io.InputStream
 import java.security.MessageDigest
 import java.util.Locale
-import kotlinx.serialization.Serializable
 
-/**
+/*
  * 断点续传与下载结果的**纯逻辑**：不依赖任何 Android API，可直接用 JUnit 跑（项目没有 Robolectric）。
  * 碰 Context / 网络 / 状态机的部分在 UpdateStore、ApkDownloader 与 ApkDownloadService。
  * 分片计划与续传点类型在 ChunkPlan.kt，进度聚合与速率/节流在 DownloadProgress.kt。
@@ -35,12 +35,18 @@ data class PartMeta(
 )
 
 /** `Content-Range: bytes 1234-46920381/46920382` 的解析结果；total 为 `*` 时是 null */
-data class ContentRange(val start: Long, val endInclusive: Long, val total: Long?)
+data class ContentRange(
+    val start: Long,
+    val endInclusive: Long,
+    val total: Long?,
+)
 
 /** 服务端响应 → 该怎么写 `.part` */
 sealed interface RangeDecision {
     /** 206：服务端支持续传且资源未变，从 offset 追加 */
-    data class Append(val offset: Long) : RangeDecision
+    data class Append(
+        val offset: Long,
+    ) : RangeDecision
 
     /** 200：服务端忽略了 Range，或 If-Range 判定资源已变，清空 `.part` 从头写 */
     data object Restart : RangeDecision
@@ -52,11 +58,13 @@ sealed interface RangeDecision {
     data object Corrupt : RangeDecision
 
     /** 直接失败；canResume 决定卡片给「重试（续传）」还是「重新下载」 */
-    data class Fail(val reason: String, val canResume: Boolean) : RangeDecision
+    data class Fail(
+        val reason: String,
+        val canResume: Boolean,
+    ) : RangeDecision
 }
 
 object ResumableDownload {
-
     /** `.apk[.part|.meta]` 后缀；长的必须排在前面（判定要覆盖 `.apk.part` 而非 `.apk`） */
     private val FILE_SUFFIXES = listOf(".apk.part", ".apk.meta", ".apk")
 
@@ -89,27 +97,36 @@ object ResumableDownload {
      * > 已知大小（GitHub API 的 `size` 或元数据）。
      * 206 的 Content-Length 只是**剩余**字节，绝不能当分母。
      */
-    fun resolveTotalBytes(contentLength: Long?, contentRange: ContentRange?, knownTotal: Long?): Long? {
+    fun resolveTotalBytes(
+        contentLength: Long?,
+        contentRange: ContentRange?,
+        knownTotal: Long?,
+    ): Long? {
         contentRange?.total?.takeIf { it > 0 }?.let { return it }
         // 206 但 total 是 `*`（少见）：Content-Length 不可用，退回已知大小
         if (contentRange != null) return knownTotal?.takeIf { it > 0 }
-        contentLength?.takeIf { it > 0 }?.let { return it }
-        return knownTotal?.takeIf { it > 0 }
+        return contentLength?.takeIf { it > 0 } ?: knownTotal?.takeIf { it > 0 }
     }
 
     /** 按响应码与已有分片大小决定写入方式 */
-    fun decideRange(code: Int, partBytes: Long, totalBytes: Long?): RangeDecision = when {
-        code == 206 -> RangeDecision.Append(partBytes)
-        code == 200 -> RangeDecision.Restart
-        code == 416 -> if (totalBytes != null && partBytes == totalBytes) {
-            RangeDecision.AlreadyComplete
-        } else {
-            RangeDecision.Corrupt
+    fun decideRange(
+        code: Int,
+        partBytes: Long,
+        totalBytes: Long?,
+    ): RangeDecision =
+        when {
+            code == 206 -> RangeDecision.Append(partBytes)
+            code == 200 -> RangeDecision.Restart
+            code == 416 ->
+                if (totalBytes != null && partBytes == totalBytes) {
+                    RangeDecision.AlreadyComplete
+                } else {
+                    RangeDecision.Corrupt
+                }
+            code in 400..499 -> RangeDecision.Fail("下载失败（HTTP $code），请重新下载", canResume = false)
+            code in 500..599 -> RangeDecision.Fail("服务端错误（HTTP $code），可重试", canResume = true)
+            else -> RangeDecision.Fail("下载失败（HTTP $code），可重试", canResume = true)
         }
-        code in 400..499 -> RangeDecision.Fail("下载失败（HTTP $code），请重新下载", canResume = false)
-        code in 500..599 -> RangeDecision.Fail("服务端错误（HTTP $code），可重试", canResume = true)
-        else -> RangeDecision.Fail("下载失败（HTTP $code），可重试", canResume = true)
-    }
 
     // ---------- 降级判据 ----------
 
@@ -118,13 +135,18 @@ object ResumableDownload {
      * 继续并发就是 8 份重复的整包。[doneChunks] 与 [chunkCount] 用于区分 416 的两种含义。
      * 500 与 IO 异常不降级：那是网络问题，按 v1 的失败+重试处理。
      */
-    fun decideRangeSupport(code: Int, chunkCount: Int, doneChunks: Int): RangeSupport = when {
-        code == 206 -> RangeSupport.Supported
-        code == 200 -> RangeSupport.Unsupported
-        code == 416 -> if (doneChunks >= chunkCount) RangeSupport.AlreadyComplete else RangeSupport.Corrupt
-        code in 400..499 -> RangeSupport.Fail("下载失败（HTTP $code），请重新下载", canResume = false)
-        else -> RangeSupport.Fail("服务端错误（HTTP $code），可重试", canResume = true)
-    }
+    fun decideRangeSupport(
+        code: Int,
+        chunkCount: Int,
+        doneChunks: Int,
+    ): RangeSupport =
+        when {
+            code == 206 -> RangeSupport.Supported
+            code == 200 -> RangeSupport.Unsupported
+            code == 416 -> if (doneChunks >= chunkCount) RangeSupport.AlreadyComplete else RangeSupport.Corrupt
+            code in 400..499 -> RangeSupport.Fail("下载失败（HTTP $code），请重新下载", canResume = false)
+            else -> RangeSupport.Fail("服务端错误（HTTP $code），可重试", canResume = true)
+        }
 
     // ---------- 分片规划 ----------
 
@@ -132,21 +154,28 @@ object ResumableDownload {
      * 把整份文件切成固定大小的分片。`total` 未知 / 非正，或 `chunkSize` 非正时返回 null ——
      * 调用方一律退回单连接顺序路径。共享分片队列的调度策略也在这里定：只有分片数量 > 1 才值得并行。
      */
-    fun planChunks(totalBytes: Long, chunkSize: Long = DEFAULT_CHUNK_BYTES): ChunkPlan? {
+    fun planChunks(
+        totalBytes: Long,
+        chunkSize: Long = DEFAULT_CHUNK_BYTES,
+    ): ChunkPlan? {
         if (totalBytes <= 0L || chunkSize <= 0L) return null
         val count = ((totalBytes + chunkSize - 1L) / chunkSize).toInt()
         if (count <= 0) return null
-        val chunks = (0 until count).map { index ->
-            val start = index.toLong() * chunkSize
-            Chunk(index, start, minOf(start + chunkSize, totalBytes) - 1L)
-        }
+        val chunks =
+            (0 until count).map { index ->
+                val start = index.toLong() * chunkSize
+                Chunk(index, start, minOf(start + chunkSize, totalBytes) - 1L)
+            }
         return ChunkPlan(totalBytes, chunkSize, chunks)
     }
 
     // ---------- 续传点 ----------
 
     /** 已经连着写了 [writtenBytes] 字节时，其中有几个完整的 [chunkSize] 分片（尾部半截不算） */
-    fun chunkCountOf(writtenBytes: Long, chunkSize: Long): Int? {
+    fun chunkCountOf(
+        writtenBytes: Long,
+        chunkSize: Long,
+    ): Int? {
         if (chunkSize <= 0L) return null
         if (writtenBytes <= 0L) return 0
         return (writtenBytes / chunkSize).toInt()
@@ -172,23 +201,26 @@ object ResumableDownload {
         rawMeta: PartMeta?,
     ): ResumePoint {
         val meta = rawMeta?.takeIf { it.version == version }
-        val plan = planChunks(
-            totalBytes = totalBytes ?: meta?.totalBytes ?: 0L,
-            chunkSize = meta?.chunkSize?.takeIf { it > 0L } ?: DEFAULT_CHUNK_BYTES,
-        )
+        val plan =
+            planChunks(
+                totalBytes = totalBytes ?: meta?.totalBytes ?: 0L,
+                chunkSize = meta?.chunkSize?.takeIf { it > 0L } ?: DEFAULT_CHUNK_BYTES,
+            )
         if (partBytes <= 0L) return ResumePoint.Fresh(plan)
 
         if (meta == null || meta.url != url || plan == null) return ResumePoint.Fresh(plan)
 
         // 分片进度唯一权威在 meta
-        val completed = meta.completedChunks
-            .filter { it in 0 until plan.chunkCount }
-            .distinct()
-            .sorted()
-        val partial = meta.partialChunks
-            .filterKeys { it in 0 until plan.chunkCount && it !in completed }
-            .mapValues { (index, bytes) -> bytes.coerceIn(0L, plan.bytesOf(index)) }
-            .filterValues { it > 0L }
+        val completed =
+            meta.completedChunks
+                .filter { it in 0 until plan.chunkCount }
+                .distinct()
+                .sorted()
+        val partial =
+            meta.partialChunks
+                .filterKeys { it in 0 until plan.chunkCount && it !in completed }
+                .mapValues { (index, bytes) -> bytes.coerceIn(0L, plan.bytesOf(index)) }
+                .filterValues { it > 0L }
 
         // v2 稀疏写：`.part` 长度不是已下字节，哪怕一片都没记账也不能按长度折算，
         // 否则会把长满空洞的前 N 片当成完成片，拼出来的包只能等摘要校验兜底
@@ -201,11 +233,12 @@ object ResumableDownload {
         }
 
         // v1 的 `.part` 是连续前缀，可以直接认成前 N 个整片，半截那片重下即可
-        val legacyCompleted = completed
-            .ifEmpty { (0 until (chunkCountOf(partBytes, plan.chunkSize) ?: 0)).toList() }
-            .filter { it in 0 until plan.chunkCount }
-            .distinct()
-            .sorted()
+        val legacyCompleted =
+            completed
+                .ifEmpty { (0 until (chunkCountOf(partBytes, plan.chunkSize) ?: 0)).toList() }
+                .filter { it in 0 until plan.chunkCount }
+                .distinct()
+                .sorted()
 
         return if (legacyCompleted.isEmpty()) {
             val safe = chunkCountOf(partBytes, plan.chunkSize) ?: 0
@@ -222,10 +255,11 @@ object ResumableDownload {
         partial: Map<Int, Long> = emptyMap(),
     ): Long {
         val done = completed.filter { it in 0 until plan.chunkCount }.toSet()
-        val partialBytes = partial
-            .filterKeys { it in 0 until plan.chunkCount && it !in done }
-            .map { (index, bytes) -> bytes.coerceIn(0L, plan.bytesOf(index)) }
-            .sum()
+        val partialBytes =
+            partial
+                .filterKeys { it in 0 until plan.chunkCount && it !in done }
+                .map { (index, bytes) -> bytes.coerceIn(0L, plan.bytesOf(index)) }
+                .sum()
         return done.sumOf { plan.bytesOf(it) } + partialBytes
     }
 
@@ -246,7 +280,10 @@ object ResumableDownload {
      * 3. 新写的 v2 元数据补上分片大小；旧版 v2 元数据没有 `sparseChunks` 标记，
      *    但写过 `chunkSize` 的一定是分片稀疏写，按稀疏处理才不会再拿 `.part` 长度当进度。
      */
-    fun parseMeta(version: String, raw: PartMeta?): PartMeta? {
+    fun parseMeta(
+        version: String,
+        raw: PartMeta?,
+    ): PartMeta? {
         val meta = raw ?: return null
         if (meta.version != version) return null
         val chunkSize = if (meta.chunkSize > 0L) meta.chunkSize else DEFAULT_CHUNK_BYTES
@@ -271,11 +308,15 @@ object ResumableDownload {
      * 读取中途 IO 失败的裁决入口（判据见文件尾部 [ReadVerdict] 的文档）。
      * [e] 可能是 OkHttp 的 StreamResetException（HTTP/2 流被取消重置）或普通 IOException。
      */
-    fun resolveReadFailure(e: Exception, cancelRequested: Boolean): ReadVerdict = when {
-        e is kotlinx.coroutines.CancellationException -> ReadVerdict.Rethrow
-        cancelRequested -> ReadVerdict.StopCancelled
-        else -> ReadVerdict.Retry("网络中断（${e.message ?: e::class.simpleName ?: "IO 错误"}）")
-    }
+    fun resolveReadFailure(
+        e: Exception,
+        cancelRequested: Boolean,
+    ): ReadVerdict =
+        when {
+            e is kotlinx.coroutines.CancellationException -> ReadVerdict.Rethrow
+            cancelRequested -> ReadVerdict.StopCancelled
+            else -> ReadVerdict.Retry("网络中断（${e.message ?: e::class.simpleName ?: "IO 错误"}）")
+        }
 
     /** 流式 SHA-256（64 KiB 缓冲），返回 64 位小写十六进制。46 MB 约 0.2 秒 */
     fun sha256Hex(input: InputStream): String {
@@ -300,7 +341,11 @@ object ResumableDownload {
      * [expectedDigest] 是合法 `sha256:` 时流式计算 SHA-256 并比对。
      * 哈希是纵深防御：长度对但内容坏（CDN 分片损坏、中间篡改）只有哈希能发现。
      */
-    fun verifyFile(file: File, expectedBytes: Long?, expectedDigest: String?): VerifyResult {
+    fun verifyFile(
+        file: File,
+        expectedBytes: Long?,
+        expectedDigest: String?,
+    ): VerifyResult {
         if (expectedBytes != null && file.length() != expectedBytes) return VerifyResult.LengthMismatch
         val expected = normalizeDigest(expectedDigest) ?: return VerifyResult.Ok
         val actual = file.inputStream().use { sha256Hex(it) }
@@ -320,8 +365,10 @@ object ResumableDownload {
         }
     }
 
-    private fun oneDecimal(value: Double, unit: String): String =
-        String.format(Locale.US, "%.1f %s", value, unit)
+    private fun oneDecimal(
+        value: Double,
+        unit: String,
+    ): String = String.format(Locale.US, "%.1f %s", value, unit)
 
     /** "约剩 30 秒"；无法估算（null 或负数）时返回 null，调用方直接不显示 */
     fun etaText(seconds: Long?): String? {
@@ -345,7 +392,10 @@ object ResumableDownload {
     }
 
     /** 纯数字逐段比较（缺失段视为 0）：a<b 返回 -1，相等返回 0，a>b 返回 1 */
-    fun compareNumericVersion(a: String, b: String): Int {
+    fun compareNumericVersion(
+        a: String,
+        b: String,
+    ): Int {
         val left = a.split(".").map { it.toIntOrNull() ?: 0 }
         val right = b.split(".").map { it.toIntOrNull() ?: 0 }
         for (index in 0 until maxOf(left.size, right.size)) {
@@ -360,7 +410,10 @@ object ResumableDownload {
      * 启动清理判据：文件名是本应用写下的更新文件，且版本 <= 当前已安装版本（已经装过，留着没用）。
      * 认不出来的文件名一律返回 false —— 宁可留着也不误删用户的东西。
      */
-    fun shouldClean(fileName: String, currentVersion: String): Boolean {
+    fun shouldClean(
+        fileName: String,
+        currentVersion: String,
+    ): Boolean {
         val version = versionOf(fileName) ?: return false
         return compareNumericVersion(version, currentVersion) <= 0
     }
@@ -381,7 +434,10 @@ sealed interface RangeSupport {
     data object Corrupt : RangeSupport
 
     /** 由 [RangeSupport.Fail.canResume] 决定卡片给「重试」还是「重新下载」 */
-    data class Fail(val reason: String, val canResume: Boolean) : RangeSupport
+    data class Fail(
+        val reason: String,
+        val canResume: Boolean,
+    ) : RangeSupport
 }
 
 /**
@@ -398,8 +454,12 @@ sealed interface RangeSupport {
  */
 sealed interface ReadVerdict {
     data object StopCancelled : ReadVerdict
+
     data object Rethrow : ReadVerdict
-    data class Retry(val reason: String) : ReadVerdict
+
+    data class Retry(
+        val reason: String,
+    ) : ReadVerdict
 }
 
 /** 下载结果校验结论 */

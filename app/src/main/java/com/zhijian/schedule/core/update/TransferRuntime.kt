@@ -1,10 +1,10 @@
 package com.zhijian.schedule.core.update
 
 import com.zhijian.schedule.BuildConfig
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicBoolean
 import okhttp3.Call
 import okhttp3.OkHttpClient
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** 下载与源探测共用的 User-Agent */
 internal val USER_AGENT = "ZhiJianSchedule/" + BuildConfig.VERSION_NAME
@@ -14,13 +14,18 @@ internal const val BUFFER_BYTES = 64 * 1024
 
 /** 一次下载尝试到底怎么了 */
 internal sealed interface Notice {
-    data class Done(val state: DownloadState) : Notice
+    data class Done(
+        val state: DownloadState,
+    ) : Notice
 
     /** 用户取消 / 超时：分片保留 */
     data object Paused : Notice
 
     /** 这个源没跑通（自己的重试已用尽）；还有下一个候选就换源，已是最后一个则按 [Notice.Failed.canResume] 收场 */
-    data class Failed(val reason: String, val canResume: Boolean) : Notice
+    data class Failed(
+        val reason: String,
+        val canResume: Boolean,
+    ) : Notice
 
     /** 服务端不支持 Range：清空分片，改用单连接顺序路径重下一次 */
     data object Fallback : Notice
@@ -39,7 +44,6 @@ internal class DownloadSession(
     val store: UpdateStore,
     private val onProgress: (DownloadRequest, UpdateSource, Long, Long?, SpeedMeter) -> Unit,
 ) {
-
     /** 用户取消 / 服务被回收 */
     val cancelRequested = AtomicBoolean(false)
 

@@ -6,7 +6,6 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class JwAdapterRegistryTest {
-
     @Test
     fun `qiangzhi wins on jsxsd path`() {
         assertEquals(

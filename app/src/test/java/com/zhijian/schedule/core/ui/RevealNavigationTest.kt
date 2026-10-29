@@ -1,8 +1,8 @@
 package com.zhijian.schedule.core.ui
 
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.IntSize
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -11,7 +11,6 @@ import org.junit.Test
 
 /** 页面扩散（加号 → 课程编辑页）的状态机语义 */
 class RevealNavigationTest {
-
     private val fab = Rect(left = 960f, top = 2120f, right = 1060f, bottom = 2220f)
     private val bg = Color(0xFFFFFFFF)
 

@@ -34,7 +34,10 @@ import com.zhijian.schedule.core.ui.Motion
 import kotlinx.coroutines.delay
 
 @Composable
-internal fun HeroPill(text: String, tone: CourseTone) {
+internal fun HeroPill(
+    text: String,
+    tone: CourseTone,
+) {
     val colors = LocalCourseColors.current
     val shape = RoundedCornerShape(50)
     Text(
@@ -43,16 +46,22 @@ internal fun HeroPill(text: String, tone: CourseTone) {
         fontSize = 12.sp,
         fontWeight = FontWeight.Medium,
         maxLines = 1,
-        modifier = Modifier
-            .clip(shape)
-            .background(colors.surface.copy(alpha = 0.72f))
-            .border(1.dp, tone.line.copy(alpha = 0.75f), shape)
-            .padding(horizontal = 10.dp, vertical = 5.dp),
+        modifier =
+            Modifier
+                .clip(shape)
+                .background(colors.surface.copy(alpha = 0.72f))
+                .border(1.dp, tone.line.copy(alpha = 0.75f), shape)
+                .padding(horizontal = 10.dp, vertical = 5.dp),
     )
 }
 
 @Composable
-internal fun InfoRow(icon: ImageVector, label: String, value: String, tone: CourseTone) {
+internal fun InfoRow(
+    icon: ImageVector,
+    label: String,
+    value: String,
+    tone: CourseTone,
+) {
     val colors = LocalCourseColors.current
     Row(
         Modifier.fillMaxWidth().padding(vertical = 10.dp),

@@ -13,7 +13,6 @@ import kotlin.math.hypot
  * 否则圆还没铺满就停住，画面上会留一条旧主题的边。
  */
 class RevealGeometryTest {
-
     @Test
     fun centerOfScreenCoversHalfDiagonal() {
         assertEquals(hypot(100f, 200f), revealRadius(100f, 200f, 200f, 400f), 1e-3f)
@@ -65,12 +64,13 @@ class RevealGeometryTest {
         assertTrue(s.requestNavigationBack(fab, Color.Black) { })
         s.beginReveal(null)
         val active = s.active!!
-        val far = revealRadius(
-            active.center.x,
-            active.center.y,
-            s.hostSize.width.toFloat(),
-            s.hostSize.height.toFloat(),
-        ) + 2f
+        val far =
+            revealRadius(
+                active.center.x,
+                active.center.y,
+                s.hostSize.width.toFloat(),
+                s.hostSize.height.toFloat(),
+            ) + 2f
 
         // t=0：起手就得盖满，否则返程第一帧四角会先漏出课表
         s.progress.floatValue = 0f
@@ -83,9 +83,9 @@ class RevealGeometryTest {
         for (i in 0..20) {
             s.progress.floatValue = i / 20f
             val r = s.radiusOf(active)
-            assertTrue("t=${i}/20 radius=$r 应单调不增", r <= prev + 1e-3f)
-            assertTrue("t=${i}/20 radius=$r 不应超过满屏", r <= far + 1e-3f)
-            assertTrue("t=${i}/20 radius=$r 不应小于加号", r >= active.startRadius - 1e-3f)
+            assertTrue("t=$i/20 radius=$r 应单调不增", r <= prev + 1e-3f)
+            assertTrue("t=$i/20 radius=$r 不应超过满屏", r <= far + 1e-3f)
+            assertTrue("t=$i/20 radius=$r 不应小于加号", r >= active.startRadius - 1e-3f)
             prev = r
         }
     }
@@ -110,12 +110,13 @@ class RevealGeometryTest {
         assertEquals(a1.center, a2.center)
         assertEquals(a1.startRadius, a2.startRadius, 1e-3f)
 
-        val far = revealRadius(
-            a1.center.x,
-            a1.center.y,
-            fwd.hostSize.width.toFloat(),
-            fwd.hostSize.height.toFloat(),
-        ) + 2f
+        val far =
+            revealRadius(
+                a1.center.x,
+                a1.center.y,
+                fwd.hostSize.width.toFloat(),
+                fwd.hostSize.height.toFloat(),
+            ) + 2f
         for (i in 0..10) {
             val t = i / 10f
             fwd.progress.floatValue = t

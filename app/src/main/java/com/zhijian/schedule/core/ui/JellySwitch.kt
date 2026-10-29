@@ -18,8 +18,8 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.LayoutDirection
@@ -40,7 +40,7 @@ private val TrackHeight = 32.dp
  * 本组件把它接在果冻上：小圆点被拉长成囊形飞出去，落到对面时已经长满——
  * 「小水滴飞过去长成一枚球」，形变和尺寸变化是同一个动作的两面。
  *
- * 为什么不用第三档（按下 28dp）：按压反馈已经交给 [JellyGrab] 的横向拉伸了。
+ * 为什么不用第三档（按下 28dp）：按压反馈已经交给 [JELLY_GRAB] 的横向拉伸了。
  * 尺寸和拉伸同时长会让「按住了」和「在飞了」两件事糊在一起；而且 24dp 的手柄
  * 拉满 45% 之后正好是 ~28dp，等于顺手把 M3 的按下档也覆盖了，不必再加一条通道。
  */
@@ -48,16 +48,16 @@ private val ThumbOff = 16.dp
 private val ThumbOn = 24.dp
 
 /** 圆点换色时长：快于位移，保证「胶囊拉满」那一帧圆点已经是目的地颜色。 */
-private const val JellyThumbTintMs = 120
+private const val JELLY_THUMB_TINT_MS = 120
 
 /** 轨道换色时长：与圆点同档，位移还没走到一半，底色就已经是终态。 */
-private const val JellyTrackTintMs = 140
+private const val JELLY_TRACK_TINT_MS = 140
 
-/** 未选中描边的淡入淡出时长：必须与 [JellyTrackTintMs] 同拍，否则会看到「蓝底上挂着一圈灰边」。 */
-private const val JellyBorderMs = 140
+/** 未选中描边的淡入淡出时长：必须与 [JELLY_TRACK_TINT_MS] 同拍，否则会看到「蓝底上挂着一圈灰边」。 */
+private const val JELLY_BORDER_MS = 140
 
 /** 禁用态整体压暗：M3 用 0.38 的内容透明度，轨道更淡，这里折中取 0.42。 */
-private const val JellyDisabledAlpha = 0.42f
+private const val JELLY_DISABLED_ALPHA = 0.42f
 
 /**
  * 果冻开关：点一下，圆点滑向另一端，途中被「速度」拉长成胶囊，到站再弹回圆形。
@@ -66,7 +66,7 @@ private const val JellyDisabledAlpha = 0.42f
  * 拉伸量直接取圆点的**实时速度**（[jellyStretch]），而不是另起一条 0→1 的形变动画。
  * 速度与位移天生同拍，永远不会出现「胶囊已经缩回去了、圆点还在路上」的错拍；
  * 落位前弹簧的过冲让速度反向，胶囊跟着反向收，收完就是正圆——「回弹恢复圆形」是弹簧的
- * 副产物，不需要再补一条动画。按住时圆点先被捏宽一点（[JellyGrab]），是手指的抓取感。
+ * 副产物，不需要再补一条动画。按住时圆点先被捏宽一点（[JELLY_GRAB]），是手指的抓取感。
  *
  * ## 两条时间线
  * | 通道 | 弹簧 | 作用 |
@@ -145,14 +145,14 @@ fun JellySwitch(
     // 飞行途中的那一帧才是「白胶囊落在蓝底上」；轨道要是慢半拍，就会看到「灰胶囊卡在蓝条上」。
     val trackColor by animateColorAsState(
         targetValue = if (checked) colors.accent else colors.surfaceVariant,
-        animationSpec = tween(JellyTrackTintMs, easing = Motion.EaseOut),
+        animationSpec = tween(JELLY_TRACK_TINT_MS, easing = Motion.EaseOut),
         label = "jellyTrack",
     )
     // 圆点的换色要**抢在轨道前面**：圆点是主角，飞行途中它还灰着、轨道已经蓝了，
     // 那一帧读起来像「灰团卡在蓝条上」。120ms 内换完，胶囊拉满时已经是目的地那一色。
     val thumbColor by animateColorAsState(
         targetValue = if (checked) colors.onAccent else colors.textMuted,
-        animationSpec = tween(JellyThumbTintMs, easing = Motion.EaseOut),
+        animationSpec = tween(JELLY_THUMB_TINT_MS, easing = Motion.EaseOut),
         label = "jellyThumb",
     )
     // 未选中补一道 hairline：surfaceVariant 与卡片底色只差一档，没有描边会「浮」不起来。
@@ -160,7 +160,7 @@ fun JellySwitch(
     // 轨道还是蓝的、灰边已经画上去了，会闪出一圈「蓝底挂灰框」。
     val borderAlpha by animateFloatAsState(
         targetValue = if (checked) 0f else 1f,
-        animationSpec = tween(JellyBorderMs, easing = Motion.EaseOut),
+        animationSpec = tween(JELLY_BORDER_MS, easing = Motion.EaseOut),
         label = "jellyBorder",
     )
     val borderColor = colors.border
@@ -169,7 +169,7 @@ fun JellySwitch(
         modifier
             .minimumInteractiveComponentSize()
             .size(TrackWidth, TrackHeight)
-            .graphicsLayer { alpha = if (enabled) 1f else JellyDisabledAlpha }
+            .graphicsLayer { alpha = if (enabled) 1f else JELLY_DISABLED_ALPHA }
             .toggleable(
                 value = checked,
                 enabled = enabled,
@@ -177,8 +177,7 @@ fun JellySwitch(
                 interactionSource = interaction,
                 indication = null,
                 onValueChange = onCheckedChange,
-            )
-            .drawBehind {
+            ).drawBehind {
                 val track = size
                 val trackRadius = CornerRadius(track.height / 2f)
                 drawRoundRect(color = trackColor, cornerRadius = trackRadius)
@@ -197,14 +196,15 @@ fun JellySwitch(
                 val speed = abs(progress.velocity)
                 val p = if (rtl) 1f - position else position
                 val diameter = (ThumbOff + (ThumbOn - ThumbOff) * grow.value).toPx()
-                val thumb = jellyThumbRect(
-                    track = track,
-                    progress = p,
-                    stretch = jellyStretch(speed, grab),
-                    diameter = diameter,
-                    maxStretch = diameter * JellyStretchRatio,
-                    squash = JellySquash,
-                )
+                val thumb =
+                    jellyThumbRect(
+                        track = track,
+                        progress = p,
+                        stretch = jellyStretch(speed, grab),
+                        diameter = diameter,
+                        maxStretch = diameter * JELLY_STRETCH_RATIO,
+                        squash = JELLY_SQUASH,
+                    )
                 drawRoundRect(
                     color = thumbColor,
                     topLeft = Offset(thumb.left, thumb.top),

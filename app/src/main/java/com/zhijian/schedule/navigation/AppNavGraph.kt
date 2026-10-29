@@ -14,7 +14,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.navigation
 import com.zhijian.schedule.core.theme.LocalCourseColors
-import com.zhijian.schedule.feature.course_editor.CourseEditorScreen
+import com.zhijian.schedule.feature.courseeditor.CourseEditorScreen
 import com.zhijian.schedule.feature.exam.ExamScreen
 import com.zhijian.schedule.feature.grades.GradesScreen
 import com.zhijian.schedule.feature.importer.ImporterScreen
@@ -133,8 +133,13 @@ internal fun AppNavHost(
                 }
             },
             popEnterTransition = {
-                if (state.reveal.navigating) EnterTransition.None
-                else if (initialState.isInTabGraph()) tabPopEnter else popEnter
+                if (state.reveal.navigating) {
+                    EnterTransition.None
+                } else if (initialState.isInTabGraph()) {
+                    tabPopEnter
+                } else {
+                    popEnter
+                }
             },
             popExitTransition = { tabPopExit },
         ) {
@@ -142,9 +147,13 @@ internal fun AppNavHost(
                 route = Routes.SCHEDULE,
                 enterTransition = {
                     // 反向扩散：课表是被露出的一页，不能自己再滑入，否则被收走的编辑页会留在下面成重影
-                    if (state.reveal.navigating) EnterTransition.None
-                    else if (initialState.isInTabGraph()) tabSlideEnter(initialState, targetState)
-                    else tabEnter
+                    if (state.reveal.navigating) {
+                        EnterTransition.None
+                    } else if (initialState.isInTabGraph()) {
+                        tabSlideEnter(initialState, targetState)
+                    } else {
+                        tabEnter
+                    }
                 },
                 exitTransition = {
                     when {
@@ -173,9 +182,10 @@ internal fun AppNavHost(
                         // 圆外仍是旧课表（转场交给根部 RevealHost，导航转场让位）
                         onAddCourseFromFab = { bounds ->
                             state.fabOrigin = bounds
-                            val started = state.reveal.requestNavigation(bounds, colors.bg) {
-                                navController.navigate(Routes.scheduleEditor(day = null, section = null))
-                            }
+                            val started =
+                                state.reveal.requestNavigation(bounds, colors.bg) {
+                                    navController.navigate(Routes.scheduleEditor(day = null, section = null))
+                                }
                             if (!started) {
                                 navController.navigate(Routes.scheduleEditor(day = null, section = null))
                             }
@@ -233,10 +243,11 @@ internal fun AppNavHost(
                 // 编辑页按圆一路收进加号，露出下面的课表；其他入口保持原本的返回转场
                 val leave: () -> Unit = {
                     val origin = state.fabOrigin
-                    val started = origin != null &&
-                        state.reveal.requestNavigationBack(origin, colors.bg) {
-                            navController.popBackStack()
-                        }
+                    val started =
+                        origin != null &&
+                            state.reveal.requestNavigationBack(origin, colors.bg) {
+                                navController.popBackStack()
+                            }
                     if (!started) navController.popBackStack()
                 }
                 BackHandler(onBack = leave)
@@ -413,12 +424,14 @@ internal fun AppNavHost(
                 popEnterTransition = { EnterTransition.None },
                 popExitTransition = { ExitTransition.None },
             ) { backStackEntry ->
-                val entryKey = backStackEntry.arguments?.getString("entryKey")
-                    ?.takeIf {
-                        it == ProfileEntryKeys.GRADES ||
-                            it == ProfileEntryKeys.GRADES_GPA
-                    }
-                    ?: ProfileEntryKeys.GRADES
+                val entryKey =
+                    backStackEntry.arguments
+                        ?.getString("entryKey")
+                        ?.takeIf {
+                            it == ProfileEntryKeys.GRADES ||
+                                it == ProfileEntryKeys.GRADES_GPA
+                        }
+                        ?: ProfileEntryKeys.GRADES
                 ProfileEntryPage(
                     entryKey = entryKey,
                     transitions = state.entryTransitions,
@@ -455,7 +468,5 @@ internal fun AppNavHost(
                 }
             }
         }
-
-
     }
 }

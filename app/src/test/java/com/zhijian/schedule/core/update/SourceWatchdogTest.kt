@@ -9,14 +9,15 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class SourceWatchdogTest {
-
     @Test
     fun stallIsDetectedEvenVeryEarlyInAttempt() {
         assertEquals(
             WatchdogVerdict.Stalled,
             sourceWatchdogVerdict(
-                movedBytes = 0, stillForMs = WATCHDOG_STALL_TIMEOUT_MS,
-                elapsedMs = 40_000, hasNextSource = true,
+                movedBytes = 0,
+                stillForMs = WATCHDOG_STALL_TIMEOUT_MS,
+                elapsedMs = 40_000,
+                hasNextSource = true,
             ),
         )
     }
@@ -26,8 +27,10 @@ class SourceWatchdogTest {
         assertEquals(
             WatchdogVerdict.Ok,
             sourceWatchdogVerdict(
-                movedBytes = 5_000_000, stillForMs = 1_000,
-                elapsedMs = 90_000, hasNextSource = true,
+                movedBytes = 5_000_000,
+                stillForMs = 1_000,
+                elapsedMs = 90_000,
+                hasNextSource = true,
             ),
         )
     }
@@ -37,15 +40,19 @@ class SourceWatchdogTest {
         assertEquals(
             WatchdogVerdict.TooSlow,
             sourceWatchdogVerdict(
-                movedBytes = 60_000, stillForMs = 2_000,
-                elapsedMs = 90_000, hasNextSource = true,
+                movedBytes = 60_000,
+                stillForMs = 2_000,
+                elapsedMs = 90_000,
+                hasNextSource = true,
             ),
         )
         assertEquals(
             WatchdogVerdict.Ok,
             sourceWatchdogVerdict(
-                movedBytes = 60_000, stillForMs = 2_000,
-                elapsedMs = 90_000, hasNextSource = false,
+                movedBytes = 60_000,
+                stillForMs = 2_000,
+                elapsedMs = 90_000,
+                hasNextSource = false,
             ),
         )
     }
@@ -55,8 +62,10 @@ class SourceWatchdogTest {
         assertEquals(
             WatchdogVerdict.Ok,
             sourceWatchdogVerdict(
-                movedBytes = 1_000, stillForMs = 1_000,
-                elapsedMs = WATCHDOG_SPEED_GRACE_MS - 1, hasNextSource = true,
+                movedBytes = 1_000,
+                stillForMs = 1_000,
+                elapsedMs = WATCHDOG_SPEED_GRACE_MS - 1,
+                hasNextSource = true,
             ),
         )
     }

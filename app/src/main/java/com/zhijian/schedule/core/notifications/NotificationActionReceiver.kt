@@ -7,8 +7,10 @@ import androidx.core.app.NotificationManagerCompat
 
 /** 提醒通知的「静默」操作 */
 class NotificationActionReceiver : BroadcastReceiver() {
-
-    override fun onReceive(context: Context, intent: Intent) {
+    override fun onReceive(
+        context: Context,
+        intent: Intent,
+    ) {
         if (intent.action == ACTION_DISMISS) {
             val id = intent.getIntExtra(EXTRA_ID, -1)
             if (id > 0) {

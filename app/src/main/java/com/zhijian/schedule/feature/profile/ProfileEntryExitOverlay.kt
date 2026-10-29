@@ -73,8 +73,8 @@ fun ProfileEntryExitOverlay(
                     }
                 } else {
                     Modifier
-                }
-            )
+                },
+            ),
     ) {
         if (key == null) return@Canvas
         val full = entryCaptureBounds(captureLayer.size.width, captureLayer.size.height, size)

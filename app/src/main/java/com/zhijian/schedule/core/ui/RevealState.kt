@@ -20,10 +20,12 @@ internal object RevealTrace {
     private const val TAG = "Reveal"
     private const val DEBUG = false
     private var zero = 0L
+
     fun reset() {
         if (!DEBUG) return
         zero = SystemClock.uptimeMillis()
     }
+
     fun log(msg: () -> String) {
         if (!DEBUG) return
         val t = if (zero == 0L) 0L else SystemClock.uptimeMillis() - zero
@@ -67,7 +69,6 @@ internal object RevealTrace {
  */
 @Stable
 class RevealState {
-
     /** 已受理、正在取旧帧 */
     internal data class Pending(
         /** 目标主题；null = 这次是页面扩散（导航），不换主题 */
@@ -184,14 +185,15 @@ class RevealState {
         } else {
             RevealTrace.reset()
         }
-        pending = Pending(
-            toId = toId,
-            centerInRoot = center,
-            startRadius = startRadius,
-            fromBg = fromBg,
-        )
+        pending =
+            Pending(
+                toId = toId,
+                centerInRoot = center,
+                startRadius = startRadius,
+                fromBg = fromBg,
+            )
         lastAccepted = toId
-        RevealTrace.log { "accepted host=${hostSize} origin=$hostOrigin" }
+        RevealTrace.log { "accepted host=$hostSize origin=$hostOrigin" }
         return true
     }
 
@@ -212,14 +214,15 @@ class RevealState {
             return false
         }
         RevealTrace.reset()
-        pending = Pending(
-            toId = null,
-            centerInRoot = boundsInRoot.center,
-            startRadius = min(boundsInRoot.width, boundsInRoot.height) / 2f,
-            fromBg = fromBg,
-            onReady = onReady,
-        )
-        RevealTrace.log { "nav accepted center=${boundsInRoot.center} host=${hostSize}" }
+        pending =
+            Pending(
+                toId = null,
+                centerInRoot = boundsInRoot.center,
+                startRadius = min(boundsInRoot.width, boundsInRoot.height) / 2f,
+                fromBg = fromBg,
+                onReady = onReady,
+            )
+        RevealTrace.log { "nav accepted center=${boundsInRoot.center} host=$hostSize" }
         return true
     }
 
@@ -243,14 +246,15 @@ class RevealState {
             return false
         }
         RevealTrace.reset()
-        pending = Pending(
-            toId = null,
-            centerInRoot = boundsInRoot.center,
-            startRadius = min(boundsInRoot.width, boundsInRoot.height) / 2f,
-            fromBg = fromBg,
-            onReady = onReady,
-            reverse = true,
-        )
+        pending =
+            Pending(
+                toId = null,
+                centerInRoot = boundsInRoot.center,
+                startRadius = min(boundsInRoot.width, boundsInRoot.height) / 2f,
+                fromBg = fromBg,
+                onReady = onReady,
+                reverse = true,
+            )
         RevealTrace.log { "nav back accepted center=${boundsInRoot.center}" }
         return true
     }
@@ -278,14 +282,15 @@ class RevealState {
         progress.floatValue = 0f
         frozen = false
         runCounter++
-        active = Active(
-            toId = start.toId,
-            center = start.centerInRoot - hostOrigin,
-            startRadius = start.startRadius,
-            fromBg = start.fromBg,
-            runId = runCounter,
-            reverse = start.reverse,
-        )
+        active =
+            Active(
+                toId = start.toId,
+                center = start.centerInRoot - hostOrigin,
+                startRadius = start.startRadius,
+                fromBg = start.fromBg,
+                runId = runCounter,
+                reverse = start.reverse,
+            )
         pending = null
         // 页面扩散不改渲染主题；主题扩散才切换
         start.toId?.let { currentId = it }
@@ -313,12 +318,13 @@ class RevealState {
 
     /** 当帧圆的半径（宿主坐标） */
     internal fun radiusOf(active: Active): Float {
-        val far = revealRadius(
-            active.center.x,
-            active.center.y,
-            hostSize.width.toFloat(),
-            hostSize.height.toFloat(),
-        ) + 2f
+        val far =
+            revealRadius(
+                active.center.x,
+                active.center.y,
+                hostSize.width.toFloat(),
+                hostSize.height.toFloat(),
+            ) + 2f
         val t = progress.floatValue.coerceIn(0f, 1f)
         // 正向：小圆 → 铺满；反向：铺满 → 收回被点控件
         return if (active.reverse) {

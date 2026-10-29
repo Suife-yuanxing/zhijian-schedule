@@ -1,5 +1,5 @@
-import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
@@ -18,10 +18,11 @@ android {
     compileSdk = 36
 
     // 正式签名：keystore.properties 存在时使用 release 密钥（仓库外保存），否则回落 debug 签名
-    val keystoreProps = Properties().apply {
-        val f = rootProject.file("keystore.properties")
-        if (f.exists()) f.inputStream().use { load(it) }
-    }
+    val keystoreProps =
+        Properties().apply {
+            val f = rootProject.file("keystore.properties")
+            if (f.exists()) f.inputStream().use { load(it) }
+        }
 
     defaultConfig {
         applicationId = "com.zhijian.schedule"
@@ -50,13 +51,14 @@ android {
             isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
+                "proguard-rules.pro",
             )
-            signingConfig = if (keystoreProps.isNotEmpty()) {
-                signingConfigs.getByName("release")
-            } else {
-                signingConfigs.getByName("debug")
-            }
+            signingConfig =
+                if (keystoreProps.isNotEmpty()) {
+                    signingConfigs.getByName("release")
+                } else {
+                    signingConfigs.getByName("debug")
+                }
         }
     }
 
@@ -79,13 +81,14 @@ android {
 
     packaging {
         resources {
-            excludes += setOf(
-                "/META-INF/{AL2.0,LGPL2.1}",
-                "/META-INF/DEPENDENCIES",
-                "/META-INF/LICENSE*",
-                "/META-INF/NOTICE*",
-                "META-INF/*.kotlin_module"
-            )
+            excludes +=
+                setOf(
+                    "/META-INF/{AL2.0,LGPL2.1}",
+                    "/META-INF/DEPENDENCIES",
+                    "/META-INF/LICENSE*",
+                    "/META-INF/NOTICE*",
+                    "META-INF/*.kotlin_module",
+                )
         }
     }
 
@@ -128,7 +131,9 @@ ktlint {
     // 版本显式钉死，避免将来升级 Gradle 插件时 ktlint 规则集跟着漂移：
     // 插件升级与规则升级必须分成两次可 review 的改动（14.2.0 的默认值就是 1.5.0）。
     version.set("1.5.0")
-    // 现有 300 个 .kt 的历史违例（3551 条）冻结在 baseline 中；新增代码违规会 fail。
+    // 存量违例已清零（2026-10-29 整仓格式化 + 手工收敛）：config/ktlint/baseline.xml 现为空表。
+    // 保留空基线文件与这条接线，是为了将来若再出现"必须临时放行"的规则时，
+    // 有一个明确的、可 review 的落点，而不是把规则整体关掉。
     baseline.set(rootProject.file("config/ktlint/baseline.xml"))
     // 报告与 baseline 里的文件路径一律用"相对仓库根"的形式。
     // 这一行是跨机器可用的前提：本机仓库路径是 D:\课程表（含中文），

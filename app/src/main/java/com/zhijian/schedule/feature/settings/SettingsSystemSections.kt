@@ -22,7 +22,7 @@ import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.ui.JellySwitch
 import com.zhijian.schedule.core.ui.TapTextButton
 
-/**
+/*
  * 设置页里需要与系统打交道的三个分组：课前提醒（精确闹钟）、课程实时胶囊（流体云 / 电池优化）、
  * 写入系统日历（权限）。
  *
@@ -32,7 +32,10 @@ import com.zhijian.schedule.core.ui.TapTextButton
 
 /** 课前提醒：精确闹钟未授予时给一条「去授权」的出路 */
 @Composable
-internal fun ReminderSection(exactAlarmOk: Boolean, onRefreshPermission: () -> Unit) {
+internal fun ReminderSection(
+    exactAlarmOk: Boolean,
+    onRefreshPermission: () -> Unit,
+) {
     val colors = LocalCourseColors.current
     val context = LocalContext.current
     SettingsCard {
@@ -84,21 +87,23 @@ internal fun CapsuleSection(
         if (ui.settings.capsuleEnabled) {
             Spacer(Modifier.height(10.dp))
             when (ui.capsulePromoteAllowed) {
-                false -> Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "系统未放行实时活动：请在「流体云显示实时活动」中开启本应用",
-                        color = colors.accent,
-                        fontSize = 12.sp,
-                        modifier = Modifier.weight(1f),
-                    )
-                    TapTextButton(onClick = { openCapsuleSystemSettings(context) }) { Text("去开启") }
-                }
+                false ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "系统未放行实时活动：请在「流体云显示实时活动」中开启本应用",
+                            color = colors.accent,
+                            fontSize = 12.sp,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TapTextButton(onClick = { openCapsuleSystemSettings(context) }) { Text("去开启") }
+                    }
 
-                true -> Text(
-                    text = "已放行实时活动，胶囊会显示为流体云",
-                    color = colors.textMuted,
-                    fontSize = 12.sp,
-                )
+                true ->
+                    Text(
+                        text = "已放行实时活动，胶囊会显示为流体云",
+                        color = colors.textMuted,
+                        fontSize = 12.sp,
+                    )
 
                 null -> Unit
             }
@@ -158,12 +163,13 @@ internal fun CalendarSyncSection(
             Column(Modifier.weight(1f)) {
                 Text("写入系统日历", color = colors.text, fontWeight = FontWeight.SemiBold)
                 Text(
-                    text = when {
-                        !ui.calendarAvailable -> "未检测到系统日历"
-                        !ui.calendarPermissionGranted ->
-                            "开启后把课程写入「纸间课表」日历，负一屏日程可见"
-                        else -> "把课程写入「纸间课表」日历，负一屏日程可见"
-                    },
+                    text =
+                        when {
+                            !ui.calendarAvailable -> "未检测到系统日历"
+                            !ui.calendarPermissionGranted ->
+                                "开启后把课程写入「纸间课表」日历，负一屏日程可见"
+                            else -> "把课程写入「纸间课表」日历，负一屏日程可见"
+                        },
                     color = colors.textMuted,
                     fontSize = 12.sp,
                 )
@@ -178,13 +184,14 @@ internal fun CalendarSyncSection(
             Spacer(Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = when {
-                        ui.calendarPermissionPermanentlyDenied ->
-                            "日历权限已被拒绝，请到系统设置中允许"
-                        ui.calendarPermissionDenied ->
-                            "未授予日历权限，无法写入系统日历"
-                        else -> "需要读取和写入日历权限"
-                    },
+                    text =
+                        when {
+                            ui.calendarPermissionPermanentlyDenied ->
+                                "日历权限已被拒绝，请到系统设置中允许"
+                            ui.calendarPermissionDenied ->
+                                "未授予日历权限，无法写入系统日历"
+                            else -> "需要读取和写入日历权限"
+                        },
                     color = colors.accent,
                     fontSize = 12.sp,
                     modifier = Modifier.weight(1f),
@@ -206,30 +213,34 @@ internal fun CalendarSyncSection(
 
 /** 精确闹钟授权页：直接跳到本应用的对应开关 */
 private fun requestExactAlarmPermission(context: Context) {
-    val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
-        data = Uri.fromParts("package", context.packageName, null)
-    }
+    val intent =
+        Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+            data = Uri.fromParts("package", context.packageName, null)
+        }
     runCatching { context.startActivity(intent) }
 }
 
 /** 系统通知设置里含「流体云显示实时活动」（原生为「实时通知」）开关 */
 private fun openCapsuleSystemSettings(context: Context) {
-    val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-        .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+    val intent =
+        Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+            .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
     runCatching { context.startActivity(intent) }
 }
 
 /** 「拒绝且不再询问」后只能去系统设置的权限页手动打开 */
 private fun openCalendarPermissionSettings(context: Context) {
-    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-        data = Uri.fromParts("package", context.packageName, null)
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    }
+    val intent =
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.fromParts("package", context.packageName, null)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
     runCatching { context.startActivity(intent) }
 }
 
 /** 日历同步要的读写权限 */
-internal val CALENDAR_PERMISSIONS = arrayOf(
-    Manifest.permission.READ_CALENDAR,
-    Manifest.permission.WRITE_CALENDAR,
-)
+internal val CALENDAR_PERMISSIONS =
+    arrayOf(
+        Manifest.permission.READ_CALENDAR,
+        Manifest.permission.WRITE_CALENDAR,
+    )

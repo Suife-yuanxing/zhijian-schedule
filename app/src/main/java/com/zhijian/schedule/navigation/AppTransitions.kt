@@ -23,29 +23,29 @@ internal val pushEnter: EnterTransition =
         fadeIn(tween(durationMillis = 220, easing = Motion.EaseOut))
 internal val pushExit: ExitTransition =
     slideOutHorizontally(animationSpec = Motion.SlideSpring, targetOffsetX = { -it / 3 }) +
-        fadeOut(tween(durationMillis = Motion.DurFast))
+        fadeOut(tween(durationMillis = Motion.DUR_FAST))
 
 /** 二级页 pop：当前页向右滑出，上一页从左侧 1/3 处滑回原位 */
 internal val popEnter: EnterTransition =
     slideInHorizontally(animationSpec = Motion.SlideSpring, initialOffsetX = { -it / 3 }) +
-        fadeIn(tween(durationMillis = Motion.DurMedium, easing = Motion.EaseOut))
+        fadeIn(tween(durationMillis = Motion.DUR_MEDIUM, easing = Motion.EaseOut))
 internal val popExit: ExitTransition =
     slideOutHorizontally(animationSpec = Motion.SlideSpring, targetOffsetX = { it }) +
-        fadeOut(tween(durationMillis = Motion.DurFast))
+        fadeOut(tween(durationMillis = Motion.DUR_FAST))
 
 /** tab 之间：淡入淡出 + 1~2% 微缩放，保持安静不抢戏 */
 internal val tabEnter: EnterTransition =
-    fadeIn(tween(durationMillis = Motion.DurMedium, easing = Motion.EaseOut)) +
-        scaleIn(tween(durationMillis = Motion.DurMedium, easing = Motion.EaseOut), initialScale = 0.98f)
+    fadeIn(tween(durationMillis = Motion.DUR_MEDIUM, easing = Motion.EaseOut)) +
+        scaleIn(tween(durationMillis = Motion.DUR_MEDIUM, easing = Motion.EaseOut), initialScale = 0.98f)
 internal val tabExit: ExitTransition =
-    fadeOut(tween(durationMillis = Motion.DurFast)) +
-        scaleOut(tween(durationMillis = Motion.DurFast), targetScale = 0.99f)
+    fadeOut(tween(durationMillis = Motion.DUR_FAST)) +
+        scaleOut(tween(durationMillis = Motion.DUR_FAST), targetScale = 0.99f)
 internal val tabPopEnter: EnterTransition =
-    fadeIn(tween(durationMillis = Motion.DurMedium, easing = Motion.EaseOut)) +
-        scaleIn(tween(durationMillis = Motion.DurMedium, easing = Motion.EaseOut), initialScale = 0.99f)
+    fadeIn(tween(durationMillis = Motion.DUR_MEDIUM, easing = Motion.EaseOut)) +
+        scaleIn(tween(durationMillis = Motion.DUR_MEDIUM, easing = Motion.EaseOut), initialScale = 0.99f)
 internal val tabPopExit: ExitTransition =
-    fadeOut(tween(durationMillis = Motion.DurFast)) +
-        scaleOut(tween(durationMillis = Motion.DurFast), targetScale = 0.98f)
+    fadeOut(tween(durationMillis = Motion.DUR_FAST)) +
+        scaleOut(tween(durationMillis = Motion.DUR_FAST), targetScale = 0.98f)
 
 /**
  * 根 tab 按底栏顺序做方向性切换：往右切，新页从右整页滑入、旧页向左整页滑出；
@@ -65,12 +65,13 @@ internal val tabPopExit: ExitTransition =
  *    整页只剩 ~10% 不透明度的「幽灵帧」。两页都只做位移，alpha 恒为 1，
  *    打断多少次都不会留下半透明的页面。
  */
-internal fun NavBackStackEntry.tabIndex(): Int? = when {
-    destination.hierarchy.any { it.route == Routes.TODAY_TAB } -> 0
-    destination.hierarchy.any { it.route == Routes.SCHEDULE_TAB } -> 1
-    destination.hierarchy.any { it.route == Routes.PROFILE_TAB } -> 2
-    else -> null
-}
+internal fun NavBackStackEntry.tabIndex(): Int? =
+    when {
+        destination.hierarchy.any { it.route == Routes.TODAY_TAB } -> 0
+        destination.hierarchy.any { it.route == Routes.SCHEDULE_TAB } -> 1
+        destination.hierarchy.any { it.route == Routes.PROFILE_TAB } -> 2
+        else -> null
+    }
 
 internal fun NavBackStackEntry.isRootTab(): Boolean =
     destination.route == Routes.TODAY ||
@@ -113,12 +114,13 @@ internal fun tabSlideExit(
 /** 目的地是否属于「我的」入口卡对应的二级页（这些页不参与整页横滑） */
 internal fun isProfileEntryRoute(route: String?): Boolean = route in profileEntryRoutes
 
-internal val profileEntryRoutes = setOf(
-    Routes.PROFILE_IMPORTER,
-    Routes.PROFILE_GRADES,
-    Routes.PROFILE_EXAMS,
-    Routes.PROFILE_SETTINGS,
-)
+internal val profileEntryRoutes =
+    setOf(
+        Routes.PROFILE_IMPORTER,
+        Routes.PROFILE_GRADES,
+        Routes.PROFILE_EXAMS,
+        Routes.PROFILE_SETTINGS,
+    )
 
 /**
  * 进入二级页时「我的」页保持原位，并延后销毁，给实时展开/中途收回当背景。

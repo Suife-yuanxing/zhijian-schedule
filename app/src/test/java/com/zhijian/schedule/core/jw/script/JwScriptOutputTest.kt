@@ -6,14 +6,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class JwScriptOutputTest {
-
     @Test
     fun parsesCoursesWithWeeksString() {
-        val json = """
+        val json =
+            """
             {"courses":[
               {"name":"高等数学","day":1,"startSection":1,"endSection":2,"weeks":"1-8,10-16周","teacher":"张三","room":"实B-301"}
             ]}
-        """.trimIndent()
+            """.trimIndent()
         val r = JwScriptOutput.parse(json, totalWeeks = 20)
         assertTrue(r is JwScriptOutput.ParseResult.Ok)
         r as JwScriptOutput.ParseResult.Ok
@@ -30,10 +30,11 @@ class JwScriptOutputTest {
 
     @Test
     fun parsesWeeksAsIntArrayAndCoercesSections() {
-        val json = """
+        val json =
+            """
             {"courses":[{"name":"英语","day":"3","startSection":13,"endSection":14,"weeks":[1,2,3]}],
              "totalWeeks":20,"warnings":["第 2 条格式不对，已跳过"]}
-        """.trimIndent()
+            """.trimIndent()
         val r = JwScriptOutput.parse(json, totalWeeks = 20)
         assertTrue(r is JwScriptOutput.ParseResult.Ok)
         r as JwScriptOutput.ParseResult.Ok
@@ -47,13 +48,14 @@ class JwScriptOutputTest {
 
     @Test
     fun dropsInvalidEntriesWithWarnings() {
-        val json = """
+        val json =
+            """
             {"courses":[
               {"name":"","day":1,"startSection":1,"endSection":2},
               {"name":"坏天","day":9,"startSection":1,"endSection":2},
               {"name":"好课","day":2,"startSection":3,"endSection":4}
             ]}
-        """.trimIndent()
+            """.trimIndent()
         val r = JwScriptOutput.parse(json, totalWeeks = 20)
         assertTrue(r is JwScriptOutput.ParseResult.Ok)
         r as JwScriptOutput.ParseResult.Ok
@@ -76,14 +78,21 @@ class JwScriptOutputTest {
 
     @Test
     fun mergesSplitRowsBySameKey() {
-        val json = """
+        val json =
+            """
             {"courses":[
               {"name":"体育","day":4,"startSection":3,"endSection":4,"weeks":"1-8周","teacher":"李","room":"gym"},
               {"name":"体育","day":4,"startSection":3,"endSection":4,"weeks":"9-16周","teacher":"李","room":"gym"}
             ]}
-        """.trimIndent()
+            """.trimIndent()
         val r = JwScriptOutput.parse(json, 20) as JwScriptOutput.ParseResult.Ok
         assertEquals(1, r.drafts.size)
-        assertEquals(16, r.drafts.first().weekMask.count { it == '1' })
+        assertEquals(
+            16,
+            r.drafts
+                .first()
+                .weekMask
+                .count { it == '1' },
+        )
     }
 }

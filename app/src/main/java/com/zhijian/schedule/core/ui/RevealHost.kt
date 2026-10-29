@@ -64,15 +64,16 @@ fun RevealHost(
         val waits = if (layerReady.ready) 0 else 2
         RevealTrace.log { "capture start waits=$waits layerReady=${layerReady.ready}" }
         // 整个取帧过程带超时——窗口在后台/掉帧时帧回调可能一直不来，绝不能无限挂着把状态卡死
-        val frame = try {
-            withTimeoutOrNull(400) {
-                repeat(waits) { withFrameNanos { } }
-                captureLayer.toImageBitmap()
-            }
-        } catch (t: Throwable) {
-            RevealTrace.log { "capture threw ${t::class.java.simpleName}: ${t.message}" }
-            null
-        }?.takeIf { it.width > 0 && it.height > 0 }
+        val frame =
+            try {
+                withTimeoutOrNull(400) {
+                    repeat(waits) { withFrameNanos { } }
+                    captureLayer.toImageBitmap()
+                }
+            } catch (t: Throwable) {
+                RevealTrace.log { "capture threw ${t::class.java.simpleName}: ${t.message}" }
+                null
+            }?.takeIf { it.width > 0 && it.height > 0 }
         RevealTrace.log { "capture done frame=${frame?.width}x${frame?.height}" }
         state.beginReveal(frame)
     }
@@ -123,16 +124,17 @@ fun RevealHost(
                         }
                         // 进度在绘制阶段读：只失效绘制，不依赖重组
                         val radius = state.radiusOf(current)
-                        val path = Path().apply {
-                            addOval(
-                                Rect(
-                                    left = current.center.x - radius,
-                                    top = current.center.y - radius,
-                                    right = current.center.x + radius,
-                                    bottom = current.center.y + radius,
-                                ),
-                            )
-                        }
+                        val path =
+                            Path().apply {
+                                addOval(
+                                    Rect(
+                                        left = current.center.x - radius,
+                                        top = current.center.y - radius,
+                                        right = current.center.x + radius,
+                                        bottom = current.center.y + radius,
+                                    ),
+                                )
+                            }
                         clipPath(path) { this@drawWithContent.drawContent() }
                     },
             ) {
@@ -165,16 +167,17 @@ fun RevealHost(
                         val radius = state.radiusOf(active)
                         // 最后一小段化掉：圆收到加号大小时让真实加号接上，别留一个硬边的圆
                         val alpha = reverseMaskAlpha(t)
-                        val path = Path().apply {
-                            addOval(
-                                Rect(
-                                    left = active.center.x - radius,
-                                    top = active.center.y - radius,
-                                    right = active.center.x + radius,
-                                    bottom = active.center.y + radius,
-                                ),
-                            )
-                        }
+                        val path =
+                            Path().apply {
+                                addOval(
+                                    Rect(
+                                        left = active.center.x - radius,
+                                        top = active.center.y - radius,
+                                        right = active.center.x + radius,
+                                        bottom = active.center.y + radius,
+                                    ),
+                                )
+                            }
                         clipPath(path) {
                             drawImage(
                                 image = frame,
@@ -193,7 +196,10 @@ fun RevealHost(
 
 /** 只推进进度、不画东西：进度是绘制阶段读的，改它只失效绘制 */
 @Composable
-private fun RevealDriver(state: RevealState, active: RevealState.Active) {
+private fun RevealDriver(
+    state: RevealState,
+    active: RevealState.Active,
+) {
     // 时间线（时长 + 缓动）由方向与语义决定，分发抽成纯函数便于单测钉住，见 revealTiming。
     val timing = revealTiming(reverse = active.reverse, themeSwitch = active.toId != null)
     LaunchedEffect(active.runId) {
@@ -202,10 +208,11 @@ private fun RevealDriver(state: RevealState, active: RevealState.Active) {
             animate(
                 initialValue = 0f,
                 targetValue = 1f,
-                animationSpec = tween(
-                    durationMillis = timing.durationMillis,
-                    easing = timing.easing,
-                ),
+                animationSpec =
+                    tween(
+                        durationMillis = timing.durationMillis,
+                        easing = timing.easing,
+                    ),
             ) { value, _ ->
                 // 连点定格期间停写：屏幕停在取图底的那一帧，重播才不会跳
                 if (!state.frozen) state.progress.floatValue = value

@@ -21,9 +21,9 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
-import kotlin.math.max
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlin.math.max
 
 /**
  * 卡片的触摸透视倾动。
@@ -50,14 +50,15 @@ class CardTiltState internal constructor(
 )
 
 @Composable
-fun rememberCardTiltState(vararg keys: Any?): CardTiltState = remember(*keys) {
-    CardTiltState(
-        rotationX = Animatable(0f),
-        rotationY = Animatable(0f),
-        press = Animatable(0f),
-        touch = mutableStateOf(Offset.Unspecified),
-    )
-}
+fun rememberCardTiltState(vararg keys: Any?): CardTiltState =
+    remember(*keys) {
+        CardTiltState(
+            rotationX = Animatable(0f),
+            rotationY = Animatable(0f),
+            press = Animatable(0f),
+            touch = mutableStateOf(Offset.Unspecified),
+        )
+    }
 
 /**
  * 让卡片跟随触摸位置做 3D 透视倾斜，松手用 [Motion.TiltReturn] 阻尼回正。
@@ -118,21 +119,20 @@ fun Modifier.cardTilt(
                 scope.launch {
                     state.press.animateTo(
                         targetValue = 0f,
-                        animationSpec = tween(durationMillis = Motion.DurTiltGlareOut),
+                        animationSpec = tween(durationMillis = Motion.DUR_TILT_GLARE_OUT),
                     )
                 }
                 // 回正弹簧继承拖动末尾的速度：甩一下松手会带着惯性过冲，再稳稳落回
                 followTilt(state, TiltAngles(0f, 0f), scope, Motion.TiltReturn)
             }
-        }
-        .graphicsLayer {
+        }.graphicsLayer {
             rotationX = state.rotationX.value
             rotationY = state.rotationY.value
             // 有效相机距离 = 最长边 × perspectiveScale。**相机越近透视越猛**
             // （react-parallax-tilt 文档："perspective ... The lower the more extreme the tilt gets"）。
-            // Compose 的单位不是像素，须除以 CameraDistanceUnit 换算，否则会退化成正交投影。
+            // Compose 的单位不是像素，须除以 CAMERA_DISTANCE_UNIT 换算，否则会退化成正交投影。
             cameraDistance =
-                max(size.width, size.height) * style.perspectiveScale / CameraDistanceUnit
+                max(size.width, size.height) * style.perspectiveScale / CAMERA_DISTANCE_UNIT
             transformOrigin = TransformOrigin.Center
             // 抬升：按下时整卡微微放大并离面，投影随之变浓，读成"被指腹抬起来"
             val lift = state.press.value
@@ -160,12 +160,13 @@ fun Modifier.cardTiltParallax(
     state: CardTiltState,
     style: CardTiltStyle,
     depth: Dp,
-): Modifier = graphicsLayer {
-    val maxDegrees = style.maxTiltDegrees.coerceAtLeast(1f)
-    val pxPerDegree = depth.toPx() / maxDegrees
-    translationX = -state.rotationY.value * pxPerDegree
-    translationY = state.rotationX.value * pxPerDegree
-}
+): Modifier =
+    graphicsLayer {
+        val maxDegrees = style.maxTiltDegrees.coerceAtLeast(1f)
+        val pxPerDegree = depth.toPx() / maxDegrees
+        translationX = -state.rotationY.value * pxPerDegree
+        translationY = state.rotationX.value * pxPerDegree
+    }
 
 /**
  * `cameraDistance` → 有效相机距离（像素）的换算系数，**实测标定值**。
@@ -178,13 +179,18 @@ fun Modifier.cardTiltParallax(
  * 之所以要除以它：[perspectiveScale] 想表达的是「相机距离是几倍卡长」，
  * 直接乘进去会被放大 64 倍，效果等于没有透视（历史 bug 即如此）。
  */
-private const val CameraDistanceUnit = 64f
+private const val CAMERA_DISTANCE_UNIT = 64f
 
-private fun tiltFor(position: Offset, size: IntSize, maxDegrees: Float): TiltAngles {
-    val normalized = tiltNormalized(
-        position = position,
-        size = Size(size.width.toFloat(), size.height.toFloat()),
-    )
+private fun tiltFor(
+    position: Offset,
+    size: IntSize,
+    maxDegrees: Float,
+): TiltAngles {
+    val normalized =
+        tiltNormalized(
+            position = position,
+            size = Size(size.width.toFloat(), size.height.toFloat()),
+        )
     return tiltAngles(normalized, maxDegrees)
 }
 

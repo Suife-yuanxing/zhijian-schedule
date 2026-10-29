@@ -16,7 +16,6 @@ import okhttp3.Request
  * 返回 true 仅表示链路已走完且末页不像登录页；判据是调用方随后的重试抓取。
  */
 object JwSessionRecovery {
-
     private const val UA =
         "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36"
 
@@ -36,7 +35,10 @@ object JwSessionRecovery {
         }
     }
 
-    internal suspend fun recoverFrom(client: OkHttpClient, entryUrl: String): Boolean =
+    internal suspend fun recoverFrom(
+        client: OkHttpClient,
+        entryUrl: String,
+    ): Boolean =
         withContext(Dispatchers.IO) {
             // 手动逐跳跟随：学校页面混用 30x 与 JS 跳转，且跨域重定向后要把浏览器 UA 带到统一认证服务器
             val follow = client.newBuilder().followRedirects(false).build()
@@ -44,17 +46,24 @@ object JwSessionRecovery {
             var hops = 0
             while (url != null && hops < MAX_HOPS) {
                 hops++
-                val request = Request.Builder()
-                    .url(url)
-                    .header("User-Agent", UA)
-                    .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-                    .get()
-                    .build()
+                val request =
+                    Request
+                        .Builder()
+                        .url(url)
+                        .header("User-Agent", UA)
+                        .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                        .get()
+                        .build()
                 follow.newCall(request).execute().use { response ->
                     val location = response.header("Location")
                     when {
                         response.code in 300..399 ->
-                            url = location?.let { response.request.url.resolve(it)?.toString() }
+                            url =
+                                location?.let {
+                                    response.request.url
+                                        .resolve(it)
+                                        ?.toString()
+                                }
 
                         response.isSuccessful -> {
                             val finalUrl = response.request.url
@@ -62,8 +71,9 @@ object JwSessionRecovery {
                             // 停在统一认证域 = 没有可复用的 CAS 会话，恢复失败
                             if (finalUrl.host.contains("authserver")) return@withContext false
                             if (isSessionDeadPage(html)) return@withContext false
-                            val next = scriptRedirectTarget(html)
-                                ?: return@withContext true
+                            val next =
+                                scriptRedirectTarget(html)
+                                    ?: return@withContext true
                             url = finalUrl.resolve(next)?.toString()
                         }
 
@@ -90,15 +100,17 @@ object JwSessionRecovery {
         return meta.groupValues[1].trim().ifEmpty { null }
     }
 
-    private val REDIRECT_PATTERNS = listOf(
-        Regex("""location(?:\.href)?\s*=\s*['"]([^'"]+)['"]"""),
-        Regex("""location\.replace\s*\(\s*['"]([^'"]+)['"]"""),
-    )
+    private val REDIRECT_PATTERNS =
+        listOf(
+            Regex("""location(?:\.href)?\s*=\s*['"]([^'"]+)['"]"""),
+            Regex("""location\.replace\s*\(\s*['"]([^'"]+)['"]"""),
+        )
 
-    private val META_REDIRECT = Regex(
-        """http-equiv\s*=\s*['"]?refresh['"]?[^>]*content\s*=\s*['"]?\s*\d+\s*;\s*url\s*=\s*([^'">\s]+)""",
-        RegexOption.IGNORE_CASE,
-    )
+    private val META_REDIRECT =
+        Regex(
+            """http-equiv\s*=\s*['"]?refresh['"]?[^>]*content\s*=\s*['"]?\s*\d+\s*;\s*url\s*=\s*([^'">\s]+)""",
+            RegexOption.IGNORE_CASE,
+        )
 }
 
 /** 登录页 / 会话失效页识别：密码表单、强智本地登录表单、会话失效的裸 JSON 错误页 */

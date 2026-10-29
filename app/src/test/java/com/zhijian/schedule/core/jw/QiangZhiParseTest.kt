@@ -8,9 +8,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class QiangZhiParseTest {
-
     /** 旧版布局：大节行 + 表头星期 + 单元格多课程分隔线（保留兼容） */
-    private val html = """
+    private val html =
+        """
         <html><body>
         <table id="kbtable">
           <tr>
@@ -37,7 +37,7 @@ class QiangZhiParseTest {
           </tr>
         </table>
         </body></html>
-    """.trimIndent()
+        """.trimIndent()
 
     @Test
     fun `parse zhengfang kbtable`() {
@@ -100,7 +100,8 @@ class QiangZhiParseTest {
     }
 
     /** rowspan 布局：大节行含 rowspan 的节次/时间格（9 节点），第二小节行仅 7 个课程格 */
-    private val rowspanHtml = """
+    private val rowspanHtml =
+        """
         <html><body>
         <table id="kbtable">
           <tr>
@@ -160,7 +161,7 @@ class QiangZhiParseTest {
           </tr>
         </table>
         </body></html>
-    """.trimIndent()
+        """.trimIndent()
 
     @Test
     fun `parse rowspan layout aligns cells to weekday columns`() {
@@ -188,7 +189,8 @@ class QiangZhiParseTest {
     }
 
     /** 新版页面：隐藏的 div.kbcontent1 是同一格的重复渲染（无老师），只解析可见 div.kbcontent */
-    private val divCellHtml = """
+    private val divCellHtml =
+        """
         <html><body>
         <table id="kbtable">
           <tr>
@@ -204,7 +206,7 @@ class QiangZhiParseTest {
           </tr>
         </table>
         </body></html>
-    """.trimIndent()
+        """.trimIndent()
 
     @Test
     fun `visible kbcontent parsed, hidden kbcontent1 ignored`() {
@@ -221,7 +223,8 @@ class QiangZhiParseTest {
     }
 
     /** 强智真实结构（2026-10-13 实抓）：th 节次列「第一大节」+ font 标注行 + 方括号节次区间 */
-    private val qiangzhiHtml = """
+    private val qiangzhiHtml =
+        """
         <html><body>
         <table id="kbtable" class="Nsb_r_list Nsb_table">
           <tbody><tr>
@@ -243,7 +246,7 @@ class QiangZhiParseTest {
           </tr>
         </tbody></table>
         </body></html>
-    """.trimIndent()
+        """.trimIndent()
 
     @Test
     fun `parse qiangzhi kbtable with th section column and bracket sections`() {

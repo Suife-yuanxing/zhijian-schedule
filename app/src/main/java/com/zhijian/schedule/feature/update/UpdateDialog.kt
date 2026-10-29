@@ -112,15 +112,17 @@ internal fun PaperDialog(
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 24.dp, vertical = 32.dp),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 24.dp, vertical = 32.dp),
             contentAlignment = Alignment.Center,
         ) {
             Surface(
-                modifier = Modifier
-                    .widthIn(max = 380.dp)
-                    .fillMaxWidth(),
+                modifier =
+                    Modifier
+                        .widthIn(max = 380.dp)
+                        .fillMaxWidth(),
                 shape = RoundedCornerShape(28.dp),
                 color = colors.surface,
                 contentColor = colors.text,
@@ -128,9 +130,10 @@ internal fun PaperDialog(
                 shadowElevation = 20.dp,
             ) {
                 Column(
-                    modifier = Modifier
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 22.dp, vertical = 20.dp),
+                    modifier =
+                        Modifier
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 22.dp, vertical = 20.dp),
                     content = content,
                 )
             }
@@ -144,10 +147,11 @@ private fun DialogHeader(onDismiss: () -> Unit) {
     val dark = LocalIsDark.current
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
-            modifier = Modifier
-                .size(42.dp)
-                .clip(RoundedCornerShape(14.dp))
-                .background(colors.accent.copy(alpha = if (dark) 0.2f else 0.12f)),
+            modifier =
+                Modifier
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(colors.accent.copy(alpha = if (dark) 0.2f else 0.12f)),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
@@ -176,39 +180,52 @@ private fun DialogHeader(onDismiss: () -> Unit) {
 
 /** 窗口的主操作：按当前状态给唯一一个动作（取消 / 继续 / 安装 / 下载 / 检查） */
 @Composable
-private fun UpdateActionButton(ui: UpdateUiState, viewModel: UpdateViewModel) {
+private fun UpdateActionButton(
+    ui: UpdateUiState,
+    viewModel: UpdateViewModel,
+) {
     val download = ui.download
     when {
-        download is DownloadState.Running -> OutlinedAction(
-            label = "取消下载",
-            onClick = { viewModel.cancelDownload() },
-        )
-        download is DownloadState.Paused -> FilledAction(
-            label = "继续下载",
-            onClick = { viewModel.downloadUpdate() },
-        )
-        download is DownloadState.Ready -> FilledAction(
-            label = "安装更新",
-            onClick = { viewModel.installUpdate() },
-        )
-        download is DownloadState.Failed -> FilledAction(
-            label = if (download.canResume) "继续下载" else "重新下载",
-            onClick = { viewModel.downloadUpdate() },
-        )
-        ui.updateInfo?.apkUrl != null -> FilledAction(
-            label = "下载更新",
-            onClick = { viewModel.downloadUpdate() },
-        )
-        else -> FilledAction(
-            label = checkLabel(ui),
-            onClick = { viewModel.checkUpdate() },
-            enabled = !ui.busy,
-        )
+        download is DownloadState.Running ->
+            OutlinedAction(
+                label = "取消下载",
+                onClick = { viewModel.cancelDownload() },
+            )
+        download is DownloadState.Paused ->
+            FilledAction(
+                label = "继续下载",
+                onClick = { viewModel.downloadUpdate() },
+            )
+        download is DownloadState.Ready ->
+            FilledAction(
+                label = "安装更新",
+                onClick = { viewModel.installUpdate() },
+            )
+        download is DownloadState.Failed ->
+            FilledAction(
+                label = if (download.canResume) "继续下载" else "重新下载",
+                onClick = { viewModel.downloadUpdate() },
+            )
+        ui.updateInfo?.apkUrl != null ->
+            FilledAction(
+                label = "下载更新",
+                onClick = { viewModel.downloadUpdate() },
+            )
+        else ->
+            FilledAction(
+                label = checkLabel(ui),
+                onClick = { viewModel.checkUpdate() },
+                enabled = !ui.busy,
+            )
     }
 }
 
 @Composable
-private fun DialogFooter(ui: UpdateUiState, onDismiss: () -> Unit, context: Context) {
+private fun DialogFooter(
+    ui: UpdateUiState,
+    onDismiss: () -> Unit,
+    context: Context,
+) {
     val colors = LocalCourseColors.current
     val pageUrl = ui.updateInfo?.pageUrl
     Row(
@@ -232,11 +249,11 @@ private fun DialogFooter(ui: UpdateUiState, onDismiss: () -> Unit, context: Cont
 }
 
 /** 下载选项只在真的涉及安装包时出现，已最新时不要用镜像/清理占版面 */
-private fun showsDownloadOptions(ui: UpdateUiState): Boolean =
-    ui.updateInfo?.apkUrl != null || ui.updateCacheBytes > 0L
+private fun showsDownloadOptions(ui: UpdateUiState): Boolean = ui.updateInfo?.apkUrl != null || ui.updateCacheBytes > 0L
 
-private fun checkLabel(ui: UpdateUiState): String = when {
-    ui.busy -> "检查中…"
-    ui.updateChecked -> "重新检查"
-    else -> "检查更新"
-}
+private fun checkLabel(ui: UpdateUiState): String =
+    when {
+        ui.busy -> "检查中…"
+        ui.updateChecked -> "重新检查"
+        else -> "检查更新"
+    }

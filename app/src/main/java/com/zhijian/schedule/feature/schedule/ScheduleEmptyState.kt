@@ -23,7 +23,10 @@ import com.zhijian.schedule.core.ui.TapButton
 import com.zhijian.schedule.core.ui.TapTextButton
 
 @Composable
-internal fun EmptyScheduleCard(onAdd: () -> Unit, onImport: () -> Unit) {
+internal fun EmptyScheduleCard(
+    onAdd: () -> Unit,
+    onImport: () -> Unit,
+) {
     val colors = LocalCourseColors.current
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(

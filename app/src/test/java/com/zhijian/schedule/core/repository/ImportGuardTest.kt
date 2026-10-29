@@ -6,7 +6,6 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ImportGuardTest {
-
     @Test
     fun `first sync never blocks and never deletes`() {
         assertNull(ImportGuard.evaluate(existingCount = 20, addedCount = 30, removedCount = 20, firstSync = true))

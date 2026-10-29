@@ -11,10 +11,10 @@ import kotlin.math.max
  * 一根细条（16→25dp，+56%）、大手柄却只 +37%，同一个动作在两端的手感不一致。
  * 按比例取，两端都是 +37.5% 的相对伸长，读作同一种「被拽长」。
  */
-internal const val JellyStretchRatio = 0.375f
+internal const val JELLY_STRETCH_RATIO = 0.375f
 
 /** 拉伸时的最大纵向压缩比例：体积守恒的错觉，宽了就要矮一点（24 → 17.8dp）。 */
-internal const val JellySquash = 0.26f
+internal const val JELLY_SQUASH = 0.26f
 
 /**
  * 按住时的抓取形变：占拉伸上限的 45%。
@@ -26,7 +26,7 @@ internal const val JellySquash = 0.26f
  * 为什么不是 22%（本组件的上一版）：那只是拉伸上限的 22%，落到直径上只有 +8%，
  * 手指按住时几乎看不出「被捏住」，等于白留了一条通道。
  */
-private const val JellyGrab = 0.45f
+private const val JELLY_GRAB = 0.45f
 
 /**
  * 速度归一化基准：`spring(ζ=0.55, k=420)` 走完单位行程（0→1）时的**峰值速度**。
@@ -37,7 +37,7 @@ private const val JellyGrab = 0.45f
  * （中心始终从 16 走到 36，与手柄直径无关，见 [jellyThumbRect]），所以这一个常数够用；
  * 快速连点时弹簧被中途改向，速度可能超过它，由 [jellyStretch] 夹紧。
  */
-private const val JellySpeedRef = 10.69f
+private const val JELLY_SPEED_REF = 10.69f
 
 /**
  * 把「速度 + 按住程度」折算成 0..1 的拉伸量。
@@ -45,9 +45,12 @@ private const val JellySpeedRef = 10.69f
  * 速度取绝对值：往左、往右都是被拉长，形变不该分方向。速度归一化后与按住量相加再夹紧，
  * 所以松手瞬间（速度最大、按住量归零）不会出现拉伸量掉档的顿挫。
  */
-internal fun jellyStretch(speed: Float, grab: Float = 0f): Float {
-    val fromSpeed = (abs(speed) / JellySpeedRef).coerceIn(0f, 1f)
-    val fromGrab = grab.coerceIn(0f, 1f) * JellyGrab
+internal fun jellyStretch(
+    speed: Float,
+    grab: Float = 0f,
+): Float {
+    val fromSpeed = (abs(speed) / JELLY_SPEED_REF).coerceIn(0f, 1f)
+    val fromGrab = grab.coerceIn(0f, 1f) * JELLY_GRAB
     return (fromSpeed + fromGrab).coerceIn(0f, 1f)
 }
 
@@ -58,7 +61,7 @@ internal fun jellyStretch(speed: Float, grab: Float = 0f): Float {
  * @param progress 0 = 左端，1 = 右端；弹簧过冲时会略微越界（< 0 或 > 1）。
  * @param stretch 0 = 正圆，1 = 拉满（宽 +maxStretch，高按体积守恒压到约 74%）
  * @param diameter 当前直径（随选中态在 16↔24dp 之间变）
- * @param maxStretch 拉伸时额外长出的最大宽度（按 [JellyStretchRatio] 与直径成比例）
+ * @param maxStretch 拉伸时额外长出的最大宽度（按 [JELLY_STRETCH_RATIO] 与直径成比例）
  * @param squash 拉伸时的最大纵向压缩比例
  *
  * 中心轨迹是 `TrackHeight/2 + (TrackWidth - TrackHeight) × progress`：因为

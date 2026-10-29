@@ -7,14 +7,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TableMappingTest {
-
     @Test
     fun `csv with header maps correctly`() {
-        val csv = """
+        val csv =
+            """
             课程名称,星期,开始节,结束节,老师,地点,周数
             大学英语,周一,1,2,李四,教101,1-16周
             体育,周五,3,4,王五,体育馆,1-16周(双)
-        """.trimIndent()
+            """.trimIndent()
         val result = CsvParser.parse(csv, 20)
         assertEquals(2, result.drafts.size)
         val english = result.drafts[0]
@@ -38,12 +38,13 @@ class TableMappingTest {
 
     @Test
     fun `json course array`() {
-        val json = """
+        val json =
+            """
             {"courses":[
               {"name":"高等数学","teacher":"王五","room":"理A401","dayOfWeek":2,
                "startSection":3,"endSection":4,"weekMask":"11111111111111110000"}
             ]}
-        """.trimIndent()
+            """.trimIndent()
         val result = JsonParser.parse(json, 20)
         assertEquals(1, result.drafts.size)
         val math = result.drafts[0]
@@ -54,9 +55,10 @@ class TableMappingTest {
 
     @Test
     fun `wakeup-like chinese keys json`() {
-        val json = """
+        val json =
+            """
             [{"课程名":"程序设计基础","星期":"周四","开始节":7,"结束节":8,"老师":"孙八","地点":"实验楼A401","周次":"1-16周"}]
-        """.trimIndent()
+            """.trimIndent()
         val result = JsonParser.parse(json, 20)
         assertEquals(1, result.drafts.size)
         assertEquals(4, result.drafts[0].dayOfWeek)

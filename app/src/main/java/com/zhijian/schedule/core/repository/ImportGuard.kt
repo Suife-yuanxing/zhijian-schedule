@@ -11,7 +11,6 @@ package com.zhijian.schedule.core.repository
  * 被拦下的预览仍会保留，用户可在导入页手动确认后应用。
  */
 object ImportGuard {
-
     fun evaluate(
         existingCount: Int,
         addedCount: Int,

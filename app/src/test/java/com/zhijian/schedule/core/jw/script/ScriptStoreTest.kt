@@ -1,6 +1,5 @@
 package com.zhijian.schedule.core.jw.script
 
-import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -8,16 +7,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import java.io.File
 
 class ScriptStoreTest {
-
     @get:Rule
     val tmp = TemporaryFolder()
 
-    private val script = """
+    private val script =
+        """
         /** PAPER_SCRIPT_MANIFEST {"id":"demo","name":"演示","version":2,"hosts":["a.edu.cn"]} */
         globalThis.__paperScheduleScript = {}
-    """.trimIndent()
+        """.trimIndent()
 
     @Test
     fun installListsReadsAndPersists() {

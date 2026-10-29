@@ -49,44 +49,48 @@ internal fun WeekCell(
         label = "weekCellPop",
     )
     val background by animateColorAsState(
-        targetValue = when {
-            selected -> colors.accent
-            isCurrentWeek -> colors.accent.copy(alpha = 0.12f)
-            else -> colors.surfaceVariant
-        },
-        animationSpec = tween(durationMillis = Motion.DurMedium, easing = Motion.EaseOut),
+        targetValue =
+            when {
+                selected -> colors.accent
+                isCurrentWeek -> colors.accent.copy(alpha = 0.12f)
+                else -> colors.surfaceVariant
+            },
+        animationSpec = tween(durationMillis = Motion.DUR_MEDIUM, easing = Motion.EaseOut),
         label = "weekCellBg",
     )
     // 未选中的方块保留一丝细描边，块面更挺括；本周用主色描边提亮
     val ring by animateColorAsState(
-        targetValue = when {
-            selected -> Color.Transparent
-            isCurrentWeek -> colors.accent
-            else -> colors.border.copy(alpha = 0.55f)
-        },
-        animationSpec = tween(durationMillis = Motion.DurFast),
+        targetValue =
+            when {
+                selected -> Color.Transparent
+                isCurrentWeek -> colors.accent
+                else -> colors.border.copy(alpha = 0.55f)
+            },
+        animationSpec = tween(durationMillis = Motion.DUR_FAST),
         label = "weekCellRing",
     )
     // 文字/日期与背景同一 tween 同步过渡：避免「文字瞬间换色、背景还在渐变」造成的
     // 半途配色（如深字压在实心主色上）短暂错渲染
     val titleColor by animateColorAsState(
-        targetValue = when {
-            selected -> colors.onAccent
-            isCurrentWeek -> colors.accent
-            past -> colors.textMuted
-            else -> colors.text
-        },
-        animationSpec = tween(durationMillis = Motion.DurMedium, easing = Motion.EaseOut),
+        targetValue =
+            when {
+                selected -> colors.onAccent
+                isCurrentWeek -> colors.accent
+                past -> colors.textMuted
+                else -> colors.text
+            },
+        animationSpec = tween(durationMillis = Motion.DUR_MEDIUM, easing = Motion.EaseOut),
         label = "weekCellTitle",
     )
     val dateColor by animateColorAsState(
-        targetValue = when {
-            selected -> colors.onAccent.copy(alpha = 0.92f)
-            isCurrentWeek -> colors.accent.copy(alpha = 0.8f)
-            past -> colors.textMuted.copy(alpha = 0.7f)
-            else -> colors.textMuted
-        },
-        animationSpec = tween(durationMillis = Motion.DurMedium, easing = Motion.EaseOut),
+        targetValue =
+            when {
+                selected -> colors.onAccent.copy(alpha = 0.92f)
+                isCurrentWeek -> colors.accent.copy(alpha = 0.8f)
+                past -> colors.textMuted.copy(alpha = 0.7f)
+                else -> colors.textMuted
+            },
+        animationSpec = tween(durationMillis = Motion.DUR_MEDIUM, easing = Motion.EaseOut),
         label = "weekCellDate",
     )
     val shape = RoundedCornerShape(13.dp)
@@ -97,16 +101,14 @@ internal fun WeekCell(
             .graphicsLayer {
                 scaleX = popScale
                 scaleY = popScale
-            }
-            .clip(shape)
+            }.clip(shape)
             .background(background)
             .border(1.5.dp, ring, shape)
             .clickable(
                 interactionSource = pressSource,
                 indication = LocalIndication.current,
                 onClick = onClick,
-            )
-            .padding(vertical = 10.dp),
+            ).padding(vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
@@ -127,7 +129,10 @@ internal fun WeekCell(
 }
 
 /** 「10.12-18」；跨月时补月份「10.30-11.5」 */
-private fun weekRangeText(start: LocalDate, end: LocalDate): String =
+private fun weekRangeText(
+    start: LocalDate,
+    end: LocalDate,
+): String =
     if (start.monthValue == end.monthValue) {
         "${start.monthValue}.${start.dayOfMonth}-${end.dayOfMonth}"
     } else {

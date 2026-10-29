@@ -14,7 +14,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 
-/**
+/*
  * 入口卡 ⇄ 二级页的共享状态与参数。
  *
  * 职责边界：本文件只放「谁是谁、走多久、落点在哪」——key 常量、时长/圆角参数、
@@ -70,7 +70,10 @@ class ProfileEntryTransitions {
         if (contentBounds != bounds) contentBounds = bounds
     }
 
-    fun updateCardBounds(key: String, bounds: Rect) {
+    fun updateCardBounds(
+        key: String,
+        bounds: Rect,
+    ) {
         if (cardWindowBounds[key] != bounds) cardWindowBounds[key] = bounds
     }
 
@@ -110,7 +113,7 @@ fun ProfileEntryAnchor(
     Box(
         modifier.onGloballyPositioned { coordinates ->
             transitions.updateCardBounds(key, coordinates.boundsInWindow())
-        }
+        },
     ) {
         content()
     }

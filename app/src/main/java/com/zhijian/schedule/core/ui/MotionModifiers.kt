@@ -93,7 +93,10 @@ fun rememberTapHaptic(type: HapticFeedbackType = HapticFeedbackType.ContextClick
 
 /** 选中弹跳：选中项放大少许并带弹性落点（FilterChip / 日期条 / 色板圆点）。 */
 @Composable
-fun Modifier.selectedPop(selected: Boolean, popScale: Float = 1.06f): Modifier {
+fun Modifier.selectedPop(
+    selected: Boolean,
+    popScale: Float = 1.06f,
+): Modifier {
     val scale by animateFloatAsState(
         targetValue = if (selected) popScale else 1f,
         animationSpec = Motion.PopSpring,
@@ -123,7 +126,7 @@ fun StaggerIn(
     modifier: Modifier = Modifier,
     stepMs: Long = 36,
     maxIndex: Int = 8,
-    durationMs: Int = Motion.DurSlow,
+    durationMs: Int = Motion.DUR_SLOW,
     contentPadding: PaddingValues = PaddingValues(),
     skip: Boolean = false,
     content: @Composable () -> Unit,
@@ -145,8 +148,7 @@ fun StaggerIn(
             .graphicsLayer {
                 alpha = progress
                 translationY = (1f - progress) * 20.dp.toPx()
-            }
-            .padding(contentPadding),
+            }.padding(contentPadding),
     ) {
         content()
     }
@@ -175,9 +177,10 @@ fun Modifier.cascadeIn(
     startScale: Float = 0.78f,
     riseDp: Float = 10f,
 ): Modifier {
-    val progress = remember(restartKey) {
-        Animatable(if (delayMs < 0) 1f else 0f)
-    }
+    val progress =
+        remember(restartKey) {
+            Animatable(if (delayMs < 0) 1f else 0f)
+        }
     LaunchedEffect(restartKey, delayMs) {
         if (delayMs < 0) {
             progress.snapTo(1f)

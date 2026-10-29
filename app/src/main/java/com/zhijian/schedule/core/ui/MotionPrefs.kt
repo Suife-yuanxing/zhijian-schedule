@@ -37,11 +37,12 @@ fun rememberMotionAllowed(): Boolean {
         mutableStateOf(resolver.readAnimatorScale() > 0f)
     }
     DisposableEffect(resolver) {
-        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
-            override fun onChange(selfChange: Boolean) {
-                allowed = resolver.readAnimatorScale() > 0f
+        val observer =
+            object : ContentObserver(Handler(Looper.getMainLooper())) {
+                override fun onChange(selfChange: Boolean) {
+                    allowed = resolver.readAnimatorScale() > 0f
+                }
             }
-        }
         resolver.registerContentObserver(
             Settings.Global.getUriFor(Settings.Global.ANIMATOR_DURATION_SCALE),
             false,
@@ -62,8 +63,9 @@ fun rememberMotionAllowed(): Boolean {
 fun rememberAnimationsDisabled(): Boolean = !rememberMotionAllowed()
 
 /** 读「动画时长缩放」；个别 ROM 会拒绝该 Global 读，失败按「允许动画」回落。 */
-private fun ContentResolver.readAnimatorScale(): Float = try {
-    Settings.Global.getFloat(this, Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
-} catch (_: Exception) {
-    1f
-}
+private fun ContentResolver.readAnimatorScale(): Float =
+    try {
+        Settings.Global.getFloat(this, Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
+    } catch (_: Exception) {
+        1f
+    }

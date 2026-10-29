@@ -7,7 +7,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.zhijian.schedule.core.notifications.AlarmScheduler
 import com.zhijian.schedule.core.calendar.CalendarSyncManager
 import com.zhijian.schedule.core.capsule.CapsuleCoordinator
 import com.zhijian.schedule.core.capsule.CapsuleNotifier
@@ -18,16 +17,17 @@ import com.zhijian.schedule.core.data.db.SectionTimeEntity
 import com.zhijian.schedule.core.data.db.TimetableEntity
 import com.zhijian.schedule.core.data.prefs.AppSettings
 import com.zhijian.schedule.core.data.prefs.SettingsStore
+import com.zhijian.schedule.core.notifications.AlarmScheduler
 import com.zhijian.schedule.core.repository.ScheduleRepository
 import com.zhijian.schedule.core.util.TimeUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
-import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import javax.inject.Inject
 
 data class SettingsUiState(
     val settings: AppSettings = AppSettings(),
@@ -48,257 +48,289 @@ data class SettingsUiState(
 )
 
 @HiltViewModel
-class SettingsViewModel @Inject constructor(
-    private val repository: ScheduleRepository,
-    private val settingsStore: SettingsStore,
-    private val backupManager: BackupManager,
-    private val calendarSyncManager: CalendarSyncManager,
-    private val alarmScheduler: AlarmScheduler,
-    private val capsuleCoordinator: CapsuleCoordinator,
-    @ApplicationContext private val context: Context,
-) : ViewModel() {
+class SettingsViewModel
+    @Inject
+    constructor(
+        private val repository: ScheduleRepository,
+        private val settingsStore: SettingsStore,
+        private val backupManager: BackupManager,
+        private val calendarSyncManager: CalendarSyncManager,
+        private val alarmScheduler: AlarmScheduler,
+        private val capsuleCoordinator: CapsuleCoordinator,
+        @ApplicationContext private val context: Context,
+    ) : ViewModel() {
+        var uiState by mutableStateOf(SettingsUiState())
+            private set
 
-    var uiState by mutableStateOf(SettingsUiState())
-        private set
+        /** 用户从权限设置页返回后，若已授权就补上这次开启 */
+        private var pendingCalendarEnable = false
 
-    /** 用户从权限设置页返回后，若已授权就补上这次开启 */
-    private var pendingCalendarEnable = false
+        init {
+            uiState =
+                uiState.copy(
+                    calendarPermissionGranted = calendarSyncManager.hasPermission(),
+                    calendarAvailable = calendarSyncManager.hasCalendarProvider(),
+                )
+            viewModelScope.launch {
+                combine(
+                    repository.settings,
+                    repository.activeTimetable,
+                    repository.activeSections,
+                ) { settings, timetable, sections -> Triple(settings, timetable, sections) }
+                    .collect { (settings, timetable, sections) ->
+                        uiState =
+                            uiState.copy(
+                                settings = settings,
+                                timetable = timetable,
+                                sections = sections,
+                                exactAlarmOk = alarmScheduler.canScheduleExact(),
+                                // 不在主数据流里同步查询 Provider：系统日历查询偶发阻塞时，
+                                // 会把课表/作息等首屏数据一起卡在初始态。可用性由 init 与权限回调单独刷新。
+                                calendarPermissionGranted = calendarSyncManager.hasPermission(),
+                                capsulePromoteAllowed = CapsuleNotifier.canPromote(context),
+                                batteryOptimizationIgnored = CapsuleReliability.isBatteryOptimizationIgnored(context),
+                            )
+                    }
+            }
+        }
 
-    init {
-        uiState = uiState.copy(
-            calendarPermissionGranted = calendarSyncManager.hasPermission(),
-            calendarAvailable = calendarSyncManager.hasCalendarProvider(),
-        )
-        viewModelScope.launch {
-            combine(
-                repository.settings,
-                repository.activeTimetable,
-                repository.activeSections,
-            ) { settings, timetable, sections -> Triple(settings, timetable, sections) }
-                .collect { (settings, timetable, sections) ->
-                    uiState = uiState.copy(
-                        settings = settings,
-                        timetable = timetable,
-                        sections = sections,
-                        exactAlarmOk = alarmScheduler.canScheduleExact(),
-                        // 不在主数据流里同步查询 Provider：系统日历查询偶发阻塞时，
-                        // 会把课表/作息等首屏数据一起卡在初始态。可用性由 init 与权限回调单独刷新。
-                        calendarPermissionGranted = calendarSyncManager.hasPermission(),
+        private suspend fun calendarAvailable(): Boolean =
+            withContext(Dispatchers.IO) {
+                // 未授权时查询 Provider 必然 SecurityException，不能据此判定「没有日历」，
+                // 否则开关被禁用，权限弹窗永远弹不出来
+                if (calendarSyncManager.hasPermission()) {
+                    calendarSyncManager.resolveAuthority() != null
+                } else {
+                    calendarSyncManager.hasCalendarProvider()
+                }
+            }
+
+        /** 从系统设置返回后刷新权限、流体云放行状态，并补上待开启的日历同步 */
+        fun refreshRuntimeState() {
+            viewModelScope.launch {
+                val granted = calendarSyncManager.hasPermission()
+                // 先把会挂起的查询做完再读取 uiState：Provider 探测期间 combine 可能已写入
+                // 课表/作息，若先拷贝旧状态、挂起回来再赋值，会把首屏数据回滚成空初始态
+                val available = calendarAvailable()
+                val promoteAllowed = CapsuleNotifier.canPromote(context)
+                val batteryIgnored = CapsuleReliability.isBatteryOptimizationIgnored(context)
+                val exactAlarmOk = alarmScheduler.canScheduleExact()
+                uiState =
+                    uiState.copy(
+                        capsulePromoteAllowed = promoteAllowed,
+                        batteryOptimizationIgnored = batteryIgnored,
+                        exactAlarmOk = exactAlarmOk,
+                        calendarPermissionGranted = granted,
+                        calendarAvailable = available,
+                        calendarPermissionPermanentlyDenied =
+                            if (granted) false else uiState.calendarPermissionPermanentlyDenied,
+                    )
+                if (!granted) {
+                    // 同步开关还开着但权限被收回：重新授权后自动补刷
+                    if (uiState.settings.calendarSyncEnabled) pendingCalendarEnable = true
+                    return@launch
+                }
+                when {
+                    pendingCalendarEnable -> {
+                        pendingCalendarEnable = false
+                        setCalendarSyncInternal(true)
+                    }
+                    uiState.settings.calendarSyncEnabled -> syncCalendarIfNeeded()
+                }
+            }
+        }
+
+        /** 权限被收回/恢复后开关状态可能和系统不一致，回前台时按指纹补刷一次 */
+        private suspend fun syncCalendarIfNeeded() {
+            val timetable = repository.activeTimetable.first() ?: return
+            val courses = repository.activeCourses.first()
+            val sections = repository.activeSections.first()
+            calendarSyncManager.syncIfNeeded(courses, timetable, sections)
+        }
+
+        fun refreshAlarmPermission() {
+            uiState = uiState.copy(exactAlarmOk = alarmScheduler.canScheduleExact())
+        }
+
+        // ---------- 课表信息 ----------
+
+        fun saveTimetable(
+            name: String,
+            semester: String,
+            startDate: String,
+            totalWeeks: Int,
+        ) {
+            val timetable = uiState.timetable ?: return
+            if (TimeUtils.parseDate(startDate) == null) {
+                uiState = uiState.copy(message = "开学日期格式应为 yyyy-MM-dd")
+                return
+            }
+            viewModelScope.launch {
+                repository.updateTimetable(
+                    timetable.copy(
+                        name = name.trim().ifBlank { timetable.name },
+                        semester = semester.trim(),
+                        startDate = startDate.trim(),
+                        totalWeeks = totalWeeks.coerceIn(1, 30),
+                    ),
+                )
+                uiState = uiState.copy(message = "课表信息已保存")
+            }
+        }
+
+        fun saveSectionTime(
+            section: SectionTimeEntity,
+            start: String,
+            end: String,
+        ) {
+            if (TimeUtils.parseTime(start) == null || TimeUtils.parseTime(end) == null) {
+                uiState = uiState.copy(message = "时间格式应为 HH:mm")
+                return
+            }
+            viewModelScope.launch {
+                repository.updateSectionTime(section.copy(startTime = start.trim(), endTime = end.trim()))
+                uiState = uiState.copy(message = "作息时间已更新")
+            }
+        }
+
+        // ---------- 备份 ----------
+
+        fun exportBackup(uri: Uri) {
+            viewModelScope.launch {
+                uiState = uiState.copy(busy = true)
+                val result =
+                    runCatching {
+                        val json = backupManager.exportJson()
+                        withContext(Dispatchers.IO) {
+                            context.contentResolver.openOutputStream(uri)?.use { out ->
+                                out.write(json.toByteArray(Charsets.UTF_8))
+                            } ?: throw IllegalStateException("无法写入文件")
+                        }
+                        "备份已导出"
+                    }
+                uiState = uiState.copy(busy = false, message = result.getOrElse { "导出失败：${it.message}" })
+            }
+        }
+
+        fun importBackup(uri: Uri) {
+            viewModelScope.launch {
+                uiState = uiState.copy(busy = true)
+                val result =
+                    runCatching {
+                        val content =
+                            withContext(Dispatchers.IO) {
+                                context.contentResolver
+                                    .openInputStream(
+                                        uri,
+                                    )?.use { it.readBytes().toString(Charsets.UTF_8) }
+                                    ?: throw IllegalStateException("无法读取文件")
+                            }
+                        backupManager.restoreJson(content).getOrThrow()
+                    }
+                uiState = uiState.copy(busy = false, message = result.getOrElse { "导入失败：${it.message}" })
+            }
+        }
+
+        // ---------- 日历 ----------
+
+        fun onCalendarPermissionResult(
+            granted: Boolean,
+            permanentlyDenied: Boolean,
+        ) {
+            if (granted) {
+                pendingCalendarEnable = false
+                uiState =
+                    uiState.copy(
+                        calendarPermissionGranted = true,
+                        calendarPermissionDenied = false,
+                        calendarPermissionPermanentlyDenied = false,
+                    )
+                viewModelScope.launch { setCalendarSyncInternal(true) }
+            } else {
+                uiState =
+                    uiState.copy(
+                        calendarPermissionGranted = false,
+                        calendarPermissionDenied = true,
+                        calendarPermissionPermanentlyDenied = permanentlyDenied,
+                        message =
+                            if (permanentlyDenied) {
+                                "日历权限已被拒绝，请到系统设置中开启"
+                            } else {
+                                "未授予日历权限，无法写入系统日历"
+                            },
+                    )
+            }
+        }
+
+        /** 用户点了「去设置」：授权成功后回到前台自动开启同步 */
+        fun onCalendarPermissionSettingsOpened() {
+            pendingCalendarEnable = true
+        }
+
+        fun setCalendarSync(enabled: Boolean) {
+            viewModelScope.launch { setCalendarSyncInternal(enabled) }
+        }
+
+        private suspend fun setCalendarSyncInternal(enabled: Boolean) {
+            if (enabled && !calendarSyncManager.hasPermission()) {
+                uiState = uiState.copy(message = "请先授予日历读写权限")
+                return
+            }
+            uiState = uiState.copy(busy = true)
+            val timetable = repository.activeTimetable.first()
+            val courses = repository.activeCourses.first()
+            val sections = repository.activeSections.first()
+            val result =
+                if (enabled) {
+                    if (timetable == null) {
+                        Result.failure(IllegalStateException("没有可用课表"))
+                    } else {
+                        calendarSyncManager.syncAll(courses, timetable, sections)
+                    }
+                } else {
+                    calendarSyncManager.clearAll()
+                }
+            settingsStore.setCalendarSync(enabled && result.isSuccess)
+            val message =
+                result.fold(
+                    onSuccess = { n -> if (enabled) "已写入 $n 个课程事件" else "已清除日历中的课程" },
+                    onFailure = { "日历同步失败：${it.message}" },
+                )
+            val available = calendarAvailable()
+            uiState =
+                uiState.copy(
+                    busy = false,
+                    message = message,
+                    calendarPermissionGranted = calendarSyncManager.hasPermission(),
+                    calendarAvailable = available,
+                )
+        }
+
+        // ---------- 实时胶囊 ----------
+
+        fun setCapsule(enabled: Boolean) {
+            viewModelScope.launch {
+                settingsStore.setCapsule(enabled)
+                if (enabled) {
+                    LiveCapsuleService.start(context)
+                    // 开启胶囊时顺手申请后台运行：否则 ColorOS 会冻结进程，状态切换只能靠闹钟兜底
+                    if (!CapsuleReliability.isBatteryOptimizationIgnored(context)) {
+                        CapsuleReliability.requestIgnoreBatteryOptimization(context)
+                    }
+                } else {
+                    LiveCapsuleService.stop(context)
+                    capsuleCoordinator.cancelTransition()
+                }
+                uiState =
+                    uiState.copy(
                         capsulePromoteAllowed = CapsuleNotifier.canPromote(context),
                         batteryOptimizationIgnored = CapsuleReliability.isBatteryOptimizationIgnored(context),
+                        exactAlarmOk = alarmScheduler.canScheduleExact(),
                     )
-                }
-        }
-    }
-
-    private suspend fun calendarAvailable(): Boolean = withContext(Dispatchers.IO) {
-        // 未授权时查询 Provider 必然 SecurityException，不能据此判定「没有日历」，
-        // 否则开关被禁用，权限弹窗永远弹不出来
-        if (calendarSyncManager.hasPermission()) {
-            calendarSyncManager.resolveAuthority() != null
-        } else {
-            calendarSyncManager.hasCalendarProvider()
-        }
-    }
-
-    /** 从系统设置返回后刷新权限、流体云放行状态，并补上待开启的日历同步 */
-    fun refreshRuntimeState() {
-        viewModelScope.launch {
-            val granted = calendarSyncManager.hasPermission()
-            // 先把会挂起的查询做完再读取 uiState：Provider 探测期间 combine 可能已写入
-            // 课表/作息，若先拷贝旧状态、挂起回来再赋值，会把首屏数据回滚成空初始态
-            val available = calendarAvailable()
-            val promoteAllowed = CapsuleNotifier.canPromote(context)
-            val batteryIgnored = CapsuleReliability.isBatteryOptimizationIgnored(context)
-            val exactAlarmOk = alarmScheduler.canScheduleExact()
-            uiState = uiState.copy(
-                capsulePromoteAllowed = promoteAllowed,
-                batteryOptimizationIgnored = batteryIgnored,
-                exactAlarmOk = exactAlarmOk,
-                calendarPermissionGranted = granted,
-                calendarAvailable = available,
-                calendarPermissionPermanentlyDenied =
-                    if (granted) false else uiState.calendarPermissionPermanentlyDenied,
-            )
-            if (!granted) {
-                // 同步开关还开着但权限被收回：重新授权后自动补刷
-                if (uiState.settings.calendarSyncEnabled) pendingCalendarEnable = true
-                return@launch
-            }
-            when {
-                pendingCalendarEnable -> {
-                    pendingCalendarEnable = false
-                    setCalendarSyncInternal(true)
-                }
-                uiState.settings.calendarSyncEnabled -> syncCalendarIfNeeded()
             }
         }
-    }
 
-    /** 权限被收回/恢复后开关状态可能和系统不一致，回前台时按指纹补刷一次 */
-    private suspend fun syncCalendarIfNeeded() {
-        val timetable = repository.activeTimetable.first() ?: return
-        val courses = repository.activeCourses.first()
-        val sections = repository.activeSections.first()
-        calendarSyncManager.syncIfNeeded(courses, timetable, sections)
-    }
-
-    fun refreshAlarmPermission() {
-        uiState = uiState.copy(exactAlarmOk = alarmScheduler.canScheduleExact())
-    }
-
-    // ---------- 课表信息 ----------
-
-    fun saveTimetable(name: String, semester: String, startDate: String, totalWeeks: Int) {
-        val timetable = uiState.timetable ?: return
-        if (TimeUtils.parseDate(startDate) == null) {
-            uiState = uiState.copy(message = "开学日期格式应为 yyyy-MM-dd")
-            return
-        }
-        viewModelScope.launch {
-            repository.updateTimetable(
-                timetable.copy(
-                    name = name.trim().ifBlank { timetable.name },
-                    semester = semester.trim(),
-                    startDate = startDate.trim(),
-                    totalWeeks = totalWeeks.coerceIn(1, 30),
-                )
-            )
-            uiState = uiState.copy(message = "课表信息已保存")
+        fun setCapsuleAlarmFallback(enabled: Boolean) {
+            viewModelScope.launch { settingsStore.setCapsuleAlarmFallback(enabled) }
         }
     }
-
-    fun saveSectionTime(section: SectionTimeEntity, start: String, end: String) {
-        if (TimeUtils.parseTime(start) == null || TimeUtils.parseTime(end) == null) {
-            uiState = uiState.copy(message = "时间格式应为 HH:mm")
-            return
-        }
-        viewModelScope.launch {
-            repository.updateSectionTime(section.copy(startTime = start.trim(), endTime = end.trim()))
-            uiState = uiState.copy(message = "作息时间已更新")
-        }
-    }
-
-    // ---------- 备份 ----------
-
-    fun exportBackup(uri: Uri) {
-        viewModelScope.launch {
-            uiState = uiState.copy(busy = true)
-            val result = runCatching {
-                val json = backupManager.exportJson()
-                withContext(Dispatchers.IO) {
-                    context.contentResolver.openOutputStream(uri)?.use { out ->
-                        out.write(json.toByteArray(Charsets.UTF_8))
-                    } ?: throw IllegalStateException("无法写入文件")
-                }
-                "备份已导出"
-            }
-            uiState = uiState.copy(busy = false, message = result.getOrElse { "导出失败：${it.message}" })
-        }
-    }
-
-    fun importBackup(uri: Uri) {
-        viewModelScope.launch {
-            uiState = uiState.copy(busy = true)
-            val result = runCatching {
-                val content = withContext(Dispatchers.IO) {
-                    context.contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
-                        ?: throw IllegalStateException("无法读取文件")
-                }
-                backupManager.restoreJson(content).getOrThrow()
-            }
-            uiState = uiState.copy(busy = false, message = result.getOrElse { "导入失败：${it.message}" })
-        }
-    }
-
-    // ---------- 日历 ----------
-
-    fun onCalendarPermissionResult(granted: Boolean, permanentlyDenied: Boolean) {
-        if (granted) {
-            pendingCalendarEnable = false
-            uiState = uiState.copy(
-                calendarPermissionGranted = true,
-                calendarPermissionDenied = false,
-                calendarPermissionPermanentlyDenied = false,
-            )
-            viewModelScope.launch { setCalendarSyncInternal(true) }
-        } else {
-            uiState = uiState.copy(
-                calendarPermissionGranted = false,
-                calendarPermissionDenied = true,
-                calendarPermissionPermanentlyDenied = permanentlyDenied,
-                message = if (permanentlyDenied) {
-                    "日历权限已被拒绝，请到系统设置中开启"
-                } else {
-                    "未授予日历权限，无法写入系统日历"
-                },
-            )
-        }
-    }
-
-    /** 用户点了「去设置」：授权成功后回到前台自动开启同步 */
-    fun onCalendarPermissionSettingsOpened() {
-        pendingCalendarEnable = true
-    }
-
-    fun setCalendarSync(enabled: Boolean) {
-        viewModelScope.launch { setCalendarSyncInternal(enabled) }
-    }
-
-    private suspend fun setCalendarSyncInternal(enabled: Boolean) {
-        if (enabled && !calendarSyncManager.hasPermission()) {
-            uiState = uiState.copy(message = "请先授予日历读写权限")
-            return
-        }
-        uiState = uiState.copy(busy = true)
-        val timetable = repository.activeTimetable.first()
-        val courses = repository.activeCourses.first()
-        val sections = repository.activeSections.first()
-        val result = if (enabled) {
-            if (timetable == null) Result.failure(IllegalStateException("没有可用课表"))
-            else calendarSyncManager.syncAll(courses, timetable, sections)
-        } else {
-            calendarSyncManager.clearAll()
-        }
-        settingsStore.setCalendarSync(enabled && result.isSuccess)
-        val message = result.fold(
-            onSuccess = { n -> if (enabled) "已写入 $n 个课程事件" else "已清除日历中的课程" },
-            onFailure = { "日历同步失败：${it.message}" },
-        )
-        val available = calendarAvailable()
-        uiState = uiState.copy(
-            busy = false,
-            message = message,
-            calendarPermissionGranted = calendarSyncManager.hasPermission(),
-            calendarAvailable = available,
-        )
-    }
-
-    // ---------- 实时胶囊 ----------
-
-    fun setCapsule(enabled: Boolean) {
-        viewModelScope.launch {
-            settingsStore.setCapsule(enabled)
-            if (enabled) {
-                LiveCapsuleService.start(context)
-                // 开启胶囊时顺手申请后台运行：否则 ColorOS 会冻结进程，状态切换只能靠闹钟兜底
-                if (!CapsuleReliability.isBatteryOptimizationIgnored(context)) {
-                    CapsuleReliability.requestIgnoreBatteryOptimization(context)
-                }
-            } else {
-                LiveCapsuleService.stop(context)
-                capsuleCoordinator.cancelTransition()
-            }
-            uiState = uiState.copy(
-                capsulePromoteAllowed = CapsuleNotifier.canPromote(context),
-                batteryOptimizationIgnored = CapsuleReliability.isBatteryOptimizationIgnored(context),
-                exactAlarmOk = alarmScheduler.canScheduleExact(),
-            )
-        }
-    }
-
-    fun setCapsuleAlarmFallback(enabled: Boolean) {
-        viewModelScope.launch { settingsStore.setCapsuleAlarmFallback(enabled) }
-    }
-
-}

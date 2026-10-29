@@ -20,11 +20,18 @@ import androidx.room.RoomDatabase
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun timetableDao(): TimetableDao
+
     abstract fun timeModeDao(): TimeModeDao
+
     abstract fun courseDao(): CourseDao
+
     abstract fun importSnapshotDao(): ImportSnapshotDao
+
     abstract fun examDao(): ExamDao
+
     abstract fun courseNoteDao(): CourseNoteDao
+
     abstract fun gradeDao(): GradeDao
+
     abstract fun holidayDao(): HolidayDao
 }

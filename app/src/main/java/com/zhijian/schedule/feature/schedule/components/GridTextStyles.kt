@@ -10,7 +10,9 @@ import java.time.format.DateTimeFormatter
 internal val HHMM: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
 /** 等宽数字：时间与序号在换值时宽度不跳，纵向能对齐成一条线 */
-internal val TabularFigure = androidx.compose.ui.text.TextStyle(fontFeatureSettings = "tnum")
+internal val TabularFigure =
+    androidx.compose.ui.text
+        .TextStyle(fontFeatureSettings = "tnum")
 
 /**
  * 9~11sp 的小字（周几、时段区间、开始时间）：textMuted 在纸本底色上只有 3.53:1，

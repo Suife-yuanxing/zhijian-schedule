@@ -1,7 +1,11 @@
 package com.zhijian.schedule.core.update
 
 /** 一个分片：`[start, endInclusive]` 闭区间（HTTP `Range: bytes=start-end` 的语义） */
-data class Chunk(val index: Int, val start: Long, val endInclusive: Long)
+data class Chunk(
+    val index: Int,
+    val start: Long,
+    val endInclusive: Long,
+)
 
 /**
  * 分片计划：[totalBytes] 未知时根本不会构造出来，[chunks] 按序号升序且最后一片可能更短。
@@ -27,7 +31,9 @@ sealed interface ResumePoint {
      * 不能续传：从第 0 字节重来。
      * [plan] 是按本次已知总长算好的分片计划（总长未知时为 null），调用方不必重复计算。
      */
-    data class Fresh(val plan: ChunkPlan?) : ResumePoint
+    data class Fresh(
+        val plan: ChunkPlan?,
+    ) : ResumePoint
 
     /** v2 元数据或可升级的裸 `.part`：按 [plan] 的 [completed] 片续传，只补剩下的片；
      * [partial] 是未完成片已写到的分片内偏移，续传从这些偏移接着写，不从头覆盖 */

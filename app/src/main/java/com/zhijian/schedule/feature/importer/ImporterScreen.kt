@@ -18,16 +18,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -54,17 +54,19 @@ fun ImporterScreen(
         viewModel.reset()
     }
 
-    val filePicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument(),
-    ) { uri ->
-        uri?.let { viewModel.importFromUri(it) }
-    }
+    val filePicker =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.OpenDocument(),
+        ) { uri ->
+            uri?.let { viewModel.importFromUri(it) }
+        }
 
-    val imagePicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 9),
-    ) { uris ->
-        if (uris.isNotEmpty()) viewModel.importFromImages(uris)
-    }
+    val imagePicker =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 9),
+        ) { uris ->
+            if (uris.isNotEmpty()) viewModel.importFromImages(uris)
+        }
 
     Scaffold(
         topBar = {
@@ -88,72 +90,83 @@ fun ImporterScreen(
                 transitionSpec = {
                     // 二维码互传的扫码/分享页硬切：相机预览是独立合成层，无法像普通
                     // Compose 内容一样滑出/淡出；大尺寸二维码原地淡出也会叠成残影。
-                    if (initialState is ImportUiState.QrScan || targetState is ImportUiState.QrScan ||
-                        initialState is ImportUiState.QrShare || targetState is ImportUiState.QrShare
+                    if (initialState is ImportUiState.QrScan ||
+                        targetState is ImportUiState.QrScan ||
+                        initialState is ImportUiState.QrShare ||
+                        targetState is ImportUiState.QrShare
                     ) {
                         EnterTransition.None togetherWith ExitTransition.None
                     } else {
                         val forward = importStateOrder(targetState) >= importStateOrder(initialState)
                         val dir = if (forward) 1 else -1
-                        (slideInHorizontally(animationSpec = Motion.SlideSpring) { dir * it / 4 } +
-                            fadeIn(tween(durationMillis = Motion.DurMedium, easing = Motion.EaseOut))) togetherWith
-                            (slideOutHorizontally(animationSpec = Motion.SlideSpring) { -dir * it / 4 } +
-                                fadeOut(tween(durationMillis = Motion.DurFast)))
+                        (
+                            slideInHorizontally(animationSpec = Motion.SlideSpring) { dir * it / 4 } +
+                                fadeIn(tween(durationMillis = Motion.DUR_MEDIUM, easing = Motion.EaseOut))
+                        ) togetherWith
+                            (
+                                slideOutHorizontally(animationSpec = Motion.SlideSpring) { -dir * it / 4 } +
+                                    fadeOut(tween(durationMillis = Motion.DUR_FAST))
+                            )
                     }
                 },
                 label = "importFlow",
             ) { s ->
                 when (s) {
-                    is ImportUiState.Idle -> MethodList(
-                        onJwImport = onJwImport,
-                        onPickFile = {
-                            filePicker.launch(
-                                arrayOf(
-                                    "text/*",
-                                    "text/calendar",
-                                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                    "application/vnd.ms-excel",
-                                    "application/json",
-                                    "*/*",
+                    is ImportUiState.Idle ->
+                        MethodList(
+                            onJwImport = onJwImport,
+                            onPickFile = {
+                                filePicker.launch(
+                                    arrayOf(
+                                        "text/*",
+                                        "text/calendar",
+                                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                        "application/vnd.ms-excel",
+                                        "application/json",
+                                        "*/*",
+                                    ),
                                 )
-                            )
-                        },
-                        onPaste = { showPasteDialog = true },
-                        onPickImages = {
-                            imagePicker.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                            )
-                        },
-                        onQrTransfer = { viewModel.openQrScan() },
-                    )
-                    is ImportUiState.QrScan -> QrScanContent(
-                        onDecoded = { viewModel.importFromQr(it) },
-                        onSwitchToShare = { viewModel.openQrShare() },
-                    )
-                    is ImportUiState.QrShare -> QrShareContent(
-                        state = viewModel.qrShare,
-                        onSwitchToScan = { viewModel.openQrScan() },
-                    )
-                    is ImportUiState.Parsing -> ParsingContent(viewModel.parsingNote)
-                    is ImportUiState.OcrReview -> viewModel.ocrReview?.let { review ->
-                        OcrReviewContent(
-                            review = review,
-                            onUpdate = { index, draft -> viewModel.updateOcrDraft(index, draft) },
-                            onRemove = { index -> viewModel.removeOcrDraft(index) },
-                            onConfirm = { viewModel.confirmOcrReview() },
-                            onBack = { viewModel.reset() },
+                            },
+                            onPaste = { showPasteDialog = true },
+                            onPickImages = {
+                                imagePicker.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                                )
+                            },
+                            onQrTransfer = { viewModel.openQrScan() },
                         )
-                    }
-                    is ImportUiState.Preview -> PreviewContent(
-                        changes = s.preview.changes,
-                        summary = s.preview.summary(),
-                        hasConflict = s.preview.conflictCount > 0,
-                        applyConflicts = viewModel.applyConflicts,
-                        onToggleConflicts = { viewModel.updateApplyConflicts(it) },
-                        onConfirm = { viewModel.apply() },
-                        onCancel = { viewModel.reset() },
-                        sectionHint = s.preview.sectionHint(),
-                    )
+                    is ImportUiState.QrScan ->
+                        QrScanContent(
+                            onDecoded = { viewModel.importFromQr(it) },
+                            onSwitchToShare = { viewModel.openQrShare() },
+                        )
+                    is ImportUiState.QrShare ->
+                        QrShareContent(
+                            state = viewModel.qrShare,
+                            onSwitchToScan = { viewModel.openQrScan() },
+                        )
+                    is ImportUiState.Parsing -> ParsingContent(viewModel.parsingNote)
+                    is ImportUiState.OcrReview ->
+                        viewModel.ocrReview?.let { review ->
+                            OcrReviewContent(
+                                review = review,
+                                onUpdate = { index, draft -> viewModel.updateOcrDraft(index, draft) },
+                                onRemove = { index -> viewModel.removeOcrDraft(index) },
+                                onConfirm = { viewModel.confirmOcrReview() },
+                                onBack = { viewModel.reset() },
+                            )
+                        }
+                    is ImportUiState.Preview ->
+                        PreviewContent(
+                            changes = s.preview.changes,
+                            summary = s.preview.summary(),
+                            hasConflict = s.preview.conflictCount > 0,
+                            applyConflicts = viewModel.applyConflicts,
+                            onToggleConflicts = { viewModel.updateApplyConflicts(it) },
+                            onConfirm = { viewModel.apply() },
+                            onCancel = { viewModel.reset() },
+                            sectionHint = s.preview.sectionHint(),
+                        )
                     is ImportUiState.Done -> DoneContent(s.summary, onBack)
                     is ImportUiState.Error -> ErrorContent(s.message, onRetry = { viewModel.reset() })
                 }
@@ -191,20 +204,22 @@ fun ImporterScreen(
 }
 
 /** 导入流程的推进方向：前进从右侧滑入，回退（重新选择 / 重试）从左侧滑入 */
-private fun importStateOrder(state: ImportUiState): Int = when (state) {
-    is ImportUiState.Idle -> 0
-    is ImportUiState.Parsing -> 1
-    is ImportUiState.Error -> 1
-    is ImportUiState.QrScan -> 1
-    is ImportUiState.QrShare -> 1
-    is ImportUiState.OcrReview -> 2
-    is ImportUiState.Preview -> 3
-    is ImportUiState.Done -> 4
-}
+private fun importStateOrder(state: ImportUiState): Int =
+    when (state) {
+        is ImportUiState.Idle -> 0
+        is ImportUiState.Parsing -> 1
+        is ImportUiState.Error -> 1
+        is ImportUiState.QrScan -> 1
+        is ImportUiState.QrShare -> 1
+        is ImportUiState.OcrReview -> 2
+        is ImportUiState.Preview -> 3
+        is ImportUiState.Done -> 4
+    }
 
 /** 顶栏标题随导入流程态切换 */
-private fun topTitle(state: ImportUiState): String = when (state) {
-    is ImportUiState.QrScan -> "扫码导入"
-    is ImportUiState.QrShare -> "分享二维码"
-    else -> "导入课表"
-}
+private fun topTitle(state: ImportUiState): String =
+    when (state) {
+        is ImportUiState.QrScan -> "扫码导入"
+        is ImportUiState.QrShare -> "分享二维码"
+        else -> "导入课表"
+    }

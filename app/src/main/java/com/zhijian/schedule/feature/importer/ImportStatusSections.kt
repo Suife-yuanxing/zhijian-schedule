@@ -20,9 +20,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -53,7 +53,10 @@ internal fun ParsingContent(note: String) {
 }
 
 @Composable
-internal fun DoneContent(summary: String, onDone: () -> Unit) {
+internal fun DoneContent(
+    summary: String,
+    onDone: () -> Unit,
+) {
     val colors = LocalCourseColors.current
     val haptics = LocalHapticFeedback.current
     LaunchedEffect(Unit) {
@@ -75,13 +78,14 @@ internal fun DoneContent(summary: String, onDone: () -> Unit) {
             Icons.Filled.CheckCircle,
             contentDescription = null,
             tint = Color(0xFF2BB673),
-            modifier = Modifier
-                .size(48.dp)
-                .graphicsLayer {
-                    scaleX = iconScale
-                    scaleY = iconScale
-                    alpha = iconScale.coerceIn(0f, 1f)
-                },
+            modifier =
+                Modifier
+                    .size(48.dp)
+                    .graphicsLayer {
+                        scaleX = iconScale
+                        scaleY = iconScale
+                        alpha = iconScale.coerceIn(0f, 1f)
+                    },
         )
         Spacer(Modifier.height(14.dp))
         Text(
@@ -103,7 +107,10 @@ internal fun DoneContent(summary: String, onDone: () -> Unit) {
 }
 
 @Composable
-internal fun ErrorContent(message: String, onRetry: () -> Unit) {
+internal fun ErrorContent(
+    message: String,
+    onRetry: () -> Unit,
+) {
     val colors = LocalCourseColors.current
     Column(
         Modifier.fillMaxSize().padding(32.dp),

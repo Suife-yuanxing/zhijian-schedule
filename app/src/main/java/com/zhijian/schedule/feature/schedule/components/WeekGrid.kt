@@ -13,23 +13,23 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.State
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import com.zhijian.schedule.core.data.db.CourseEntity
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.theme.LocalGridStyle
 import com.zhijian.schedule.core.ui.Motion
-import com.zhijian.schedule.feature.schedule.ScheduleUiState
 import com.zhijian.schedule.core.ui.island.IslandCollapseState
 import com.zhijian.schedule.core.ui.island.IslandScrollToTop
 import com.zhijian.schedule.core.ui.island.islandScrollObserver
+import com.zhijian.schedule.feature.schedule.ScheduleUiState
 import com.zhijian.schedule.navigation.IslandContentPadding
 import java.time.LocalDateTime
 
@@ -102,7 +102,7 @@ fun WeekGrid(
     val scrolled by remember { derivedStateOf { scroll.value > 4 } }
     val fade by animateFloatAsState(
         targetValue = if (scrolled) 1f else 0f,
-        animationSpec = tween(Motion.DurFast),
+        animationSpec = tween(Motion.DUR_FAST),
         label = "scrollFade",
     )
 
@@ -115,8 +115,7 @@ fun WeekGrid(
                     scroll = scroll,
                     active = islandActive,
                     frozen = frozen,
-                )
-                .verticalScroll(scroll),
+                ).verticalScroll(scroll),
         ) {
             BoxWithConstraints(Modifier.fillMaxWidth()) {
                 val dayWidth = (maxWidth - metrics.timeAxisWidth) / visibleDays.size
@@ -177,8 +176,8 @@ fun WeekGrid(
                     .background(
                         Brush.verticalGradient(
                             listOf(colors.bg, colors.bg.copy(alpha = 0f)),
-                        )
-                    )
+                        ),
+                    ),
             )
         }
     }

@@ -29,7 +29,7 @@ import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.ui.TapTextButton
 import com.zhijian.schedule.core.ui.buttonFeedback
 
-/**
+/*
  * 设置页的「本地数据」分组：课表信息、作息时间、备份与恢复。
  *
  * 这里的分组只渲染数据与回调，不碰 ViewModel、权限与系统设置页——
@@ -54,7 +54,10 @@ internal fun SettingsCard(content: @Composable () -> Unit) {
 
 /** 键值行：左侧定宽标签 + 右侧取值 */
 @Composable
-internal fun InfoRow(label: String, value: String) {
+internal fun InfoRow(
+    label: String,
+    value: String,
+) {
     val colors = LocalCourseColors.current
     Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
         Text(label, color = colors.textMuted, fontSize = 13.sp, modifier = Modifier.width(80.dp))
@@ -64,7 +67,10 @@ internal fun InfoRow(label: String, value: String) {
 
 /** 课表信息：名称 / 学期 / 开学日期 / 总周数，右侧进入编辑弹窗 */
 @Composable
-internal fun TimetableInfoSection(timetable: TimetableEntity, onEdit: () -> Unit) {
+internal fun TimetableInfoSection(
+    timetable: TimetableEntity,
+    onEdit: () -> Unit,
+) {
     val colors = LocalCourseColors.current
     SettingsCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -124,7 +130,10 @@ internal fun SectionTimesSection(
 
 /** 备份与恢复：导出为 JSON 文件 / 从 JSON 文件恢复 */
 @Composable
-internal fun BackupSection(onExport: () -> Unit, onImport: () -> Unit) {
+internal fun BackupSection(
+    onExport: () -> Unit,
+    onImport: () -> Unit,
+) {
     val colors = LocalCourseColors.current
     SettingsCard {
         Text("备份与恢复", color = colors.text, fontWeight = FontWeight.SemiBold)

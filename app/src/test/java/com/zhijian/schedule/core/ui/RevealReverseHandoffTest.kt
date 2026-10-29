@@ -18,7 +18,6 @@ import org.junit.Test
  * 返回闪烁的直接来源。这组测试守住这条线，不依赖真机观感。
  */
 class RevealReverseHandoffTest {
-
     private val fab = Rect(left = 876f, top = 1896f, right = 1020f, bottom = 2040f)
     private val bg = Color(0xFFFFFFFF)
 
@@ -48,9 +47,10 @@ class RevealReverseHandoffTest {
         // 一旦再出现第二张整屏位图，就是「过期底图硬盖实时课表」的老毛病复发。
         // 认法：by mutableStateOf 的属性在 JVM 上没有 ImageBitmap 字段（委托字段的泛型被擦除），
         // 但读取器 getXxx() 的返回类型是具体的，按它数才准。
-        val bitmapGetters = RevealState::class.java.declaredMethods.filter {
-            it.parameterCount == 0 && ImageBitmap::class.java.isAssignableFrom(it.returnType)
-        }
+        val bitmapGetters =
+            RevealState::class.java.declaredMethods.filter {
+                it.parameterCount == 0 && ImageBitmap::class.java.isAssignableFrom(it.returnType)
+            }
         assertEquals(
             "反向背景必须用实时内容：预期只有 oldFrame 一张位图，实际 ${
                 bitmapGetters.map { it.name }
@@ -91,7 +91,7 @@ class RevealReverseHandoffTest {
      */
     @Test
     fun `淡出段落在最后两成时间内`() {
-        val duration = Motion.DurRevealBack
+        val duration = Motion.DUR_REVEAL_BACK
         val fadeStart = 0.786f
         val fadeMillis = duration * (1f - fadeStart)
         assertTrue("淡出 ${fadeMillis}ms 不该拖成一次独立的淡出", fadeMillis < 120f)

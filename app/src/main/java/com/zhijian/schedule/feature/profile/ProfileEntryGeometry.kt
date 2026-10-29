@@ -9,7 +9,7 @@ import com.zhijian.schedule.core.util.smoothstep
 import kotlin.math.max
 import kotlin.math.min
 
-/**
+/*
  * 入口卡转场的几何与关键帧。
  *
  * 展开（进入二级页）与回收（返回）的每一个像素都由这里推出：容器矩形、cover 缩放、
@@ -26,17 +26,21 @@ internal fun collapseProgress(progress: Float): Float {
     return 1f - remaining * remaining * remaining
 }
 
-
 /**
  * 收回时最后一段的淡出：内容先融进卡片，再由 ProfileEntryPage 撤掉页面。
  * 区间收得很窄，只在容器已接近卡片大小时发生，避免大块页面半透明透出底页。
  */
-internal fun cardHandOffAlpha(progress: Float, fadeToCard: Boolean): Float =
-    if (fadeToCard) smoothstep(0f, 0.12f, progress) else 1f
+internal fun cardHandOffAlpha(
+    progress: Float,
+    fadeToCard: Boolean,
+): Float = if (fadeToCard) smoothstep(0f, 0.12f, progress) else 1f
 
 /** 进入展开：从入口卡矩形插值到整页内容矩形的容器 */
-internal fun entryForwardContainer(cardRect: Rect, contentSize: Size, progress: Float): Rect =
-    lerpRect(cardRect, Rect(Offset.Zero, contentSize), progress)
+internal fun entryForwardContainer(
+    cardRect: Rect,
+    contentSize: Size,
+    progress: Float,
+): Rect = lerpRect(cardRect, Rect(Offset.Zero, contentSize), progress)
 
 /** 展开容器的圆角：随进度收到 0，且不超过短边的一半 */
 internal fun entryForwardRadius(
@@ -72,20 +76,23 @@ internal fun entryCoverTransform(
     cardRadius: Float,
 ): EntryCoverTransform {
     val container = entryForwardContainer(cardRect, contentSize, progress)
-    val cover = max(
-        container.width / contentSize.width,
-        container.height / contentSize.height,
-    ).coerceAtLeast(0.01f)
+    val cover =
+        max(
+            container.width / contentSize.width,
+            container.height / contentSize.height,
+        ).coerceAtLeast(0.01f)
     val tx = container.center.x - contentSize.width * cover / 2f
     val ty = container.center.y - contentSize.height * cover / 2f
-    val localClip = Rect(
-        left = (container.left - tx) / cover,
-        top = (container.top - ty) / cover,
-        right = (container.right - tx) / cover,
-        bottom = (container.bottom - ty) / cover,
-    )
-    val radius = (lerpFloat(cardRadius, 0f, progress) / cover)
-        .coerceIn(0f, min(localClip.width, localClip.height) / 2f)
+    val localClip =
+        Rect(
+            left = (container.left - tx) / cover,
+            top = (container.top - ty) / cover,
+            right = (container.right - tx) / cover,
+            bottom = (container.bottom - ty) / cover,
+        )
+    val radius =
+        (lerpFloat(cardRadius, 0f, progress) / cover)
+            .coerceIn(0f, min(localClip.width, localClip.height) / 2f)
     return EntryCoverTransform(
         clipRect = localClip,
         scale = cover,
@@ -122,10 +129,12 @@ internal fun entryCollapseFrame(
 ): EntryCollapseFrame {
     val move = collapseProgress(progress)
     val container = lerpRect(full, target, move)
-    val radius = (cardRadius * smoothstep(0f, 0.3f, move))
-        .coerceAtMost(min(container.width, container.height) / 2f)
-    val cover = max(container.width / full.width, container.height / full.height)
-        .coerceAtLeast(0.01f)
+    val radius =
+        (cardRadius * smoothstep(0f, 0.3f, move))
+            .coerceAtMost(min(container.width, container.height) / 2f)
+    val cover =
+        max(container.width / full.width, container.height / full.height)
+            .coerceAtLeast(0.01f)
     val dstW = full.width * cover
     val dstH = full.height * cover
     return EntryCollapseFrame(
@@ -133,8 +142,9 @@ internal fun entryCollapseFrame(
         radius = radius,
         contentAlpha = 1f - smoothstep(0.16f, 0.52f, progress),
         fillAlpha = 1f - smoothstep(0.72f, 0.98f, progress),
-        borderAlpha = smoothstep(0.02f, 0.12f, progress) *
-            (1f - smoothstep(0.55f, 0.85f, progress)),
+        borderAlpha =
+            smoothstep(0.02f, 0.12f, progress) *
+                (1f - smoothstep(0.55f, 0.85f, progress)),
         fillMix = smoothstep(0.15f, 0.6f, move),
         coverScale = cover,
         translationX = container.center.x - dstW / 2f,
@@ -143,17 +153,23 @@ internal fun entryCollapseFrame(
 }
 
 /** 录制层在画布坐标里的整块矩形；图层尚未出图（宽高为 0）时退回画布尺寸 */
-internal fun entryCaptureBounds(layerWidth: Int, layerHeight: Int, canvasSize: Size): Rect = Rect(
-    left = 0f,
-    top = 0f,
-    right = layerWidth.toFloat().takeIf { it > 0f } ?: canvasSize.width,
-    bottom = layerHeight.toFloat().takeIf { it > 0f } ?: canvasSize.height,
-)
+internal fun entryCaptureBounds(
+    layerWidth: Int,
+    layerHeight: Int,
+    canvasSize: Size,
+): Rect =
+    Rect(
+        left = 0f,
+        top = 0f,
+        right = layerWidth.toFloat().takeIf { it > 0f } ?: canvasSize.width,
+        bottom = layerHeight.toFloat().takeIf { it > 0f } ?: canvasSize.height,
+    )
 
 /** 入口卡不在屏上时的兜底落点：画布下部居中的一条窄带 */
-internal fun entryExitFallbackTarget(canvasSize: Size): Rect = Rect(
-    left = canvasSize.width * 0.1f,
-    top = canvasSize.height * 0.58f,
-    right = canvasSize.width * 0.9f,
-    bottom = canvasSize.height * 0.64f,
-)
+internal fun entryExitFallbackTarget(canvasSize: Size): Rect =
+    Rect(
+        left = canvasSize.width * 0.1f,
+        top = canvasSize.height * 0.58f,
+        right = canvasSize.width * 0.9f,
+        bottom = canvasSize.height * 0.64f,
+    )

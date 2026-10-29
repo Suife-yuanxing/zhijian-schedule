@@ -133,8 +133,10 @@ fun ProfileEntryPage(
             return@LaunchedEffect
         }
         if (ready) {
-            val remaining = (PROFILE_ENTRY_ABORT_MS * (1f - enter.value)).toInt()
-                .coerceIn(PROFILE_ENTRY_ABORT_MIN_MS, PROFILE_ENTRY_ABORT_MS)
+            val remaining =
+                (PROFILE_ENTRY_ABORT_MS * (1f - enter.value))
+                    .toInt()
+                    .coerceIn(PROFILE_ENTRY_ABORT_MIN_MS, PROFILE_ENTRY_ABORT_MS)
             enter.animateTo(
                 targetValue = 0f,
                 animationSpec = tween(remaining, easing = EntryEasing),
@@ -170,8 +172,8 @@ fun ProfileEntryPage(
                         )
                     } else {
                         Modifier
-                    }
-                )
+                    },
+                ),
         ) {
             Box(Modifier.fillMaxSize().background(colors.bg))
             Box(
@@ -189,7 +191,7 @@ fun ProfileEntryPage(
                         } else {
                             drawContent()
                         }
-                    }
+                    },
             ) {
                 content(requestExit)
             }
@@ -205,7 +207,7 @@ fun ProfileEntryPage(
                                     awaitPointerEvent().changes.forEach { it.consume() }
                                 }
                             }
-                        }
+                        },
                 )
             }
         }
@@ -225,36 +227,36 @@ private fun Modifier.profileEntryForward(
     borderWidth: Float,
     cardRadius: Float,
     fadeToCard: Boolean,
-): Modifier = this
-    .drawWithContent {
-        drawContent()
-        val p = progress.value
-        if (p < 0.999f) {
-            val container = entryForwardContainer(cardRect, contentSize, p)
-            // 收回末段边框也要一起化掉，否则内容已消失、卡片位置还留一圈描边
-            val borderAlpha = (1f - p) * cardHandOffAlpha(p, fadeToCard)
-            drawRoundRect(
-                color = borderColor.copy(alpha = borderAlpha),
-                topLeft = container.topLeft,
-                size = container.size,
-                cornerRadius = CornerRadius(entryForwardRadius(cardRect, contentSize, p, cardRadius)),
-                style = Stroke(borderWidth),
-            )
+): Modifier =
+    this
+        .drawWithContent {
+            drawContent()
+            val p = progress.value
+            if (p < 0.999f) {
+                val container = entryForwardContainer(cardRect, contentSize, p)
+                // 收回末段边框也要一起化掉，否则内容已消失、卡片位置还留一圈描边
+                val borderAlpha = (1f - p) * cardHandOffAlpha(p, fadeToCard)
+                drawRoundRect(
+                    color = borderColor.copy(alpha = borderAlpha),
+                    topLeft = container.topLeft,
+                    size = container.size,
+                    cornerRadius = CornerRadius(entryForwardRadius(cardRect, contentSize, p, cardRadius)),
+                    style = Stroke(borderWidth),
+                )
+            }
+        }.graphicsLayer {
+            val p = progress.value
+            val transform = entryCoverTransform(cardRect, contentSize, p, cardRadius)
+            transformOrigin = TransformOrigin(0f, 0f)
+            scaleX = transform.scale
+            scaleY = transform.scale
+            translationX = transform.translationX
+            translationY = transform.translationY
+            // 卡片形状下 cover≈1，内容几乎不再缩小；收回末段淡出，把卡片上的画面交还给真实入口卡
+            alpha = cardHandOffAlpha(p, fadeToCard)
+            clip = true
+            shape = ContainerShape(transform.clipRect, transform.radius)
         }
-    }
-    .graphicsLayer {
-        val p = progress.value
-        val transform = entryCoverTransform(cardRect, contentSize, p, cardRadius)
-        transformOrigin = TransformOrigin(0f, 0f)
-        scaleX = transform.scale
-        scaleY = transform.scale
-        translationX = transform.translationX
-        translationY = transform.translationY
-        // 卡片形状下 cover≈1，内容几乎不再缩小；收回末段淡出，把卡片上的画面交还给真实入口卡
-        alpha = cardHandOffAlpha(p, fadeToCard)
-        clip = true
-        shape = ContainerShape(transform.clipRect, transform.radius)
-    }
 
 /** 一次性录制标记：普通可变字段，绘制阶段写入不会触发额外重组 */
 private class CaptureState {

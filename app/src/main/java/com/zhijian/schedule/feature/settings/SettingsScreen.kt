@@ -66,25 +66,30 @@ fun SettingsScreen(
     var editTimetable by remember { mutableStateOf(false) }
     var editSection by remember { mutableStateOf<SectionTimeEntity?>(null) }
 
-    val exportLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/json"),
-    ) { uri -> uri?.let { viewModel.exportBackup(it) } }
+    val exportLauncher =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.CreateDocument("application/json"),
+        ) { uri -> uri?.let { viewModel.exportBackup(it) } }
 
-    val importLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument(),
-    ) { uri -> uri?.let { viewModel.importBackup(it) } }
+    val importLauncher =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.OpenDocument(),
+        ) { uri -> uri?.let { viewModel.importBackup(it) } }
 
     val activity = LocalActivity.current
-    val calendarPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions(),
-    ) { grants ->
-        val granted = CALENDAR_PERMISSIONS.all { grants[it] == true }
-        val permanentlyDenied = !granted && activity != null &&
-            CALENDAR_PERMISSIONS
-                .filter { grants[it] != true }
-                .all { !ActivityCompat.shouldShowRequestPermissionRationale(activity, it) }
-        viewModel.onCalendarPermissionResult(granted, permanentlyDenied)
-    }
+    val calendarPermissionLauncher =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.RequestMultiplePermissions(),
+        ) { grants ->
+            val granted = CALENDAR_PERMISSIONS.all { grants[it] == true }
+            val permanentlyDenied =
+                !granted &&
+                    activity != null &&
+                    CALENDAR_PERMISSIONS
+                        .filter { grants[it] != true }
+                        .all { !ActivityCompat.shouldShowRequestPermissionRationale(activity, it) }
+            viewModel.onCalendarPermissionResult(granted, permanentlyDenied)
+        }
 
     Scaffold(
         topBar = {
@@ -101,16 +106,18 @@ fun SettingsScreen(
         ) {
             AnimatedVisibility(
                 visible = ui.message != null,
-                enter = fadeIn(tween(Motion.DurMedium, easing = Motion.EaseOut)) +
-                    expandVertically(
-                        expandFrom = Alignment.Top,
-                        animationSpec = tween(Motion.DurMedium, easing = Motion.EaseOut),
-                    ),
-                exit = fadeOut(tween(Motion.DurFast)) +
-                    shrinkVertically(
-                        shrinkTowards = Alignment.Top,
-                        animationSpec = tween(Motion.DurFast),
-                    ),
+                enter =
+                    fadeIn(tween(Motion.DUR_MEDIUM, easing = Motion.EaseOut)) +
+                        expandVertically(
+                            expandFrom = Alignment.Top,
+                            animationSpec = tween(Motion.DUR_MEDIUM, easing = Motion.EaseOut),
+                        ),
+                exit =
+                    fadeOut(tween(Motion.DUR_FAST)) +
+                        shrinkVertically(
+                            shrinkTowards = Alignment.Top,
+                            animationSpec = tween(Motion.DUR_FAST),
+                        ),
             ) {
                 Text(
                     text = ui.message.orEmpty(),
@@ -187,8 +194,8 @@ fun SettingsScreen(
 
         AnimatedVisibility(
             visible = ui.busy,
-            enter = fadeIn(tween(Motion.DurMedium, easing = Motion.EaseOut)),
-            exit = fadeOut(tween(Motion.DurFast)),
+            enter = fadeIn(tween(Motion.DUR_MEDIUM, easing = Motion.EaseOut)),
+            exit = fadeOut(tween(Motion.DUR_FAST)),
         ) {
             Box(
                 Modifier

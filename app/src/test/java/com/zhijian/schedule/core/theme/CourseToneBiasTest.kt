@@ -131,14 +131,23 @@ class CourseToneBiasTest {
     fun `新色板仍落在纸面与深底的安全亮度区间`() {
         for ((preset, sources) in rebuilt) {
             for (isDark in listOf(false, true)) {
-                for (src in sources) {
-                    val lum = luminance(courseTone(src, isDark, preset.toneBias).container)
-                    if (isDark) {
-                        assertTrue("${preset.name} 暗色卡面不够深: $lum", lum < 0.20)
-                    } else {
-                        assertTrue("${preset.name} 亮色卡面不够浅: $lum", lum > 0.75)
-                    }
-                }
+                assertPaletteBrightness(preset, sources, isDark)
+            }
+        }
+    }
+
+    /** 亮色卡面必须够浅（> 0.75）、暗色必须够深（< 0.20），避免课块与页面底色糊成一片 */
+    private fun assertPaletteBrightness(
+        preset: ThemePreset,
+        sources: List<Color>,
+        isDark: Boolean,
+    ) {
+        for (src in sources) {
+            val lum = luminance(courseTone(src, isDark, preset.toneBias).container)
+            if (isDark) {
+                assertTrue("${preset.name} 暗色卡面不够深: $lum", lum < 0.20)
+            } else {
+                assertTrue("${preset.name} 亮色卡面不够浅: $lum", lum > 0.75)
             }
         }
     }

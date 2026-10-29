@@ -35,7 +35,6 @@ data class GradeStats(
 )
 
 object GradeParser {
-
     private val FAIL_SCORES = setOf("不及格", "不合格", "未通过", "F", "缺考", "作弊")
 
     /** 解析 `table#dataList`；表头列名定位列索引，容忍列顺序变化 */
@@ -47,6 +46,7 @@ object GradeParser {
 
         val headerRow = rows.firstOrNull() ?: return emptyList()
         val header = headerRow.select("th,td").map { it.text().trim() }
+
         fun col(label: String) = header.indexOfFirst { it == label }
         val iTerm = col("开课学期")
         val iCode = col("课程编号")
@@ -63,8 +63,10 @@ object GradeParser {
         val iCategory = col("课程性质")
         if (iTerm < 0 || iName < 0 || iScore < 0 || iCredit < 0) return emptyList()
 
-        fun cell(cells: List<String>, idx: Int): String =
-            if (idx in cells.indices) cells[idx] else ""
+        fun cell(
+            cells: List<String>,
+            idx: Int,
+        ): String = if (idx in cells.indices) cells[idx] else ""
 
         return rows.drop(1).mapNotNull { tr ->
             val cells = tr.select("td").map { it.text().replace(Regex("\\s+"), " ").trim() }
@@ -90,8 +92,7 @@ object GradeParser {
         }
     }
 
-    fun isFail(record: GradeRecord): Boolean =
-        record.score in FAIL_SCORES || (record.gpa != null && record.gpa <= 0.0)
+    fun isFail(record: GradeRecord): Boolean = record.score in FAIL_SCORES || (record.gpa != null && record.gpa <= 0.0)
 
     /** 加权学分绩点 + 加权平均分 + 挂科数（全部按学分加权） */
     fun stats(records: List<GradeRecord>): GradeStats {

@@ -31,26 +31,29 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhijian.schedule.core.theme.LocalCourseColors
+import com.zhijian.schedule.core.theme.LocalCoursePreset
 import com.zhijian.schedule.core.theme.LocalIsDark
 import com.zhijian.schedule.core.theme.courseTone
-import com.zhijian.schedule.core.theme.LocalCoursePreset
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.rememberTapHaptic
 import com.zhijian.schedule.core.util.TimeUtils
 import java.time.LocalDateTime
 import java.time.LocalTime
 
-internal enum class DayPart(val label: String) {
+internal enum class DayPart(
+    val label: String,
+) {
     MORNING("上午"),
     AFTERNOON("下午"),
     EVENING("晚上"),
 }
 
-internal fun dayPartOf(time: LocalTime?): DayPart = when {
-    time != null && time.hour < 12 -> DayPart.MORNING
-    time != null && time.hour >= 18 -> DayPart.EVENING
-    else -> DayPart.AFTERNOON
-}
+internal fun dayPartOf(time: LocalTime?): DayPart =
+    when {
+        time != null && time.hour < 12 -> DayPart.MORNING
+        time != null && time.hour >= 18 -> DayPart.EVENING
+        else -> DayPart.AFTERNOON
+    }
 
 @Composable
 internal fun CourseRow(
@@ -69,9 +72,10 @@ internal fun CourseRow(
     // 行也用课表色块的派生色：整页「这门课是什么颜色」只有一套算法
     val isDark = LocalIsDark.current
     val preset = LocalCoursePreset.current
-    val tone = remember(item.course.color, isDark, preset.toneBias) {
-        courseTone(Color(item.course.color), isDark, preset.toneBias)
-    }
+    val tone =
+        remember(item.course.color, isDark, preset.toneBias) {
+            courseTone(Color(item.course.color), isDark, preset.toneBias)
+        }
     val pressSource = remember { MutableInteractionSource() }
     val pressed by pressSource.collectIsPressedAsState()
     val tapHaptic = rememberTapHaptic()
@@ -100,8 +104,7 @@ internal fun CourseRow(
                 scaleY = scale
                 this.shape = shape
                 clip = true
-            }
-            .background(
+            }.background(
                 lerp(
                     // 底色一律用原色：课表里的色块不随时间褪色，今日页也得是同一个色
                     // （「已结束」只靠文字透明度和角标表达，不去改底色，否则同一门课两处两种颜色）
@@ -110,8 +113,7 @@ internal fun CourseRow(
                     0.45f * ring,
                 ),
                 shape,
-            )
-            .border(1.dp, tone.line.copy(alpha = 0.7f), shape)
+            ).border(1.dp, tone.line.copy(alpha = 0.7f), shape)
             .border(2.dp, tone.ink.copy(alpha = 0.9f * ring), shape)
             .clickable(
                 interactionSource = pressSource,
@@ -120,15 +122,14 @@ internal fun CourseRow(
                     tapHaptic()
                     onClick()
                 },
-            )
-            .padding(horizontal = 13.dp, vertical = 11.dp),
+            ).padding(horizontal = 13.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             Modifier
                 .size(10.dp)
                 .clip(RoundedCornerShape(3.dp))
-                .background(tone.ink.copy(alpha = alpha))
+                .background(tone.ink.copy(alpha = alpha)),
         )
         Spacer(Modifier.width(10.dp))
         Column(Modifier.width(80.dp)) {
@@ -154,9 +155,10 @@ internal fun CourseRow(
                 fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
                 maxLines = 1,
             )
-            val sub = listOf(item.course.room, item.course.teacher)
-                .filter { it.isNotBlank() }
-                .joinToString(" · ")
+            val sub =
+                listOf(item.course.room, item.course.teacher)
+                    .filter { it.isNotBlank() }
+                    .joinToString(" · ")
             if (sub.isNotBlank()) {
                 Text(
                     text = sub,
@@ -193,9 +195,10 @@ private fun StatusPill(
         color = color,
         fontSize = 10.sp,
         fontWeight = FontWeight.Medium,
-        modifier = Modifier
-            .clip(RoundedCornerShape(7.dp))
-            .background(background)
-            .padding(horizontal = 7.dp, vertical = 3.dp),
+        modifier =
+            Modifier
+                .clip(RoundedCornerShape(7.dp))
+                .background(background)
+                .padding(horizontal = 7.dp, vertical = 3.dp),
     )
 }

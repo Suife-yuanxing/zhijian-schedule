@@ -7,19 +7,18 @@ import com.zhijian.schedule.core.capsule.CapsuleCoordinator
 import com.zhijian.schedule.core.capsule.LiveCapsuleService
 import com.zhijian.schedule.core.data.prefs.SettingsStore
 import dagger.hilt.android.AndroidEntryPoint
-import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 /**
  * 设备重启 / 应用更新后系统会清空所有闹钟，重新登记（方案 4.7）。
  */
 @AndroidEntryPoint
 class BootReceiver : BroadcastReceiver() {
-
     @Inject
     lateinit var coordinator: ReminderCoordinator
 
@@ -32,7 +31,10 @@ class BootReceiver : BroadcastReceiver() {
     @Inject
     lateinit var capsuleCoordinator: CapsuleCoordinator
 
-    override fun onReceive(context: Context, intent: Intent) {
+    override fun onReceive(
+        context: Context,
+        intent: Intent,
+    ) {
         when (intent.action) {
             Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED -> {
                 coordinator.refresh()

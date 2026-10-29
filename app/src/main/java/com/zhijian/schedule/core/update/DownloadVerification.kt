@@ -2,7 +2,7 @@ package com.zhijian.schedule.core.update
 
 import java.io.File
 
-/**
+/*
  * 下载完成后的校验与安装交接：校验长度/摘要，通过后把 `.part` 改名为 `.apk` 交给
  * [DownloadState.Ready]（安装器只认这个状态）。
  *
@@ -30,13 +30,14 @@ internal fun verifyAndClearChunks(
             }
         }
         // 长度不符多半是还有片没写完，保留分片让用户续传
-        VerifyResult.LengthMismatch -> Notice.Done(
-            DownloadState.Failed(
-                request.version,
-                "下载未完成（已收到 ${ResumableDownload.formatBytes(part.length())}），可继续下载",
-                canResume = true,
+        VerifyResult.LengthMismatch ->
+            Notice.Done(
+                DownloadState.Failed(
+                    request.version,
+                    "下载未完成（已收到 ${ResumableDownload.formatBytes(part.length())}），可继续下载",
+                    canResume = true,
+                ),
             )
-        )
         VerifyResult.DigestMismatch -> {
             store.deleteAll(request.version)
             Notice.Done(DownloadState.Failed(request.version, "安装包校验失败，请重新下载", canResume = false))

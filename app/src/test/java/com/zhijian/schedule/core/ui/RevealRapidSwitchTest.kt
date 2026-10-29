@@ -11,7 +11,6 @@ import org.junit.Test
 
 /** 连点语义：每一拍都定格当前帧、从新胶囊重新起播 */
 class RevealRapidSwitchTest {
-
     private val chip = Rect(left = 60f, top = 366f, right = 314f, bottom = 510f)
     private val chip2 = Rect(left = 616f, top = 222f, right = 870f, bottom = 366f)
     private val bg = Color(0xFFFFFFFF)

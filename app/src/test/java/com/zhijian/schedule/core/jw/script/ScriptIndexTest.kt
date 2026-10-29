@@ -6,14 +6,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ScriptIndexTest {
-
-    private val index = """
+    private val index =
+        """
         {"indexVersion":1,"scripts":[
           {"id":"qiangzhi-jsxsd","name":"强智教务（通用）","version":2,
            "url":"https://example.com/qiangzhi-jsxsd.js","sha256":"${"a".repeat(64)}",
            "hosts":[],"minAppVersion":"1.0.10","entryHint":"打开课表页"}
         ]}
-    """.trimIndent()
+        """.trimIndent()
 
     @Test
     fun parsesIndex() {

@@ -14,28 +14,34 @@ data class ParsedTimetable(
  * 两个通道各有一个兜底解析器（表格 / 口令），因此 [select] 必定命中。
  */
 object TimetableParsers {
+    private val FALLBACKS =
+        mapOf(
+            ParserChannel.FILE to CsvParser,
+            ParserChannel.PASTED_TEXT to WakeUpParser,
+        )
 
-    private val FALLBACKS = mapOf(
-        ParserChannel.FILE to CsvParser,
-        ParserChannel.PASTED_TEXT to WakeUpParser,
-    )
+    val all: List<TimetableParser> =
+        listOf(
+            IcsParser,
+            XlsxParser,
+            JsonParser,
+            CsvParser,
+            WakeUpParser,
+        )
 
-    val all: List<TimetableParser> = listOf(
-        IcsParser,
-        XlsxParser,
-        JsonParser,
-        CsvParser,
-        WakeUpParser,
-    )
-
-    fun candidates(channel: ParserChannel): List<TimetableParser> =
-        all.filter { channel in it.channels }
+    fun candidates(channel: ParserChannel): List<TimetableParser> = all.filter { channel in it.channels }
 
     /** 通道内首个 canParse 命中的解析器；全部不命中时回退到该通道的兜底解析器。 */
-    fun select(input: ParserInput, channel: ParserChannel): TimetableParser =
-        candidates(channel).firstOrNull { it.canParse(input) } ?: FALLBACKS.getValue(channel)
+    fun select(
+        input: ParserInput,
+        channel: ParserChannel,
+    ): TimetableParser = candidates(channel).firstOrNull { it.canParse(input) } ?: FALLBACKS.getValue(channel)
 
-    fun parse(input: ParserInput, context: ParseContext, channel: ParserChannel): ParsedTimetable {
+    fun parse(
+        input: ParserInput,
+        context: ParseContext,
+        channel: ParserChannel,
+    ): ParsedTimetable {
         val parser = select(input, channel)
         return ParsedTimetable(parser.format, parser.parse(input, context))
     }

@@ -44,8 +44,7 @@ data class CourseTone(
     val shade: Color,
 )
 
-private fun srgbToLinear(c: Float): Float =
-    if (c <= 0.04045f) c / 12.92f else ((c + 0.055f) / 1.055f).pow(2.4f)
+private fun srgbToLinear(c: Float): Float = if (c <= 0.04045f) c / 12.92f else ((c + 0.055f) / 1.055f).pow(2.4f)
 
 private fun linearToSrgb(c: Float): Float {
     val x = c.coerceIn(0f, 1f)
@@ -70,7 +69,11 @@ private fun hueAndChromaOf(color: Color): Pair<Float, Float>? {
 }
 
 /** OKLCH → sRGB，超出色域返回 null（由调用方降彩度重试） */
-private fun oklchOrNull(l: Float, c: Float, h: Float): Color? {
+private fun oklchOrNull(
+    l: Float,
+    c: Float,
+    h: Float,
+): Color? {
     val rad = h * (PI.toFloat() / 180f)
     val a = c * cos(rad)
     val b = c * sin(rad)
@@ -83,14 +86,23 @@ private fun oklchOrNull(l: Float, c: Float, h: Float): Color? {
     val r = 4.0767416621f * lc - 3.3077115913f * mc + 0.2309699292f * sc
     val g = -1.2684380046f * lc + 2.6097574011f * mc - 0.3413193965f * sc
     val bl = -0.0041960863f * lc - 0.7034186147f * mc + 1.7076147010f * sc
-    if (r < -0.002f || r > 1.002f) return null
-    if (g < -0.002f || g > 1.002f) return null
-    if (bl < -0.002f || bl > 1.002f) return null
+    if (!inSrgbGamut(r, g, bl)) return null
     return Color(linearToSrgb(r), linearToSrgb(g), linearToSrgb(bl))
 }
 
+/** 线性 RGB 三分量是否都在 sRGB 色域内（留 0.002 的量化余量给浮点误差） */
+private fun inSrgbGamut(
+    r: Float,
+    g: Float,
+    b: Float,
+): Boolean = listOf(r, g, b).all { it >= -0.002f && it <= 1.002f }
+
 /** 逐步降彩度直到落回 sRGB 色域，保留 L 与 H */
-private fun tonal(l: Float, c: Float, h: Float): Color {
+private fun tonal(
+    l: Float,
+    c: Float,
+    h: Float,
+): Color {
     if (c <= 0f) return oklchOrNull(l, 0f, 0f) ?: Color.Black
     var chroma = c
     repeat(16) {
@@ -108,7 +120,11 @@ private fun tonal(l: Float, c: Float, h: Float): Color {
  *   ink / inkMuted / highlight / shade 不参与偏置——它们由 container 与正文门槛反解，
  *   一起动会破掉 [CourseToneTest] 钉住的 AAA / AA 保证。
  */
-fun courseTone(source: Color, isDark: Boolean, bias: CourseToneBias = CourseToneBias.Default): CourseTone {
+fun courseTone(
+    source: Color,
+    isDark: Boolean,
+    bias: CourseToneBias = CourseToneBias.Default,
+): CourseTone {
     val oklch = hueAndChromaOf(source)
     if (oklch == null) {
         // 中性色（灰/白/黑）：只走明度阶梯，避免算出无意义的色相

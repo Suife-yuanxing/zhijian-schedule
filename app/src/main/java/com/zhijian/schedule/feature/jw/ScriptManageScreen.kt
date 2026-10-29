@@ -58,9 +58,10 @@ internal fun ScriptManageScreen(
     val colors = LocalCourseColors.current
     var indexDraft by remember(state.indexUrl) { mutableStateOf(state.indexUrl) }
     var pendingDelete by remember { mutableStateOf<ScriptOption?>(null) }
-    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let(viewModel::importFromUri)
-    }
+    val filePicker =
+        rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            uri?.let(viewModel::importFromUri)
+        }
 
     Column(Modifier.fillMaxSize().background(colors.bg)) {
         SecondaryTopBar(title = "课程脚本", onBack = onBack)
@@ -69,9 +70,13 @@ internal fun ScriptManageScreen(
             Modifier
                 .weight(1f)
                 .fillMaxWidth(),
-            contentPadding = PaddingValues(
-                start = 20.dp, end = 20.dp, top = 8.dp, bottom = 12.dp,
-            ),
+            contentPadding =
+                PaddingValues(
+                    start = 20.dp,
+                    end = 20.dp,
+                    top = 8.dp,
+                    bottom = 12.dp,
+                ),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             item(key = "intro") {
@@ -195,10 +200,11 @@ private fun ScriptRow(
                 text = "内置",
                 color = colors.accent,
                 fontSize = 11.sp,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(colors.accent.copy(alpha = 0.12f))
-                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                modifier =
+                    Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(colors.accent.copy(alpha = 0.12f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
             )
             Spacer(Modifier.width(8.dp))
         } else {

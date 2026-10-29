@@ -120,9 +120,10 @@ fun ExamScreen(
                         fontSize = 12.sp,
                         color = colors.textMuted,
                         textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 6.dp),
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(top = 6.dp),
                     )
                 } else {
                     val (upcoming, past) = state.exams.partition { it.examTime >= System.currentTimeMillis() }
@@ -131,7 +132,9 @@ fun ExamScreen(
                         GroupLabel("即将到来")
                         upcoming.forEach { exam ->
                             ExamRow(
-                                exam, now, past = false,
+                                exam,
+                                now,
+                                past = false,
                                 onClick = {
                                     editing = exam
                                     showEditor = true
@@ -158,9 +161,10 @@ fun ExamScreen(
             },
             containerColor = colors.accent,
             contentColor = colors.bg,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(24.dp),
+            modifier =
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(24.dp),
         ) {
             Icon(Icons.Filled.Add, contentDescription = "添加考试")
         }
@@ -210,18 +214,23 @@ private fun GroupLabel(text: String) {
 }
 
 @Composable
-private fun NoticeBanner(text: String, tint: Color, onClick: () -> Unit) {
+private fun NoticeBanner(
+    text: String,
+    tint: Color,
+    onClick: () -> Unit,
+) {
     val colors = LocalCourseColors.current
     Text(
         text = text,
         color = tint,
         fontSize = 12.sp,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(tint.copy(alpha = 0.12f))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 9.dp),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .background(tint.copy(alpha = 0.12f))
+                .clickable(onClick = onClick)
+                .padding(horizontal = 12.dp, vertical = 9.dp),
     )
 }
 
@@ -246,8 +255,7 @@ private fun ExamRow(
                 enabled = true,
                 onClick = { if (!past) onClick() },
                 onLongClick = onLongClick,
-            )
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            ).padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
@@ -257,10 +265,11 @@ private fun ExamRow(
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Medium,
             )
-            val where = listOf(
-                exam.room.takeIf { it.isNotBlank() },
-                exam.seat.takeIf { it.isNotBlank() }?.let { "$it 号座" },
-            ).filterNotNull().joinToString(" · ")
+            val where =
+                listOf(
+                    exam.room.takeIf { it.isNotBlank() },
+                    exam.seat.takeIf { it.isNotBlank() }?.let { "$it 号座" },
+                ).filterNotNull().joinToString(" · ")
             if (where.isNotBlank()) {
                 Text(where, color = colors.textMuted.copy(alpha = alpha), fontSize = 11.sp)
             }
@@ -275,10 +284,11 @@ private fun ExamRow(
             color = if (past) colors.textMuted else colors.accent,
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
-            modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .background(colors.accent.copy(alpha = 0.12f))
-                .padding(horizontal = 8.dp, vertical = 3.dp),
+            modifier =
+                Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(colors.accent.copy(alpha = 0.12f))
+                    .padding(horizontal = 8.dp, vertical = 3.dp),
         )
     }
 }
@@ -371,8 +381,13 @@ private fun ExamEditorDialog(
             TapTextButton(
                 enabled = valid,
                 onClick = {
-                    val millis = LocalDate.parse(date).atTime(LocalTime.parse(time))
-                        .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                    val millis =
+                        LocalDate
+                            .parse(date)
+                            .atTime(LocalTime.parse(time))
+                            .atZone(ZoneId.systemDefault())
+                            .toInstant()
+                            .toEpochMilli()
                     onConfirm(name.trim(), room.trim(), seat.trim(), millis, note.trim())
                 },
             ) { Text("保存") }

@@ -26,20 +26,22 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import kotlinx.serialization.json.Json
+import okhttp3.OkHttpClient
 import java.io.File
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
-import kotlinx.serialization.json.Json
-import okhttp3.OkHttpClient
 
 @Module
 @InstallIn(SingletonComponent::class)
 object AppModule {
-
     @Provides
     @Singleton
-    fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
-        Room.databaseBuilder(context, AppDatabase::class.java, "zhijian_schedule.db")
+    fun provideDatabase(
+        @ApplicationContext context: Context,
+    ): AppDatabase =
+        Room
+            .databaseBuilder(context, AppDatabase::class.java, "zhijian_schedule.db")
             .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
             .build()
 
@@ -69,18 +71,21 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideDataStore(@ApplicationContext context: Context): DataStore<Preferences> =
+    fun provideDataStore(
+        @ApplicationContext context: Context,
+    ): DataStore<Preferences> =
         PreferenceDataStoreFactory.create(
-            produceFile = { context.preferencesDataStoreFile("settings") }
+            produceFile = { context.preferencesDataStoreFile("settings") },
         )
 
     @Provides
     @Singleton
-    fun provideJson(): Json = Json {
-        ignoreUnknownKeys = true
-        encodeDefaults = true
-        prettyPrint = false
-    }
+    fun provideJson(): Json =
+        Json {
+            ignoreUnknownKeys = true
+            encodeDefaults = true
+            prettyPrint = false
+        }
 
     /**
      * 通用客户端。
@@ -93,7 +98,8 @@ object AppModule {
     @Singleton
     fun provideOkHttpClient(): OkHttpClient {
         val tls = ToleratedTls.create()
-        return OkHttpClient.Builder()
+        return OkHttpClient
+            .Builder()
             .cookieJar(WebViewCookieJar())
             .sslSocketFactory(tls.socketFactory, tls.trustManager)
             .connectTimeout(15, TimeUnit.SECONDS)
@@ -110,16 +116,19 @@ object AppModule {
     @Provides
     @Singleton
     @DownloadClient
-    fun provideDownloadClient(): OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .callTimeout(0, TimeUnit.MILLISECONDS)
-        .retryOnConnectionFailure(true)
-        .followRedirects(true)
-        .build()
+    fun provideDownloadClient(): OkHttpClient =
+        OkHttpClient
+            .Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .callTimeout(0, TimeUnit.MILLISECONDS)
+            .retryOnConnectionFailure(true)
+            .followRedirects(true)
+            .build()
 
     @Provides
     @Singleton
-    fun provideScriptStore(@ApplicationContext context: Context): ScriptStore =
-        ScriptStore(File(context.filesDir, "jw-scripts"))
+    fun provideScriptStore(
+        @ApplicationContext context: Context,
+    ): ScriptStore = ScriptStore(File(context.filesDir, "jw-scripts"))
 }

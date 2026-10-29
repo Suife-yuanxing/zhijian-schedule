@@ -6,10 +6,10 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import kotlinx.coroutines.delay
 import java.time.Duration
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
-import kotlinx.coroutines.delay
 
 /**
  * 全局「现在」。
@@ -24,9 +24,10 @@ import kotlinx.coroutines.delay
  * 这里只提供**一根**整分对齐的时钟，谁需要谁读：值是 MutableState（稳定对象），
  * 经 CompositionLocal 传下去不会让整棵子树重组，只有读 .value 的那个叶子会重组。
  */
-val LocalClock = compositionLocalOf<State<LocalDateTime>> {
-    error("LocalClock 未提供：请在 AppRoot 用 CompositionLocalProvider(LocalClock provides rememberAppClock()) 包一层")
-}
+val LocalClock =
+    compositionLocalOf<State<LocalDateTime>> {
+        error("LocalClock 未提供：请在 AppRoot 用 CompositionLocalProvider(LocalClock provides rememberAppClock()) 包一层")
+    }
 
 @Composable
 fun rememberAppClock(): State<LocalDateTime> {

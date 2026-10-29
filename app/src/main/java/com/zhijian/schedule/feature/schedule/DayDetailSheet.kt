@@ -80,10 +80,14 @@ fun DayDetailSheet(
     // 方向感知翻页：向未来翻从右侧滑入，向过去翻从左侧滑入
     val flipSpec: AnimatedContentTransitionScope<LocalDate>.() -> ContentTransform = {
         val dir = if (targetState > initialState) 1 else -1
-        (slideInHorizontally(animationSpec = Motion.SlideSpring) { dir * it / 3 } +
-            fadeIn(tween(durationMillis = Motion.DurMedium, easing = Motion.EaseOut))) togetherWith
-            (slideOutHorizontally(animationSpec = Motion.SlideSpring) { -dir * it / 3 } +
-                fadeOut(tween(durationMillis = Motion.DurFast)))
+        (
+            slideInHorizontally(animationSpec = Motion.SlideSpring) { dir * it / 3 } +
+                fadeIn(tween(durationMillis = Motion.DUR_MEDIUM, easing = Motion.EaseOut))
+        ) togetherWith
+            (
+                slideOutHorizontally(animationSpec = Motion.SlideSpring) { -dir * it / 3 } +
+                    fadeOut(tween(durationMillis = Motion.DUR_FAST))
+            )
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
@@ -116,10 +120,11 @@ fun DayDetailSheet(
                                 text = "今天",
                                 color = colors.onAccent,
                                 fontSize = 11.sp,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(colors.accent)
-                                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                                modifier =
+                                    Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(colors.accent)
+                                        .padding(horizontal = 6.dp, vertical = 2.dp),
                             )
                         }
                         ui.holidays[d.toString()]?.let { h ->
@@ -129,19 +134,21 @@ fun DayDetailSheet(
                                 text = "${h.name} · ${if (h.isOffDay) "休" else "班"}",
                                 color = tint,
                                 fontSize = 11.sp,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(tint.copy(alpha = 0.14f))
-                                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                                modifier =
+                                    Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(tint.copy(alpha = 0.14f))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp),
                             )
                         }
                     }
                     Spacer(Modifier.height(2.dp))
                     Text(
-                        text = buildString {
-                            append("${d.monthValue}月${d.dayOfMonth}日 · ")
-                            append(if (courses.isEmpty()) "没有课" else "共 ${courses.size} 节")
-                        },
+                        text =
+                            buildString {
+                                append("${d.monthValue}月${d.dayOfMonth}日 · ")
+                                append(if (courses.isEmpty()) "没有课" else "共 ${courses.size} 节")
+                            },
                         style = MaterialTheme.typography.bodySmall,
                         color = colors.textMuted,
                     )
@@ -162,13 +169,15 @@ fun DayDetailSheet(
             }
 
             val dayOfWeek = TimeUtils.dayOfWeek(date)
-            val stripDates = remember(startDate, ui.totalWeeks, dayOfWeek) {
-                (1..ui.totalWeeks).map { w -> TimeUtils.dateOfWeekDay(startDate, w, dayOfWeek) }
-            }
+            val stripDates =
+                remember(startDate, ui.totalWeeks, dayOfWeek) {
+                    (1..ui.totalWeeks).map { w -> TimeUtils.dateOfWeekDay(startDate, w, dayOfWeek) }
+                }
             val selectedIdx = stripDates.indexOf(date)
-            val listState = rememberLazyListState(
-                initialFirstVisibleItemIndex = (selectedIdx - 2).coerceAtLeast(0),
-            )
+            val listState =
+                rememberLazyListState(
+                    initialFirstVisibleItemIndex = (selectedIdx - 2).coerceAtLeast(0),
+                )
             LaunchedEffect(selectedIdx) {
                 if (selectedIdx >= 0) {
                     listState.animateScrollToItem((selectedIdx - 2).coerceAtLeast(0))

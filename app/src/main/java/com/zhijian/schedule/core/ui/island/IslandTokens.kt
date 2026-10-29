@@ -35,7 +35,6 @@ data class IslandPalette(
 )
 
 object IslandTokens {
-
     /**
      * 非玻璃主题的选中胶囊填充浓度。
      *
@@ -94,7 +93,11 @@ object IslandTokens {
      * [under] 取法：玻璃档本体近清水（bodyAlpha 0.16~0.20），透出的就是页面底色 bg；
      * 其余档是不透明 surface。取错会让求解偏松或偏紧，所以按档位分别取。
      */
-    fun solve(colors: CourseColors, glass: GlassSpec?, isDark: Boolean): IslandPalette {
+    fun solve(
+        colors: CourseColors,
+        glass: GlassSpec?,
+        isDark: Boolean,
+    ): IslandPalette {
         val under = if (glass != null) colors.bg else colors.surface
         val muted = Contrast.mixUntil(colors.textMuted, colors.text, under, MIN_TEXT_CONTRAST)
         val chipAlpha = glass?.let { if (isDark) it.chipAlphaDark else it.chipAlphaLight } ?: 0.13f

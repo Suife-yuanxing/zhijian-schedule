@@ -13,7 +13,6 @@ import org.junit.Test
  * 坐标系一旦换错，回收动画就会落在错误的位置（曾经表现为收进屏幕左上角）。
  */
 class ProfileEntryTransitionsTest {
-
     /** 内容区在窗口中的位置：顶部被状态栏占掉 120px */
     private val contentInWindow = Rect(left = 0f, top = 120f, right = 1080f, bottom = 2376f)
 

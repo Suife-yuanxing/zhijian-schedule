@@ -35,11 +35,12 @@ sealed interface CapsulePlan {
         val nextReminderAtMillis: Long? = null,
     ) : CapsulePlan {
         override val chip: String
-            get() = when {
-                reminderMinutes != null -> "距下课${reminderMinutes}分"
-                remainingMinutes <= 0 -> "即将下课"
-                else -> "剩 $remainingMinutes 分"
-            }
+            get() =
+                when {
+                    reminderMinutes != null -> "距下课${reminderMinutes}分"
+                    remainingMinutes <= 0 -> "即将下课"
+                    else -> "剩 $remainingMinutes 分"
+                }
     }
 
     /** 即将上课：已进入课前提醒窗口，画倒数进度条（联动「课前提醒」设置） */
@@ -50,10 +51,11 @@ sealed interface CapsulePlan {
         val progress: Int,
         /** 上课时刻（epoch 毫秒）：交系统 chronometer 每秒自绘 */
         val startAtMillis: Long,
-        override val chip: String = when {
-            minutesUntil <= 0 -> "马上上课"
-            else -> "还有 $minutesUntil 分"
-        },
+        override val chip: String =
+            when {
+                minutesUntil <= 0 -> "马上上课"
+                else -> "还有 $minutesUntil 分"
+            },
     ) : CapsulePlan
 
     /** 下节课（还没到课前提醒窗口）：不画进度条、不提升为流体云 */
@@ -144,7 +146,6 @@ fun buildCapsulePlan(
     val startDate = TimeUtils.parseDate(table.startDate) ?: return CapsulePlan.NoTable
 
     val today = now.toLocalDate()
-    val nowTime = now.toLocalTime()
 
     // 法定假日：课表课程不执行，直接进入假期状态（不做上课/倒数判断）
     if (holidayName != null) {
@@ -154,18 +155,42 @@ fun buildCapsulePlan(
         )
     }
 
-    val week = TimeUtils.weekOfSemester(startDate, table.totalWeeks, today)
-    val dow = TimeUtils.dayOfWeek(today)
-    val todayCourses = if (week == null) emptyList() else {
-        courses.asSequence()
-            .filter { it.dayOfWeek == dow && WeekMask.contains(it.weekMask, week) }
-            .sortedBy { it.startSection }
-            .mapNotNull { entity -> courseOf(entity, sections) }
-            .toList()
-    }
+    val todayCourses = todayCoursesOf(table, startDate, courses, sections, today)
+    val allToday = (examCoursesOf(exams, today) + todayCourses).sortedBy { it.start }
 
-    // 考试当天的考试映射为伪课程：与真实课程同槽时考试优先（考试日通常停课）
-    val examCourses = exams.asSequence()
+    return ongoingPlan(allToday, now)
+        ?: upcomingPlan(allToday, now, reminderMinutes)
+        ?: CapsulePlan.DayDone(
+            hadClassesToday = allToday.isNotEmpty(),
+            nextText = nextOccurrenceText(startDate, table.totalWeeks, courses, sections, today, exams),
+        )
+}
+
+/** 今天要上的真课程（按开始节次排好），学期周次算不出来时为空 */
+private fun todayCoursesOf(
+    table: TimetableEntity,
+    startDate: LocalDate,
+    courses: List<CourseEntity>,
+    sections: List<SectionTimeEntity>,
+    today: LocalDate,
+): List<CapsuleCourse> {
+    val week = TimeUtils.weekOfSemester(startDate, table.totalWeeks, today) ?: return emptyList()
+    val dow = TimeUtils.dayOfWeek(today)
+    return courses
+        .asSequence()
+        .filter { it.dayOfWeek == dow && WeekMask.contains(it.weekMask, week) }
+        .sortedBy { it.startSection }
+        .mapNotNull { entity -> courseOf(entity, sections) }
+        .toList()
+}
+
+/** 考试当天的考试映射为伪课程：与真实课程同槽时考试优先（考试日通常停课） */
+private fun examCoursesOf(
+    exams: List<ExamEntity>,
+    today: LocalDate,
+): List<CapsuleCourse> =
+    exams
+        .asSequence()
         .mapNotNull { e ->
             val start = LocalDateTime.ofInstant(Instant.ofEpochMilli(e.examTime), ZoneId.systemDefault())
             if (start.toLocalDate() != today) return@mapNotNull null
@@ -173,84 +198,92 @@ fun buildCapsulePlan(
             val endTime = startTime.plusMinutes(EXAM_PSEUDO_DURATION_MINUTES)
             CapsuleCourse(
                 name = "${e.name} · 考试",
-                room = listOf(
-                    e.room.takeIf { it.isNotBlank() },
-                    e.seat.takeIf { it.isNotBlank() }?.let { "$it 号座" },
-                ).filterNotNull().joinToString(" · "),
+                room =
+                    listOf(
+                        e.room.takeIf { it.isNotBlank() },
+                        e.seat.takeIf { it.isNotBlank() }?.let { "$it 号座" },
+                    ).filterNotNull().joinToString(" · "),
                 teacher = "",
                 color = EXAM_COLOR,
                 start = startTime,
                 end = if (endTime <= startTime) LocalTime.MAX else endTime, // 跨零点截断
                 sectionText = "开考 $startTime",
             )
-        }
-        .toList()
-    val allToday = (examCourses + todayCourses).sortedBy { it.start }
+        }.toList()
 
-    allToday
-        .firstOrNull { !nowTime.isBefore(it.start) && nowTime.isBefore(it.end) }
-        ?.let { c ->
-            val total = secondsBetween(c.start, c.end)
-            val elapsed = secondsBetween(c.start, nowTime).coerceIn(0, total)
-            val endAtMillis = epochMillisOf(now, c.end)
-            val nowMillis = now.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-            val nodes = reminderMilestones(Duration.between(c.start, c.end).toMinutes())
-            val activeNode = nodes.firstOrNull { minutes ->
-                val at = endAtMillis - minutes * 60_000L
-                nowMillis >= at && nowMillis < at + REMINDER_HIGHLIGHT_MS
-            }
-            val nextNode = nodes.firstOrNull { minutes ->
-                endAtMillis - minutes * 60_000L > nowMillis
-            }
-            return CapsulePlan.Ongoing(
-                course = c,
-                // 剩余占比：开课满格、随课堂消耗到 0，与系统倒计时同向
-                progress = (((total - elapsed) * 100) / total).toInt(),
-                remainingMinutes = Duration.between(nowTime, c.end).toMinutes().coerceAtLeast(0),
-                endAtMillis = endAtMillis,
-                reminderMinutes = activeNode,
-                reminderUntilMillis = activeNode?.let {
-                    endAtMillis - it * 60_000L + REMINDER_HIGHLIGHT_MS
-                },
-                nextReminderAtMillis = nextNode?.let { endAtMillis - it * 60_000L },
-            )
+/** 正在上课：命中就返回上课中状态（含提醒节点），否则 null */
+private fun ongoingPlan(
+    allToday: List<CapsuleCourse>,
+    now: LocalDateTime,
+): CapsulePlan.Ongoing? {
+    val nowTime = now.toLocalTime()
+    val c = allToday.firstOrNull { !nowTime.isBefore(it.start) && nowTime.isBefore(it.end) } ?: return null
+    val total = secondsBetween(c.start, c.end)
+    val elapsed = secondsBetween(c.start, nowTime).coerceIn(0, total)
+    val endAtMillis = epochMillisOf(now, c.end)
+    val nowMillis = now.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    val nodes = reminderMilestones(Duration.between(c.start, c.end).toMinutes())
+    val activeNode =
+        nodes.firstOrNull { minutes ->
+            val at = endAtMillis - minutes * 60_000L
+            nowMillis >= at && nowMillis < at + REMINDER_HIGHLIGHT_MS
         }
-
-    allToday
-        .firstOrNull { it.start.isAfter(nowTime) }
-        ?.let { c ->
-            val minutesUntil = Duration.between(nowTime, c.start).toMinutes().coerceAtLeast(0)
-            // 课前提醒窗口：从 max(上一节课下课, 开课前 reminderMinutes) 起倒数
-            val windowStart = if (reminderMinutes > 0) {
-                val remindAt = c.start.minusMinutes(reminderMinutes.toLong())
-                val prevEnd = allToday.lastOrNull { !it.end.isAfter(nowTime) }?.end
-                if (prevEnd != null && prevEnd.isAfter(remindAt)) prevEnd else remindAt
-            } else null
-            if (windowStart != null && !nowTime.isBefore(windowStart)) {
-                val span = secondsBetween(windowStart, c.start).coerceAtLeast(1)
-                val done = secondsBetween(windowStart, nowTime).coerceAtMost(span)
-                return CapsulePlan.AboutToStart(
-                    course = c,
-                    minutesUntil = minutesUntil,
-                    // 剩余占比：进入倒数窗口满格，到上课时刻消耗到 0
-                    progress = (((span - done) * 100) / span).toInt(),
-                    startAtMillis = epochMillisOf(now, c.start),
-                )
-            }
-            return CapsulePlan.Upcoming(
-                course = c,
-                minutesUntil = minutesUntil,
-                aboutToStartAtMillis = windowStart?.let { epochMillisOf(now, it) },
-            )
+    val nextNode =
+        nodes.firstOrNull { minutes ->
+            endAtMillis - minutes * 60_000L > nowMillis
         }
-
-    return CapsulePlan.DayDone(
-        hadClassesToday = allToday.isNotEmpty(),
-        nextText = nextOccurrenceText(startDate, table.totalWeeks, courses, sections, today, exams),
+    return CapsulePlan.Ongoing(
+        course = c,
+        // 剩余占比：开课满格、随课堂消耗到 0，与系统倒计时同向
+        progress = (((total - elapsed) * 100) / total).toInt(),
+        remainingMinutes = Duration.between(nowTime, c.end).toMinutes().coerceAtLeast(0),
+        endAtMillis = endAtMillis,
+        reminderMinutes = activeNode,
+        reminderUntilMillis = activeNode?.let { endAtMillis - it * 60_000L + REMINDER_HIGHLIGHT_MS },
+        nextReminderAtMillis = nextNode?.let { endAtMillis - it * 60_000L },
     )
 }
 
-private fun courseOf(entity: CourseEntity, sections: List<SectionTimeEntity>): CapsuleCourse? {
+/** 下一节课：进入课前提醒窗口则给出倒计时，否则只是「即将上课」 */
+private fun upcomingPlan(
+    allToday: List<CapsuleCourse>,
+    now: LocalDateTime,
+    reminderMinutes: Int,
+): CapsulePlan? {
+    val nowTime = now.toLocalTime()
+    val c = allToday.firstOrNull { it.start.isAfter(nowTime) } ?: return null
+    val minutesUntil = Duration.between(nowTime, c.start).toMinutes().coerceAtLeast(0)
+    // 课前提醒窗口：从 max(上一节课下课, 开课前 reminderMinutes) 起倒数
+    val windowStart =
+        if (reminderMinutes > 0) {
+            val remindAt = c.start.minusMinutes(reminderMinutes.toLong())
+            val prevEnd = allToday.lastOrNull { !it.end.isAfter(nowTime) }?.end
+            if (prevEnd != null && prevEnd.isAfter(remindAt)) prevEnd else remindAt
+        } else {
+            null
+        }
+    if (windowStart != null && !nowTime.isBefore(windowStart)) {
+        val span = secondsBetween(windowStart, c.start).coerceAtLeast(1)
+        val done = secondsBetween(windowStart, nowTime).coerceAtMost(span)
+        return CapsulePlan.AboutToStart(
+            course = c,
+            minutesUntil = minutesUntil,
+            // 剩余占比：进入倒数窗口满格，到上课时刻消耗到 0
+            progress = (((span - done) * 100) / span).toInt(),
+            startAtMillis = epochMillisOf(now, c.start),
+        )
+    }
+    return CapsulePlan.Upcoming(
+        course = c,
+        minutesUntil = minutesUntil,
+        aboutToStartAtMillis = windowStart?.let { epochMillisOf(now, it) },
+    )
+}
+
+private fun courseOf(
+    entity: CourseEntity,
+    sections: List<SectionTimeEntity>,
+): CapsuleCourse? {
     val start = sections.getOrNull(entity.startSection - 1)?.startTime?.let { TimeUtils.parseTime(it) }
     val end = sections.getOrNull(entity.endSection - 1)?.endTime?.let { TimeUtils.parseTime(it) }
     if (start == null || end == null || !start.isBefore(end)) return null
@@ -261,36 +294,51 @@ private fun courseOf(entity: CourseEntity, sections: List<SectionTimeEntity>): C
         color = entity.color,
         start = start,
         end = end,
-        sectionText = if (entity.startSection == entity.endSection) {
-            "第${entity.startSection}节"
-        } else {
-            "第${entity.startSection}-${entity.endSection}节"
-        },
+        sectionText =
+            if (entity.startSection == entity.endSection) {
+                "第${entity.startSection}节"
+            } else {
+                "第${entity.startSection}-${entity.endSection}节"
+            },
     )
 }
 
 /** from→to 的秒数；跨度可能为 0 的场景（进度边界）需自行 coerce */
-private fun secondsBetween(from: LocalTime, to: LocalTime): Long =
-    Duration.between(from, to).seconds
+private fun secondsBetween(
+    from: LocalTime,
+    to: LocalTime,
+): Long = Duration.between(from, to).seconds
 
 /** now 所在日期下 time 对应的 epoch 毫秒（课程时段不跨天） */
-private fun epochMillisOf(now: LocalDateTime, time: LocalTime): Long =
-    now.toLocalDate().atTime(time).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+private fun epochMillisOf(
+    now: LocalDateTime,
+    time: LocalTime,
+): Long =
+    now
+        .toLocalDate()
+        .atTime(time)
+        .atZone(ZoneId.systemDefault())
+        .toInstant()
+        .toEpochMilli()
 
 /**
  * 下一次胶囊状态会变化的时刻（epoch 毫秒），null 表示无需重算。
  * 供 CapsuleCoordinator 登记精确闹钟：ColorOS 冻结后台进程时服务刷新循环停摆，
  * 只有系统闹钟能按时唤醒 App 切换到「即将上课 / 提醒节点 / 上课中」等新状态。
  */
-fun nextTransitionAtMillis(plan: CapsulePlan, now: LocalDateTime): Long? = when (plan) {
-    // 提醒态先到点回落；否则等下一提醒节点，最后才等下课
-    is CapsulePlan.Ongoing ->
-        plan.reminderUntilMillis ?: plan.nextReminderAtMillis ?: plan.endAtMillis
-    is CapsulePlan.AboutToStart -> plan.startAtMillis
-    is CapsulePlan.Upcoming -> plan.aboutToStartAtMillis ?: epochMillisOf(now, plan.course.start)
-    is CapsulePlan.Holiday, is CapsulePlan.DayDone -> nextMidnightMillis(now)
-    CapsulePlan.NoTable -> null
-}
+fun nextTransitionAtMillis(
+    plan: CapsulePlan,
+    now: LocalDateTime,
+): Long? =
+    when (plan) {
+        // 提醒态先到点回落；否则等下一提醒节点，最后才等下课
+        is CapsulePlan.Ongoing ->
+            plan.reminderUntilMillis ?: plan.nextReminderAtMillis ?: plan.endAtMillis
+        is CapsulePlan.AboutToStart -> plan.startAtMillis
+        is CapsulePlan.Upcoming -> plan.aboutToStartAtMillis ?: epochMillisOf(now, plan.course.start)
+        is CapsulePlan.Holiday, is CapsulePlan.DayDone -> nextMidnightMillis(now)
+        CapsulePlan.NoTable -> null
+    }
 
 /**
  * 心跳闹钟时刻（epoch 毫秒）：切换闹钟之外的第二道保障，兼作胶囊保鲜。
@@ -303,23 +351,33 @@ fun nextTransitionAtMillis(plan: CapsulePlan, now: LocalDateTime): Long? = when 
  * - 假期 / 已结束：切换 + 2min —— 切换丢失时 2 分钟内自愈，其余时间不打扰
  * 返回 null 表示无需登记（没有下一次切换）。
  */
-fun nextRefreshAtMillis(plan: CapsulePlan, now: LocalDateTime): Long? {
+fun nextRefreshAtMillis(
+    plan: CapsulePlan,
+    now: LocalDateTime,
+): Long? {
     val next = nextTransitionAtMillis(plan, now) ?: return null
     val nowMillis = now.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-    val preTransition = if (plan is CapsulePlan.Ongoing ||
-        plan is CapsulePlan.AboutToStart ||
-        plan is CapsulePlan.Upcoming
-    ) {
-        (next - PRE_TRANSITION_WAKE_MS).takeIf { it > nowMillis }
-    } else {
-        null
-    }
-    val regular = if (plan is CapsulePlan.Ongoing || plan is CapsulePlan.AboutToStart) {
-        val heartbeat = now.plusMinutes(6).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-        minOf(next + BEAT_AFTER_TRANSITION_MS, heartbeat)
-    } else {
-        next + BEAT_AFTER_TRANSITION_IDLE_MS
-    }
+    val preTransition =
+        if (plan is CapsulePlan.Ongoing ||
+            plan is CapsulePlan.AboutToStart ||
+            plan is CapsulePlan.Upcoming
+        ) {
+            (next - PRE_TRANSITION_WAKE_MS).takeIf { it > nowMillis }
+        } else {
+            null
+        }
+    val regular =
+        if (plan is CapsulePlan.Ongoing || plan is CapsulePlan.AboutToStart) {
+            val heartbeat =
+                now
+                    .plusMinutes(6)
+                    .atZone(ZoneId.systemDefault())
+                    .toInstant()
+                    .toEpochMilli()
+            minOf(next + BEAT_AFTER_TRANSITION_MS, heartbeat)
+        } else {
+            next + BEAT_AFTER_TRANSITION_IDLE_MS
+        }
     return if (preTransition == null) regular else minOf(regular, preTransition)
 }
 
@@ -343,13 +401,17 @@ private const val BEAT_AFTER_TRANSITION_IDLE_MS = 120_000L
  * 「即将上课」宽限更长：进程存活时切换（上课中）通常 30s 内到达，留出窗口避免开场闪断；
  * 「上课中」宽限短：下课就该尽快退场，别继续挂着 00:00。
  */
-fun countdownCleanupDelayMillis(plan: CapsulePlan, nowMillis: Long): Long? = when (plan) {
-    is CapsulePlan.Ongoing ->
-        (plan.endAtMillis - nowMillis).coerceAtLeast(0) + CLEANUP_GRACE_AFTER_END_MS
-    is CapsulePlan.AboutToStart ->
-        (plan.startAtMillis - nowMillis).coerceAtLeast(0) + CLEANUP_GRACE_AFTER_START_MS
-    else -> null
-}
+fun countdownCleanupDelayMillis(
+    plan: CapsulePlan,
+    nowMillis: Long,
+): Long? =
+    when (plan) {
+        is CapsulePlan.Ongoing ->
+            (plan.endAtMillis - nowMillis).coerceAtLeast(0) + CLEANUP_GRACE_AFTER_END_MS
+        is CapsulePlan.AboutToStart ->
+            (plan.startAtMillis - nowMillis).coerceAtLeast(0) + CLEANUP_GRACE_AFTER_START_MS
+        else -> null
+    }
 
 private const val CLEANUP_GRACE_AFTER_END_MS = 10_000L
 private const val CLEANUP_GRACE_AFTER_START_MS = 40_000L
@@ -366,16 +428,22 @@ fun shouldUseAlarmClockFallback(
     transitionAtMillis: Long,
     alarmFallbackEnabled: Boolean,
     exactAlarmsAllowed: Boolean,
-): Boolean = alarmFallbackEnabled &&
-    exactAlarmsAllowed &&
-    transitionAtMillis > nowMillis &&
-    transitionAtMillis - nowMillis <= ALARM_CLOCK_WINDOW_MS
+): Boolean =
+    alarmFallbackEnabled &&
+        exactAlarmsAllowed &&
+        transitionAtMillis > nowMillis &&
+        transitionAtMillis - nowMillis <= ALARM_CLOCK_WINDOW_MS
 
 /** 切换前多久开始用系统闹钟兜底 */
 const val ALARM_CLOCK_WINDOW_MS = 15 * 60_000L
 
 private fun nextMidnightMillis(now: LocalDateTime): Long =
-    now.toLocalDate().plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    now
+        .toLocalDate()
+        .plusDays(1)
+        .atStartOfDay(ZoneId.systemDefault())
+        .toInstant()
+        .toEpochMilli()
 
 /**
  * 未来 7 天里最近的一节课或考试，如「明天 08:20 · 包装材料与检测」「明天 14:00 · 高等数学考试」。
@@ -394,19 +462,22 @@ private fun nextOccurrenceText(
         val week = TimeUtils.weekOfSemester(startDate, totalWeeks, date) ?: continue
         val dow = TimeUtils.dayOfWeek(date)
         val label = if (offset == 1) "明天" else TimeUtils.dayName(dow)
-        val course = courses
-            .filter { it.dayOfWeek == dow && WeekMask.contains(it.weekMask, week) }
-            .sortedBy { it.startSection }
-            .firstOrNull { courseOf(it, sections) != null }
-        val courseTime = course
-            ?.let { sections.getOrNull(it.startSection - 1)?.startTime }
-            ?.let { TimeUtils.parseTime(it) }
-        val exam = exams.asSequence()
-            .map { e ->
-                e to LocalDateTime.ofInstant(Instant.ofEpochMilli(e.examTime), ZoneId.systemDefault())
-            }
-            .filter { it.second.toLocalDate() == date }
-            .minByOrNull { it.second.toLocalTime() }
+        val course =
+            courses
+                .filter { it.dayOfWeek == dow && WeekMask.contains(it.weekMask, week) }
+                .sortedBy { it.startSection }
+                .firstOrNull { courseOf(it, sections) != null }
+        val courseTime =
+            course
+                ?.let { sections.getOrNull(it.startSection - 1)?.startTime }
+                ?.let { TimeUtils.parseTime(it) }
+        val exam =
+            exams
+                .asSequence()
+                .map { e ->
+                    e to LocalDateTime.ofInstant(Instant.ofEpochMilli(e.examTime), ZoneId.systemDefault())
+                }.filter { it.second.toLocalDate() == date }
+                .minByOrNull { it.second.toLocalTime() }
         // 考试比当天第一节课早（或当天没课）→ 显示考试
         if (exam != null && (courseTime == null || exam.second.toLocalTime() <= courseTime)) {
             return "$label ${exam.second.toLocalTime()} · ${exam.first.name}考试"

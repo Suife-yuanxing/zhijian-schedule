@@ -18,7 +18,6 @@ import org.junit.Test
  * 以后调弹簧刚度、拉伸幅度或手柄尺寸时，这几条必须还成立。
  */
 class JellySwitchTest {
-
     private val track = Size(52f, 32f)
     private val dOn = 24f
     private val dOff = 16f

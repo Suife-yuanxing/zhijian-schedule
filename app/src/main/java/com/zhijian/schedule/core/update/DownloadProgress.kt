@@ -1,6 +1,6 @@
 package com.zhijian.schedule.core.update
 
-/**
+/*
  * 进度与速率：把「分片计划 + 已完成序号 + 各片已写字节」算成 UI 需要的数字，
  * 并给通知栏的刷新做节流。全部是纯逻辑（不持有文件、不碰状态机），可直接用 JUnit 跑。
  */
@@ -22,10 +22,11 @@ class ChunkProgress(
 
     /** 已完成片 + 在飞片已写字节（按片长封顶），即当前进度 */
     val downloadedBytes: Long
-        get() = done.sumOf { plan.bytesOf(it) } +
-            (0 until plan.chunkCount)
-                .filter { it !in done }
-                .sumOf { minOf(bytes.getOrElse(it) { 0L }, plan.bytesOf(it)) }
+        get() =
+            done.sumOf { plan.bytesOf(it) } +
+                (0 until plan.chunkCount)
+                    .filter { it !in done }
+                    .sumOf { minOf(bytes.getOrElse(it) { 0L }, plan.bytesOf(it)) }
 
     /** 还没写完的分片序号（共享待办队列的初始内容） */
     fun neededChunks(): List<Int> = (0 until plan.chunkCount).filter { it !in done }
@@ -44,13 +45,17 @@ class ChunkProgress(
  * 滑动窗口速率估算：只保留窗口内的采样点。
  * 样本不足（不足 2 个点，或两点时间相同）时返回 null —— UI 显示不确定进度，不显示假速度。
  */
-class SpeedMeter(private val windowMillis: Long = 5_000L) {
-
+class SpeedMeter(
+    private val windowMillis: Long = 5_000L,
+) {
     private val samples = ArrayDeque<Pair<Long, Long>>()
 
     fun reset() = samples.clear()
 
-    fun record(timestampMillis: Long, totalBytes: Long) {
+    fun record(
+        timestampMillis: Long,
+        totalBytes: Long,
+    ) {
         samples.addLast(timestampMillis to totalBytes)
         val floor = timestampMillis - windowMillis
         while (samples.size > 2 && samples.first().first < floor) samples.removeFirst()
@@ -66,7 +71,10 @@ class SpeedMeter(private val windowMillis: Long = 5_000L) {
     }
 
     /** 剩余秒数（向上取整）；total 为 null 或速度不可用时返回 null */
-    fun etaSeconds(downloadedBytes: Long, totalBytes: Long?): Long? {
+    fun etaSeconds(
+        downloadedBytes: Long,
+        totalBytes: Long?,
+    ): Long? {
         val total = totalBytes ?: return null
         val speed = bytesPerSecond()?.takeIf { it > 0 } ?: return null
         val remaining = (total - downloadedBytes).coerceAtLeast(0L)
@@ -78,12 +86,17 @@ class SpeedMeter(private val windowMillis: Long = 5_000L) {
  * 通知栏进度节流：距上次刷新 >= [minIntervalMillis] **且**整数百分比变化时才返回 true。
  * [percent] 为 null（响应没有长度信息）时只按时间节流；[force] 用于结束时无条件刷新最终态。
  */
-class ProgressThrottle(private val minIntervalMillis: Long = 500L) {
-
+class ProgressThrottle(
+    private val minIntervalMillis: Long = 500L,
+) {
     private var lastAtMillis = Long.MIN_VALUE
     private var lastPercent: Int? = null
 
-    fun shouldRefresh(timestampMillis: Long, percent: Int?, force: Boolean = false): Boolean {
+    fun shouldRefresh(
+        timestampMillis: Long,
+        percent: Int?,
+        force: Boolean = false,
+    ): Boolean {
         if (force) {
             lastAtMillis = timestampMillis
             lastPercent = percent

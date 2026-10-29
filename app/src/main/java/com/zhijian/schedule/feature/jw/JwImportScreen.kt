@@ -460,8 +460,8 @@ private fun UrlBar(
             // 清空只在有内容时出现：一个入口一个作用，不做成常驻的双胞胎按钮
             AnimatedVisibility(
                 visible = url.isNotEmpty(),
-                enter = fadeIn(tween(Motion.DurFast)),
-                exit = fadeOut(tween(Motion.DurFast)),
+                enter = fadeIn(tween(Motion.DUR_FAST)),
+                exit = fadeOut(tween(Motion.DUR_FAST)),
             ) {
                 TapIconButton(onClick = { onUrlChange("") }, modifier = Modifier.size(34.dp)) {
                     Icon(
@@ -525,8 +525,8 @@ private fun JwImportFooter(
     Column(Modifier.fillMaxWidth().imePadding()) {
         AnimatedVisibility(
             visible = notices.scriptNotice != null,
-            enter = expandVertically(tween(Motion.DurMedium)) + fadeIn(tween(Motion.DurFast)),
-            exit = shrinkVertically(tween(Motion.DurFast)) + fadeOut(tween(Motion.DurFast)),
+            enter = expandVertically(tween(Motion.DUR_MEDIUM)) + fadeIn(tween(Motion.DUR_FAST)),
+            exit = shrinkVertically(tween(Motion.DUR_FAST)) + fadeOut(tween(Motion.DUR_FAST)),
         ) {
             Row(
                 Modifier
@@ -554,8 +554,8 @@ private fun JwImportFooter(
 
         AnimatedVisibility(
             visible = notices.errorMessage != null,
-            enter = expandVertically(tween(Motion.DurMedium)) + fadeIn(tween(Motion.DurFast)),
-            exit = shrinkVertically(tween(Motion.DurFast)) + fadeOut(tween(Motion.DurFast)),
+            enter = expandVertically(tween(Motion.DUR_MEDIUM)) + fadeIn(tween(Motion.DUR_FAST)),
+            exit = shrinkVertically(tween(Motion.DUR_FAST)) + fadeOut(tween(Motion.DUR_FAST)),
         ) {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                 Text(

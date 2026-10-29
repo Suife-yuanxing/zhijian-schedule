@@ -32,10 +32,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,34 +63,39 @@ import kotlinx.coroutines.withContext
 
 /** 扫码导入：全屏相机取景 + 中央取景框；识别到第一个二维码即回调解码结果；也可从相册选码 */
 @Composable
-fun QrScanContent(onDecoded: (ByteArray) -> Unit, onSwitchToShare: () -> Unit) {
+fun QrScanContent(
+    onDecoded: (ByteArray) -> Unit,
+    onSwitchToShare: () -> Unit,
+) {
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     var hasPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
-                PackageManager.PERMISSION_GRANTED
+                PackageManager.PERMISSION_GRANTED,
         )
     }
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted -> hasPermission = granted }
-    val imagePicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickVisualMedia(),
-    ) { uri ->
-        if (uri != null) {
-            scope.launch {
-                val bytes = decodeQrFromImage(context, uri)
-                if (bytes != null) {
-                    haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-                    onDecoded(bytes)
-                } else {
-                    Toast.makeText(context, "没在图片里找到课程二维码，换一张试试", Toast.LENGTH_SHORT).show()
+    val permissionLauncher =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.RequestPermission(),
+        ) { granted -> hasPermission = granted }
+    val imagePicker =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.PickVisualMedia(),
+        ) { uri ->
+            if (uri != null) {
+                scope.launch {
+                    val bytes = decodeQrFromImage(context, uri)
+                    if (bytes != null) {
+                        haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+                        onDecoded(bytes)
+                    } else {
+                        Toast.makeText(context, "没在图片里找到课程二维码，换一张试试", Toast.LENGTH_SHORT).show()
+                    }
                 }
             }
         }
-    }
     val pickFromGallery = {
         imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
     }
@@ -153,7 +158,10 @@ fun QrScanContent(onDecoded: (ByteArray) -> Unit, onSwitchToShare: () -> Unit) {
 
 /** 底部动作浮岛：两枚动作共处一条悬浮胶囊，两侧留白、细分隔线、按压有浅色反馈 */
 @Composable
-private fun ScanActionIsland(onPickGallery: () -> Unit, onSwitchToShare: () -> Unit) {
+private fun ScanActionIsland(
+    onPickGallery: () -> Unit,
+    onSwitchToShare: () -> Unit,
+) {
     val shape = RoundedCornerShape(percent = 50)
     Row(
         Modifier
@@ -164,8 +172,7 @@ private fun ScanActionIsland(onPickGallery: () -> Unit, onSwitchToShare: () -> U
                 shape = shape,
                 ambientColor = Color.Black.copy(alpha = 0.25f),
                 spotColor = Color.Black.copy(alpha = 0.45f),
-            )
-            .clip(shape)
+            ).clip(shape)
             .background(Color.Black.copy(alpha = 0.44f))
             .border(1.dp, Color.White.copy(alpha = 0.16f), shape),
     ) {
@@ -230,19 +237,23 @@ private fun ScanIslandAction(
 }
 
 /** 相册里的二维码图片 → 本机离线解码（同一张分享图截图/转发后依然可识别） */
-private suspend fun decodeQrFromImage(context: Context, uri: Uri): ByteArray? =
+private suspend fun decodeQrFromImage(
+    context: Context,
+    uri: Uri,
+): ByteArray? =
     withContext(Dispatchers.IO) {
-        val scanner = BarcodeScanning.getClient(
-            BarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build()
-        )
+        val scanner =
+            BarcodeScanning.getClient(
+                BarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build(),
+            )
         try {
             val image = InputImage.fromFilePath(context, uri)
             val result = CompletableDeferred<ByteArray?>()
-            scanner.process(image)
+            scanner
+                .process(image)
                 .addOnSuccessListener { codes ->
                     result.complete(codes.firstOrNull { it.rawBytes?.isNotEmpty() == true }?.rawBytes)
-                }
-                .addOnFailureListener { result.complete(null) }
+                }.addOnFailureListener { result.complete(null) }
                 .addOnCompleteListener {
                     // Task 被取消时 success/failure 都不回调，这里兜底避免 await 永久挂起
                     if (!result.isCompleted) result.complete(null)

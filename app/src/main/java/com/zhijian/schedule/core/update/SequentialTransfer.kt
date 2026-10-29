@@ -1,12 +1,12 @@
 package com.zhijian.schedule.core.update
 
+import okhttp3.Request
+import okhttp3.Response
 import java.io.File
 import java.io.IOException
 import java.io.RandomAccessFile
-import okhttp3.Request
-import okhttp3.Response
 
-/**
+/*
  * 单连接顺序路径（v1，保留为 Range 不可用时的降级路径）。
  *
  * 与分片路径的区别只有一个：整份文件由一个连接从头写到尾，进度就是 `.part` 的长度。
@@ -25,10 +25,12 @@ internal suspend fun DownloadSession.downloadSequential(
 ): Notice {
     if (fromScratch) store.deleteMeta(request.version)
     val part = store.partFile(request.version)
-    val builder = Request.Builder()
-        .url(source.url)
-        .header("Accept-Encoding", "identity")
-        .header("User-Agent", USER_AGENT)
+    val builder =
+        Request
+            .Builder()
+            .url(source.url)
+            .header("Accept-Encoding", "identity")
+            .header("User-Agent", USER_AGENT)
     // 顺序续传时带上 Range/If-Range，语义与 v1 完全一致
     if (!fromScratch) {
         val meta = store.readMeta(request.version)
@@ -40,18 +42,20 @@ internal suspend fun DownloadSession.downloadSequential(
     }
     val call = client.newCall(builder.build())
     activeCalls.add(call)
-    val response = try {
-        call.execute()
-    } catch (e: IOException) {
-        activeCalls.remove(call)
-        return when {
-            cancelRequested.get() -> Notice.Paused
-            sourceAbort.get() -> Notice.Failed("网络停滞或过慢，可继续下载", canResume = true)
-            else -> Notice.Done(
-                DownloadState.Failed(request.version, "网络中断（${e.message ?: "IO 错误"}）", canResume = true)
-            )
+    val response =
+        try {
+            call.execute()
+        } catch (e: IOException) {
+            activeCalls.remove(call)
+            return when {
+                cancelRequested.get() -> Notice.Paused
+                sourceAbort.get() -> Notice.Failed("网络停滞或过慢，可继续下载", canResume = true)
+                else ->
+                    Notice.Done(
+                        DownloadState.Failed(request.version, "网络中断（${e.message ?: "IO 错误"}）", canResume = true),
+                    )
+            }
         }
-    }
     return try {
         response.use { handleSequential(request, source, it, part, fromScratch) }
     } finally {
@@ -73,20 +77,22 @@ private fun DownloadSession.handleSequential(
                 request.version,
                 "下载失败（HTTP ${response.code}），请重试",
                 canResume = response.code in 500..599,
-            )
+            ),
         )
     }
     val contentRange = ResumableDownload.parseContentRange(response.header("Content-Range"))
     val partBytes = if (fromScratch) 0L else store.partBytes(request.version)
-    val appendFrom = when {
-        fromScratch -> 0L
-        // 服务端不认 Range、或 If-Range 判定资源已变：这次响应是整份，从头覆盖
-        response.code == 200 -> 0L
-        contentRange != null && contentRange.start == partBytes -> partBytes
-        else -> 0L
-    }
-    val body = response.body
-        ?: return Notice.Done(DownloadState.Failed(request.version, "响应无内容，请重试", canResume = true))
+    val appendFrom =
+        when {
+            fromScratch -> 0L
+            // 服务端不认 Range、或 If-Range 判定资源已变：这次响应是整份，从头覆盖
+            response.code == 200 -> 0L
+            contentRange != null && contentRange.start == partBytes -> partBytes
+            else -> 0L
+        }
+    val body =
+        response.body
+            ?: return Notice.Done(DownloadState.Failed(request.version, "响应无内容，请重试", canResume = true))
     val total = ResumableDownload.resolveTotalBytes(body.contentLength(), contentRange, request.sizeBytes)
 
     // 先落元数据再写数据：中途被杀也能靠 .meta 记住进度分母
@@ -98,7 +104,7 @@ private fun DownloadSession.handleSequential(
             lastModified = response.header("Last-Modified"),
             totalBytes = total ?: 0L,
             digest = request.digest,
-        )
+        ),
     )
 
     val meter = SpeedMeter()
@@ -132,7 +138,7 @@ private fun DownloadSession.handleSequential(
                 request.version,
                 "下载未完成（已收到 ${ResumableDownload.formatBytes(written)}），可继续下载",
                 canResume = true,
-            )
+            ),
         )
     }
     return verifyAndClearChunks(store, request, part, total ?: part.length())

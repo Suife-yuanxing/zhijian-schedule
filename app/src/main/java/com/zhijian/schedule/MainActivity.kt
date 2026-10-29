@@ -17,13 +17,12 @@ import com.zhijian.schedule.core.data.prefs.SettingsStore
 import com.zhijian.schedule.core.holiday.HolidayRepository
 import com.zhijian.schedule.navigation.AppRoot
 import dagger.hilt.android.AndroidEntryPoint
-import javax.inject.Inject
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
-
     @Inject
     lateinit var settingsStore: SettingsStore
 

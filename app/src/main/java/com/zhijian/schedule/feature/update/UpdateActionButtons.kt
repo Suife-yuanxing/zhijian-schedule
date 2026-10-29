@@ -38,17 +38,24 @@ internal fun FilledAction(
         onClick = onClick,
         enabled = enabled,
         interactionSource = source,
-        modifier = modifier
-            .fillMaxWidth()
-            .height(48.dp)
-            .buttonFeedback(source, pressedScale = 0.97f, enabled = enabled, hapticType = HapticFeedbackType.Confirm),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .buttonFeedback(
+                    source,
+                    pressedScale = 0.97f,
+                    enabled = enabled,
+                    hapticType = HapticFeedbackType.Confirm,
+                ),
         shape = RoundedCornerShape(15.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = colors.accent,
-            contentColor = colors.onAccent,
-            disabledContainerColor = colors.accent.copy(alpha = 0.35f),
-            disabledContentColor = colors.onAccent.copy(alpha = 0.8f),
-        ),
+        colors =
+            ButtonDefaults.buttonColors(
+                containerColor = colors.accent,
+                contentColor = colors.onAccent,
+                disabledContainerColor = colors.accent.copy(alpha = 0.35f),
+                disabledContentColor = colors.onAccent.copy(alpha = 0.8f),
+            ),
     ) {
         Text(label, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
     }
@@ -65,10 +72,11 @@ internal fun OutlinedAction(
     OutlinedButton(
         onClick = onClick,
         interactionSource = source,
-        modifier = modifier
-            .fillMaxWidth()
-            .height(48.dp)
-            .buttonFeedback(source, pressedScale = 0.97f),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .buttonFeedback(source, pressedScale = 0.97f),
         shape = RoundedCornerShape(15.dp),
         border = BorderStroke(1.dp, colors.border),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.textMuted),

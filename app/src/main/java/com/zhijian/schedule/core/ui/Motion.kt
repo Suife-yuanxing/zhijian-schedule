@@ -10,18 +10,18 @@ import androidx.compose.ui.unit.IntOffset
  */
 object Motion {
     /** 快速反馈：水波纹、渐隐 */
-    const val DurFast = 150
+    const val DUR_FAST = 150
 
     /** 标准过渡：淡入、局部布局切换 */
-    const val DurMedium = 260
+    const val DUR_MEDIUM = 260
 
     /** 慢速登场：交错入场、进度扫描 */
-    const val DurSlow = 420
+    const val DUR_SLOW = 420
 
     /**
      * **页面**扩散（加号 → 课程编辑页）的正向时长，缓动是 [EaseRevealAccelerate]。
      *
-     * 为什么比 [DurSlow] 长：被裁的是一整屏旧帧，圆要一直长到屏幕最远角（见 revealRadius），
+     * 为什么比 [DUR_SLOW] 长：被裁的是一整屏旧帧，圆要一直长到屏幕最远角（见 revealRadius），
      * 收尾太快会读成「圆还没铺满就切好了」。
      *
      * 为什么是 450 而不是原来的 560——换曲线必须重新补时长。加速曲线的行程「后重前轻」：
@@ -29,12 +29,12 @@ object Motion {
      * 时长不动就从 280ms 拖到 469ms（晚近 190ms，起步那一段会被判成卡顿）；压到 450ms 后
      * 落在 377ms，只晚约 100ms，末端加速的观感拿得到，也不至于让人以为点空了。
      * 页面扩散与换主题动的是同一个几何量（半径）、用的是同一条曲线，所以补偿系数相同，
-     * 两个常量取到同一个值是这条推导的结果，不是巧合、也不是互相抄（推导见 [DurRevealTheme]）。
+     * 两个常量取到同一个值是这条推导的结果，不是巧合、也不是互相抄（推导见 [DUR_REVEAL_THEME]）。
      *
      * 保留两个名字而不是合成一个：它们是两条独立的时间线（页面转场 / 换皮肤），
      * 现在同值不等于以后必须同值，将来任何一条要单独调时不该被另一条拽着走。
      */
-    const val DurReveal = 450
+    const val DUR_REVEAL = 450
 
     /**
      * 反向扩散（页面收回被点按钮），缓动是 [EaseRevealDecelerate]。
@@ -51,9 +51,9 @@ object Motion {
      * （0.9 × 半径的圆面积 / 满屏），可以算收回了；旧反向（EaseReveal @460ms）在
      * 0.633 × 460 ≈ 291ms 走到这一步，镜像曲线要 78.6% 的时长才走到，291 / 0.786 ≈ 370ms。
      * 落地时刻不变而前半程更快，收回的「清脆感」来自曲线，不来自赶时间。
-     * 370 < [DurReveal]，「收回比张开短一截」的既定节奏仍然成立。
+     * 370 < [DUR_REVEAL]，「收回比张开短一截」的既定节奏仍然成立。
      */
-    const val DurRevealBack = 370
+    const val DUR_REVEAL_BACK = 370
 
     /**
      * **换主题**的扩散时长。
@@ -65,10 +65,10 @@ object Motion {
      * 拿得到，又不至于让人以为点空了。
      * 450 = M3 duration token `long1`（material-components-android docs/theming/Motion.md）。
      *
-     * 与页面扩散的 [DurReveal] 同值：两条时间线动的是同一个几何量、用同一条曲线、
-     * 按同一条公式补偿，取到同一个数是推导的结果（细节见 [DurReveal]）。
+     * 与页面扩散的 [DUR_REVEAL] 同值：两条时间线动的是同一个几何量、用同一条曲线、
+     * 按同一条公式补偿，取到同一个数是推导的结果（细节见 [DUR_REVEAL]）。
      */
-    const val DurRevealTheme = 450
+    const val DUR_REVEAL_THEME = 450
 
     /** 标准缓动：快速起步、缓慢收尾 */
     val EaseOut = CubicBezierEasing(0.2f, 0f, 0f, 1f)
@@ -94,7 +94,7 @@ object Motion {
      * （页面进来 / 换皮肤）在语义上都是**新内容进入**（若严格照规范，入场该用 decelerate 族）。
      * 按需求选加速型的依据是：圆形扩散真正在动的是一次**抹除**——旧画面被圆边界吃掉，
      * 最后那一段是旧画面离开，加速收尾讲得通。代价是起步段的运动量只有旧曲线的一半左右，
-     * 由 [DurReveal] / [DurRevealTheme] 压缩时长来补。
+     * 由 [DUR_REVEAL] / [DUR_REVEAL_THEME] 压缩时长来补。
      */
     val EaseRevealAccelerate = CubicBezierEasing(0.3f, 0f, 1f, 1f)
 
@@ -124,11 +124,12 @@ object Motion {
     val SelectionExit = tween<Float>(durationMillis = 130, easing = EaseOut)
 
     /** 整屏横滑转场：无过冲，保证大位移干净利落 */
-    val SlideSpring = spring<IntOffset>(
-        dampingRatio = 1f,
-        stiffness = 420f,
-        visibilityThreshold = IntOffset(1, 1),
-    )
+    val SlideSpring =
+        spring<IntOffset>(
+            dampingRatio = 1f,
+            stiffness = 420f,
+            visibilityThreshold = IntOffset(1, 1),
+        )
 
     /**
      * 逐个入场：每个课块的落位弹簧（轻微过冲、收尾干净）。
@@ -227,5 +228,5 @@ object Motion {
     val PressIn = spring<Float>(dampingRatio = 0.60f, stiffness = 1200f)
 
     /** 倾动高光淡出：松手后留一点余晖，但不要拖住回正（比旧版 150ms 更"余韵"） */
-    const val DurTiltGlareOut = 200
+    const val DUR_TILT_GLARE_OUT = 200
 }

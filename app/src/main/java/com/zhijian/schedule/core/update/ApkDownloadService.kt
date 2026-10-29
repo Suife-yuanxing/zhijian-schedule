@@ -11,13 +11,13 @@ import androidx.annotation.RequiresApi
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import dagger.hilt.android.AndroidEntryPoint
-import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 /**
  * 更新下载的 dataSync 前台服务：把下载协程的存活期绑在服务上，并在通知栏显示进度。
@@ -26,7 +26,6 @@ import kotlinx.coroutines.launch
  */
 @AndroidEntryPoint
 class ApkDownloadService : Service() {
-
     @Inject
     lateinit var downloader: ApkDownloader
 
@@ -53,30 +52,54 @@ class ApkDownloadService : Service() {
         watcher = scope.launch { downloader.state.collect { renderProgress(it) } }
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    override fun onStartCommand(
+        intent: Intent?,
+        flags: Int,
+        startId: Int,
+    ): Int {
         lastStartId = startId
+        when (val outcome = classifyStart(intent)) {
+            is StartOutcome.Ignore -> {
+                // 取消指令 / 无效意图 / 前台化失败：三种情况都只是「这次 start 不该开新下载」
+                if (outcome.stopSelf) stopSelf(startId)
+            }
+            is StartOutcome.Launch -> launchRound(outcome.request)
+        }
+        return START_NOT_STICKY
+    }
+
+    /** 这次 start 该不该开新下载；不开的时候顺带说明要不要收工 */
+    private sealed interface StartOutcome {
+        data class Ignore(
+            val stopSelf: Boolean,
+        ) : StartOutcome
+
+        data class Launch(
+            val request: DownloadRequest,
+        ) : StartOutcome
+    }
+
+    /**
+     * 判定本次 start 的意图。三处「不该开新下载」的收尾条件刻意留在一起：
+     * 取消指令（服务可能只是被它唤醒）、意图里没有合法请求、前台化失败。
+     */
+    private fun classifyStart(intent: Intent?): StartOutcome {
         if (intent?.action == UpdateNotification.ACTION_CANCEL) {
             downloader.cancel()
             // 没有下载在跑时服务只是被这次取消唤醒的，立刻收工
-            if (job?.isActive != true) stopSelf(startId)
-            return START_NOT_STICKY
+            return StartOutcome.Ignore(stopSelf = job?.isActive != true)
         }
-        val request = intent.toDownloadRequest()
-        if (request == null) {
-            stopSelf(startId)
-            return START_NOT_STICKY
-        }
-        if (!runCatching { goForeground(statusNotification(request)) }.isSuccess) {
-            // Android 12+ 后台启动前台服务受限（例如点按后立刻切走）：直接收尾，状态不变由用户重试
-            stopSelf(startId)
-            return START_NOT_STICKY
-        }
+        val request = intent.toDownloadRequest() ?: return StartOutcome.Ignore(stopSelf = true)
+        val foregrounded = runCatching { goForeground(statusNotification(request)) }.isSuccess
+        // Android 12+ 后台启动前台服务受限（例如点按后立刻切走）：直接收尾，状态不变由用户重试
+        return if (foregrounded) StartOutcome.Launch(request) else StartOutcome.Ignore(stopSelf = true)
+    }
 
+    /** 开一轮新的下载任务；同一请求的重复点按会被并入当前轮 */
+    private fun launchRound(request: DownloadRequest) {
         val running = job
-        if (running?.isActive == true && activeRequest == request && !downloader.isCancelling()) {
-            // 同一请求的重复点按：只补上前台通知，绝不重头再下一遍
-            return START_NOT_STICKY
-        }
+        // 同一请求的重复点按：前台通知已经在上面补过了，绝不重头再下一遍
+        if (running?.isActive == true && activeRequest == request && !downloader.isCancelling()) return
         // 「取消后马上点继续」时上一轮可能还在收尾：先让它彻底停下再开新的，
         // 两轮同时写同一个 .part 会把进度账目和文件内容一起搞乱
         if (running?.isActive == true) {
@@ -87,16 +110,16 @@ class ApkDownloadService : Service() {
         activeRequest = request
         // 上一轮可能刚 stopSelf 完还没被销毁，这次 start 让服务继续活着：收工标记必须重置
         finished = false
-        job = scope.launch {
-            running?.join()
-            try {
-                downloader.download(request)
-            } finally {
-                // 只有最新一轮负责收工，旧轮次的 finally 不能把新下载一起停掉
-                if (round == generation) finish()
+        job =
+            scope.launch {
+                running?.join()
+                try {
+                    downloader.download(request)
+                } finally {
+                    // 只有最新一轮负责收工，旧轮次的 finally 不能把新下载一起停掉
+                    if (round == generation) finish()
+                }
             }
-        }
-        return START_NOT_STICKY
     }
 
     /** Android 15+ 的 dataSync 前台服务有累计时长上限，到点必须收尾，否则系统回调会抛异常 */
@@ -130,11 +153,12 @@ class ApkDownloadService : Service() {
     }
 
     private fun goForeground(notification: Notification) {
-        val type = if (Build.VERSION.SDK_INT >= 34) {
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-        } else {
-            0
-        }
+        val type =
+            if (Build.VERSION.SDK_INT >= 34) {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            } else {
+                0
+            }
         ServiceCompat.startForeground(this, UpdateNotification.NOTIFICATION_ID_PROGRESS, notification, type)
     }
 
@@ -148,7 +172,10 @@ class ApkDownloadService : Service() {
             etaSeconds = null,
         )
 
-    private fun notificationFor(state: DownloadState.Running, percent: Int?): Notification =
+    private fun notificationFor(
+        state: DownloadState.Running,
+        percent: Int?,
+    ): Notification =
         UpdateNotification.buildProgress(
             context = this,
             version = state.version,
@@ -160,7 +187,8 @@ class ApkDownloadService : Service() {
         )
 
     private fun percentOf(state: DownloadState.Running): Int? =
-        state.totalBytes?.takeIf { it > 0 }
+        state.totalBytes
+            ?.takeIf { it > 0 }
             ?.let { ((state.downloadedBytes * 100) / it).toInt().coerceIn(0, 100) }
 
     companion object {
@@ -171,14 +199,18 @@ class ApkDownloadService : Service() {
         private const val EXTRA_MIRRORS = "update_mirrors"
 
         /** 启动下载。必须在可见界面上调用（Android 12+ 不允许后台启动前台服务） */
-        fun start(context: Context, request: DownloadRequest) {
-            val intent = Intent(context, ApkDownloadService::class.java)
-                .putExtra(EXTRA_VERSION, request.version)
-                .putExtra(EXTRA_URL, request.url)
-                .putExtra(EXTRA_SIZE, request.sizeBytes ?: -1L)
-                .putExtra(EXTRA_DIGEST, request.digest)
-                // 镜像开关必须随 Intent 过河：服务会用 extras 重建请求，默认值 false 会把开关吞掉
-                .putExtra(EXTRA_MIRRORS, request.mirrorsEnabled)
+        fun start(
+            context: Context,
+            request: DownloadRequest,
+        ) {
+            val intent =
+                Intent(context, ApkDownloadService::class.java)
+                    .putExtra(EXTRA_VERSION, request.version)
+                    .putExtra(EXTRA_URL, request.url)
+                    .putExtra(EXTRA_SIZE, request.sizeBytes ?: -1L)
+                    .putExtra(EXTRA_DIGEST, request.digest)
+                    // 镜像开关必须随 Intent 过河：服务会用 extras 重建请求，默认值 false 会把开关吞掉
+                    .putExtra(EXTRA_MIRRORS, request.mirrorsEnabled)
             ContextCompat.startForegroundService(context, intent)
         }
 
@@ -186,7 +218,7 @@ class ApkDownloadService : Service() {
         fun cancel(context: Context) {
             runCatching {
                 context.startService(
-                    Intent(context, ApkDownloadService::class.java).setAction(UpdateNotification.ACTION_CANCEL)
+                    Intent(context, ApkDownloadService::class.java).setAction(UpdateNotification.ACTION_CANCEL),
                 )
             }
         }

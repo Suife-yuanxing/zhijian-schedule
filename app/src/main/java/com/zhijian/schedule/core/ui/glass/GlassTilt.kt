@@ -29,29 +29,37 @@ fun rememberGlassTilt(): State<Offset> {
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, context) {
         val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
-        val gravity = sensorManager?.getDefaultSensor(Sensor.TYPE_GRAVITY)
-            ?: sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        val gravity =
+            sensorManager?.getDefaultSensor(Sensor.TYPE_GRAVITY)
+                ?: sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         var gx = 0f
         var gz = 0f
         var registered = false
-        val listener = object : SensorEventListener {
-            override fun onSensorChanged(event: SensorEvent) {
-                gx = gx * 0.82f + event.values[0] * 0.18f
-                gz = gz * 0.82f + event.values[2] * 0.18f
-                tilt.value = Offset(
-                    (gx / SensorManager.GRAVITY_EARTH).coerceIn(-1f, 1f),
-                    (gz / SensorManager.GRAVITY_EARTH).coerceIn(-1f, 1f),
-                )
+        val listener =
+            object : SensorEventListener {
+                override fun onSensorChanged(event: SensorEvent) {
+                    gx = gx * 0.82f + event.values[0] * 0.18f
+                    gz = gz * 0.82f + event.values[2] * 0.18f
+                    tilt.value =
+                        Offset(
+                            (gx / SensorManager.GRAVITY_EARTH).coerceIn(-1f, 1f),
+                            (gz / SensorManager.GRAVITY_EARTH).coerceIn(-1f, 1f),
+                        )
+                }
+
+                override fun onAccuracyChanged(
+                    sensor: Sensor?,
+                    accuracy: Int,
+                ) = Unit
             }
 
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
-        }
         fun register() {
             if (!registered && sensorManager != null && gravity != null) {
                 sensorManager.registerListener(listener, gravity, SensorManager.SENSOR_DELAY_GAME)
                 registered = true
             }
         }
+
         fun unregister() {
             if (registered) {
                 sensorManager?.unregisterListener(listener)
@@ -59,13 +67,14 @@ fun rememberGlassTilt(): State<Offset> {
             }
         }
         if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) register()
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_RESUME -> register()
-                Lifecycle.Event.ON_PAUSE -> unregister()
-                else -> Unit
+        val observer =
+            LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_RESUME -> register()
+                    Lifecycle.Event.ON_PAUSE -> unregister()
+                    else -> Unit
+                }
             }
-        }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)

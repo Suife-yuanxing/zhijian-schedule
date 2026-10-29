@@ -8,7 +8,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DownloadProgressTest {
-
     @Test
     fun speedIsNullUntilTwoSamples() {
         val meter = SpeedMeter()

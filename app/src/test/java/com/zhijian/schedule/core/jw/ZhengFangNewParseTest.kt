@@ -1,14 +1,14 @@
 package com.zhijian.schedule.core.jw
 
 import com.zhijian.schedule.core.jw.ZhengFangNewAdapter
-import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalDate
 
 class ZhengFangNewParseTest {
-
-    private val kbListJson = """
+    private val kbListJson =
+        """
         {
           "kbList": [
             {"kcmc":"高等数学","xm":"王五","cdmc":"理A401","xqj":"1","jc":"1-2节","zcd":"1-16周"},
@@ -16,7 +16,7 @@ class ZhengFangNewParseTest {
           ],
           "xsxx": {"XM":"张三"}
         }
-    """.trimIndent()
+        """.trimIndent()
 
     @Test
     fun `parse zhengfang new kbList json`() {
@@ -43,12 +43,13 @@ class ZhengFangNewParseTest {
 
     @Test
     fun `merge duplicate rows by weeks`() {
-        val json = """
+        val json =
+            """
             {"kbList":[
               {"kcmc":"线性代数","xm":"赵六","cdmc":"理A402","xqj":"2","jc":"5-6节","zcd":"1-8周"},
               {"kcmc":"线性代数","xm":"赵六","cdmc":"理A402","xqj":"2","jc":"5-6节","zcd":"9-16周"}
             ]}
-        """.trimIndent()
+            """.trimIndent()
         val drafts = ZhengFangNewAdapter.parseJson(json, 20)
         assertEquals(1, drafts.size)
         assertEquals(16, drafts.first().weekMask.count { it == '1' })
@@ -61,9 +62,10 @@ class ZhengFangNewParseTest {
 
     @Test
     fun `parse field aliases and fallback room`() {
-        val json = """
+        val json =
+            """
             {"kbList":[{"kcmc":" 大学物理 ","xm":"周老师","xqmc":"主校区","xqj":"星期三","jcs":"5-6节"}]}
-        """.trimIndent()
+            """.trimIndent()
         val drafts = ZhengFangNewAdapter.parseJson(json, 20)
         assertEquals(1, drafts.size)
 

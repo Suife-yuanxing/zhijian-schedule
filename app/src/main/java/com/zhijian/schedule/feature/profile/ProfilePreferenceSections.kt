@@ -24,7 +24,7 @@ import com.zhijian.schedule.core.theme.ThemePresets
 import com.zhijian.schedule.core.ui.JellySwitch
 import com.zhijian.schedule.core.ui.RevealState
 
-/**
+/*
  * 「我的」页的偏好设置分组：主题风格 / 深色模式 / 网格风格 / 课表显示 / 上课提醒。
  *
  * 每个分组只接数据与回调，落库与换肤由 ProfileScreen 接线；分组内共用
@@ -50,18 +50,19 @@ internal fun ProfileThemeSection(
                 Box(
                     Modifier.onGloballyPositioned {
                         anchor.bounds = it.boundsInRoot()
-                    }
+                    },
                 ) {
                     ProfileChip(
                         label = preset.name,
                         selected = selectedThemeId == preset.id,
                         onClick = {
-                            val accepted = reveal.requestTheme(
-                                toId = preset.id,
-                                fromId = selectedThemeId,
-                                chipBoundsInRoot = anchor.bounds,
-                                fromBg = colors.bg,
-                            )
+                            val accepted =
+                                reveal.requestTheme(
+                                    toId = preset.id,
+                                    fromId = selectedThemeId,
+                                    chipBoundsInRoot = anchor.bounds,
+                                    fromBg = colors.bg,
+                                )
                             // 只有「点的就是正在渲染/正在去的那颗」才不落库；
                             // 扩散进行中再点别的主题会被受理：定格当前帧，从新胶囊重新起播
                             if (accepted) onSelectTheme(preset.id)
@@ -75,7 +76,10 @@ internal fun ProfileThemeSection(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun ProfileDarkModeSection(darkMode: Int, onSelect: (Int) -> Unit) {
+internal fun ProfileDarkModeSection(
+    darkMode: Int,
+    onSelect: (Int) -> Unit,
+) {
     Column {
         SectionTitle("深色模式")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -92,7 +96,10 @@ internal fun ProfileDarkModeSection(darkMode: Int, onSelect: (Int) -> Unit) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun ProfileGridStyleSection(gridStyle: String, onSelect: (String) -> Unit) {
+internal fun ProfileGridStyleSection(
+    gridStyle: String,
+    onSelect: (String) -> Unit,
+) {
     val colors = LocalCourseColors.current
     Column {
         SectionTitle("网格风格")
@@ -106,10 +113,11 @@ internal fun ProfileGridStyleSection(gridStyle: String, onSelect: (String) -> Un
             }
         }
         Text(
-            text = when (gridStyle) {
-                GridStyles.BLOCK -> "去掉全部网格线：只留三段时段底纹与色块自身分层，适合信息密度高的课表"
-                else -> "上午 / 下午 / 晚上三段标题 + 间距分层，段内只留一条 hairline，课块用同色系容器"
-            },
+            text =
+                when (gridStyle) {
+                    GridStyles.BLOCK -> "去掉全部网格线：只留三段时段底纹与色块自身分层，适合信息密度高的课表"
+                    else -> "上午 / 下午 / 晚上三段标题 + 间距分层，段内只留一条 hairline，课块用同色系容器"
+                },
             fontSize = 11.sp,
             color = colors.textMuted,
             modifier = Modifier.padding(start = 2.dp, top = 6.dp),

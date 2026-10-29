@@ -6,8 +6,8 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
@@ -60,9 +60,10 @@ internal fun CourseOverlay(
     // 入场序列：阅读顺序（先上后下，同一节内周一→周日），逐块延迟 = 序号 × 节拍。
     // 旧实现是「每列 +26ms、每行 +30ms」——延迟由坐标算出来，同一行/同一列的块几乎同时
     // 起播，一屏十来个块全挤在 340ms 里起完，读起来是一整片涌上来，不是逐个。
-    val cells = visibleDays
-        .flatMapIndexed { colIndex, day -> ui.coursesAt(week, day).map { Triple(colIndex, day, it) } }
-        .sortedWith(compareBy({ it.third.startSection }, { it.first }))
+    val cells =
+        visibleDays
+            .flatMapIndexed { colIndex, day -> ui.coursesAt(week, day).map { Triple(colIndex, day, it) } }
+            .sortedWith(compareBy({ it.third.startSection }, { it.first }))
     val step = entranceStepMs(cells.size)
 
     cells.forEachIndexed { index, (colIndex, day, course) ->
@@ -114,30 +115,36 @@ private fun CourseCell(
     val isDark = LocalIsDark.current
 
     // 只有今天这一列读时钟：正在上的课，块底显示「剩 X 分」
-    val remainingMin = if (isTodayColumn) {
-        val now = clock.value
-        val startTime = TimeUtils.parseTime(sections[startIndex - 1].startTime)
-        val endTime = TimeUtils.parseTime(sections[endIndex - 1].endTime)
-        if (
-            startTime != null && endTime != null &&
-            !now.toLocalTime().isBefore(startTime) && now.toLocalTime().isBefore(endTime)
-        ) {
-            Duration.between(now.toLocalTime(), endTime).toMinutes().toInt().coerceAtLeast(1)
+    val remainingMin =
+        if (isTodayColumn) {
+            val now = clock.value
+            val startTime = TimeUtils.parseTime(sections[startIndex - 1].startTime)
+            val endTime = TimeUtils.parseTime(sections[endIndex - 1].endTime)
+            if (
+                startTime != null &&
+                endTime != null &&
+                !now.toLocalTime().isBefore(startTime) &&
+                now.toLocalTime().isBefore(endTime)
+            ) {
+                Duration
+                    .between(now.toLocalTime(), endTime)
+                    .toMinutes()
+                    .toInt()
+                    .coerceAtLeast(1)
+            } else {
+                null
+            }
         } else {
             null
         }
-    } else {
-        null
-    }
 
     Box(
         Modifier
             .offset(
                 x = metrics.timeAxisWidth + dayWidth * colIndex + 1.dp,
                 y = layout.sectionTop(startIndex - 1) + 1.5.dp,
-            )
-            .width(dayWidth - 2.dp)
-            .height(metrics.sectionHeight * span - 3.dp)
+            ).width(dayWidth - 2.dp)
+            .height(metrics.sectionHeight * span - 3.dp),
     ) {
         CourseBlock(
             course = course,

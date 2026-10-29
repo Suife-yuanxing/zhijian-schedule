@@ -24,9 +24,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -99,9 +99,10 @@ fun OcrReviewContent(
         TapButton(
             onClick = onConfirm,
             enabled = review.drafts.isNotEmpty(),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
         ) { Text("下一步（${review.drafts.size} 门）") }
     }
 
@@ -124,7 +125,10 @@ fun OcrReviewContent(
 }
 
 @Composable
-internal fun DraftRow(draft: CourseDraft, onClick: () -> Unit) {
+internal fun DraftRow(
+    draft: CourseDraft,
+    onClick: () -> Unit,
+) {
     val colors = LocalCourseColors.current
     val pressSource = remember { MutableInteractionSource() }
     Row(
@@ -135,8 +139,7 @@ internal fun DraftRow(draft: CourseDraft, onClick: () -> Unit) {
                 interactionSource = pressSource,
                 indication = LocalIndication.current,
                 onClick = onClick,
-            )
-            .padding(horizontal = 20.dp, vertical = 10.dp),
+            ).padding(horizontal = 20.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
@@ -147,12 +150,13 @@ internal fun DraftRow(draft: CourseDraft, onClick: () -> Unit) {
                 fontWeight = FontWeight.Medium,
             )
             Text(
-                text = buildString {
-                    append(TimeUtils.dayName(draft.dayOfWeek))
-                    append(" · 第${draft.startSection}-${draft.endSection}节")
-                    if (draft.room.isNotBlank()) append(" · ${draft.room}")
-                    append(" · ${WeekMask.toExpression(draft.weekMask)}")
-                },
+                text =
+                    buildString {
+                        append(TimeUtils.dayName(draft.dayOfWeek))
+                        append(" · 第${draft.startSection}-${draft.endSection}节")
+                        if (draft.room.isNotBlank()) append(" · ${draft.room}")
+                        append(" · ${WeekMask.toExpression(draft.weekMask)}")
+                    },
                 fontSize = 12.sp,
                 color = colors.textMuted,
             )

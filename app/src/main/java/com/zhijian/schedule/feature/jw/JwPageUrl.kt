@@ -1,6 +1,6 @@
 package com.zhijian.schedule.feature.jw
 
-/**
+/*
  * 教务导入页的 URL 判定与规范化。
  *
  * 这里全是纯字符串逻辑：不碰 WebView、不碰 Compose，因此可以放进本机 JVM 单测
@@ -25,8 +25,7 @@ internal fun isJwLoggedInPage(pageUrl: String): Boolean =
         pageUrl.contains("index_initMenu", true)
 
 /** 停在统一身份认证登录页（sso.jsp 自动跳转而来） */
-internal fun isJwAuthserverPage(pageUrl: String): Boolean =
-    pageUrl.contains("authserver", true)
+internal fun isJwAuthserverPage(pageUrl: String): Boolean = pageUrl.contains("authserver", true)
 
 /**
  * 两个地址是否同一主机（忽略 scheme 与端口）。
@@ -64,7 +63,10 @@ private fun hostOf(url: String): String? {
  * @param blankPage 未配置时的空白页常量（[JwImportViewModel.BLANK_PAGE]）：必须原样返回，
  *   不能被补成 https://about:blank
  */
-internal fun normalizeJwUrl(value: String, blankPage: String): String {
+internal fun normalizeJwUrl(
+    value: String,
+    blankPage: String,
+): String {
     val trimmed = value.trim()
     return when {
         trimmed.isEmpty() -> ""

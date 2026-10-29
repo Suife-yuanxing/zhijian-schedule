@@ -27,7 +27,9 @@ import androidx.compose.ui.unit.dp
 import com.zhijian.schedule.core.theme.LocalCoursePreset
 
 /** 承载 RuntimeShader 的 Brush：draw 阶段更新 uniform，复用同一 shader 实例 */
-internal class SolidShaderBrush(private val shader: Shader) : ShaderBrush() {
+internal class SolidShaderBrush(
+    private val shader: Shader,
+) : ShaderBrush() {
     override fun createShader(size: Size): Shader = shader
 }
 
@@ -74,18 +76,21 @@ fun Modifier.glassSurface(
     return this.drawWithCache {
         val r = shape.radiusPx(size, this)
         val cr = CornerRadius(r, r)
-        val pillPath = Path().apply {
-            addRoundRect(RoundRect(0f, 0f, size.width, size.height, cr, cr))
-        }
-        val rimBrush = Brush.linearGradient(
-            colors = listOf(
-                Color.White.copy(alpha = 0.40f),
-                Color.White.copy(alpha = 0.06f),
-                Color.White.copy(alpha = 0.18f),
-            ),
-            start = Offset(0f, 0f),
-            end = Offset(size.width, size.height),
-        )
+        val pillPath =
+            Path().apply {
+                addRoundRect(RoundRect(0f, 0f, size.width, size.height, cr, cr))
+            }
+        val rimBrush =
+            Brush.linearGradient(
+                colors =
+                    listOf(
+                        Color.White.copy(alpha = 0.40f),
+                        Color.White.copy(alpha = 0.06f),
+                        Color.White.copy(alpha = 0.18f),
+                    ),
+                start = Offset(0f, 0f),
+                end = Offset(size.width, size.height),
+            )
         val strokePx = 1.2.dp.toPx()
         onDrawBehind {
             val t = clock?.value ?: 0f
@@ -97,11 +102,12 @@ fun Modifier.glassSurface(
                 val thickW = w * 0.42f
                 val xt = ((t * 0.055f) % 1.4f - 0.2f) * w
                 drawRect(
-                    brush = Brush.horizontalGradient(
-                        colors = listOf(Color.Transparent, tint.copy(alpha = bodyAlpha * 0.85f), Color.Transparent),
-                        startX = xt,
-                        endX = xt + thickW,
-                    ),
+                    brush =
+                        Brush.horizontalGradient(
+                            colors = listOf(Color.Transparent, tint.copy(alpha = bodyAlpha * 0.85f), Color.Transparent),
+                            startX = xt,
+                            endX = xt + thickW,
+                        ),
                     topLeft = Offset(xt, 0f),
                     size = Size(thickW, h),
                 )
@@ -109,22 +115,24 @@ fun Modifier.glassSurface(
                 val bandW1 = w * 0.30f
                 val x1 = (1.15f - (t * 0.16f) % 1.4f) * w
                 drawRect(
-                    brush = Brush.horizontalGradient(
-                        colors = listOf(Color.Transparent, Color.White.copy(alpha = 0.12f), Color.Transparent),
-                        startX = x1,
-                        endX = x1 + bandW1,
-                    ),
+                    brush =
+                        Brush.horizontalGradient(
+                            colors = listOf(Color.Transparent, Color.White.copy(alpha = 0.12f), Color.Transparent),
+                            startX = x1,
+                            endX = x1 + bandW1,
+                        ),
                     topLeft = Offset(x1, 0f),
                     size = Size(bandW1, h),
                 )
                 val bandW2 = w * 0.22f
                 val x2 = ((t * 0.115f) % 1.4f - 0.2f) * w
                 drawRect(
-                    brush = Brush.horizontalGradient(
-                        colors = listOf(Color.Transparent, Color.White.copy(alpha = 0.09f), Color.Transparent),
-                        startX = x2,
-                        endX = x2 + bandW2,
-                    ),
+                    brush =
+                        Brush.horizontalGradient(
+                            colors = listOf(Color.Transparent, Color.White.copy(alpha = 0.09f), Color.Transparent),
+                            startX = x2,
+                            endX = x2 + bandW2,
+                        ),
                     topLeft = Offset(x2, 0f),
                     size = Size(bandW2, h),
                 )
@@ -132,20 +140,22 @@ fun Modifier.glassSurface(
                 val tiltValue = tilt?.value ?: Offset.Zero
                 val highlight = Offset((0.5f - tiltValue.x * 0.34f) * w, (0.26f - tiltValue.y * 0.20f) * h)
                 drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(Color.White.copy(alpha = 0.10f), Color.Transparent),
-                        center = highlight,
-                        radius = h,
-                    ),
+                    brush =
+                        Brush.radialGradient(
+                            colors = listOf(Color.White.copy(alpha = 0.10f), Color.Transparent),
+                            center = highlight,
+                            radius = h,
+                        ),
                     radius = h,
                     center = highlight,
                 )
                 drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(Color.White.copy(alpha = 0.14f), Color.Transparent),
-                        center = highlight,
-                        radius = h * 0.34f,
-                    ),
+                    brush =
+                        Brush.radialGradient(
+                            colors = listOf(Color.White.copy(alpha = 0.14f), Color.Transparent),
+                            center = highlight,
+                            radius = h * 0.34f,
+                        ),
                     radius = h * 0.34f,
                     center = highlight,
                 )
@@ -213,9 +223,10 @@ fun Modifier.glassBackdropSurface(
             GlassRuntime.attachLensEffect(backdrop.layer, lensShader)
             backdrop.lensAttachSignature = signature
         }
-        val pill = Path().apply {
-            addRoundRect(RoundRect(0f, 0f, size.width, size.height, CornerRadius(r, r), CornerRadius(r, r)))
-        }
+        val pill =
+            Path().apply {
+                addRoundRect(RoundRect(0f, 0f, size.width, size.height, CornerRadius(r, r), CornerRadius(r, r)))
+            }
         clipPath(pill) {
             translate(left = -origin.x, top = -origin.y) { drawLayer(backdrop.layer) }
         }
@@ -280,19 +291,22 @@ fun Modifier.glassDroplet(
     return this.drawWithCache {
         val r = shape.radiusPx(size, this)
         val cr = CornerRadius(r, r)
-        val pillPath = Path().apply {
-            addRoundRect(RoundRect(0f, 0f, size.width, size.height, cr, cr))
-        }
-        val topGlowBrush = Brush.verticalGradient(
-            colors = listOf(Color.White.copy(alpha = 0.15f), Color.Transparent),
-            startY = 0f,
-            endY = size.height * 0.5f,
-        )
-        val edgeBrush = Brush.verticalGradient(
-            colors = listOf(Color.White.copy(alpha = 0.62f), Color.White.copy(alpha = 0.26f)),
-            startY = 0f,
-            endY = size.height,
-        )
+        val pillPath =
+            Path().apply {
+                addRoundRect(RoundRect(0f, 0f, size.width, size.height, cr, cr))
+            }
+        val topGlowBrush =
+            Brush.verticalGradient(
+                colors = listOf(Color.White.copy(alpha = 0.15f), Color.Transparent),
+                startY = 0f,
+                endY = size.height * 0.5f,
+            )
+        val edgeBrush =
+            Brush.verticalGradient(
+                colors = listOf(Color.White.copy(alpha = 0.62f), Color.White.copy(alpha = 0.26f)),
+                startY = 0f,
+                endY = size.height,
+            )
         val strokePx = 1.2.dp.toPx()
         onDrawBehind {
             val t = clock?.value ?: 0f
@@ -304,11 +318,12 @@ fun Modifier.glassDroplet(
                 val thickW = w * 0.66f
                 val xt = ((t * 0.055f) % 1.5f - 0.25f) * w
                 drawRect(
-                    brush = Brush.horizontalGradient(
-                        colors = listOf(Color.Transparent, tint.copy(alpha = alpha * 0.55f), Color.Transparent),
-                        startX = xt,
-                        endX = xt + thickW,
-                    ),
+                    brush =
+                        Brush.horizontalGradient(
+                            colors = listOf(Color.Transparent, tint.copy(alpha = alpha * 0.55f), Color.Transparent),
+                            startX = xt,
+                            endX = xt + thickW,
+                        ),
                     topLeft = Offset(xt, 0f),
                     size = Size(thickW, h),
                 )
@@ -316,11 +331,12 @@ fun Modifier.glassDroplet(
                 val bandW = w * 0.24f
                 val xs = (1.2f - (t * 0.16f) % 1.5f) * w
                 drawRect(
-                    brush = Brush.horizontalGradient(
-                        colors = listOf(Color.Transparent, Color.White.copy(alpha = 0.14f), Color.Transparent),
-                        startX = xs,
-                        endX = xs + bandW,
-                    ),
+                    brush =
+                        Brush.horizontalGradient(
+                            colors = listOf(Color.Transparent, Color.White.copy(alpha = 0.14f), Color.Transparent),
+                            startX = xs,
+                            endX = xs + bandW,
+                        ),
                     topLeft = Offset(xs, 0f),
                     size = Size(bandW, h),
                 )
@@ -331,5 +347,7 @@ fun Modifier.glassDroplet(
     }
 }
 
-private fun RoundedCornerShape.radiusPx(size: Size, density: Density): Float =
-    topStart.toPx(size, density)
+private fun RoundedCornerShape.radiusPx(
+    size: Size,
+    density: Density,
+): Float = topStart.toPx(size, density)

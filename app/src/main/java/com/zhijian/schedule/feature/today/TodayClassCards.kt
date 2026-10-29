@@ -21,8 +21,8 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.State
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,9 +34,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhijian.schedule.core.theme.LocalCourseColors
+import com.zhijian.schedule.core.theme.LocalCoursePreset
 import com.zhijian.schedule.core.theme.LocalIsDark
 import com.zhijian.schedule.core.theme.courseTone
-import com.zhijian.schedule.core.theme.LocalCoursePreset
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.cardTilt
 import com.zhijian.schedule.core.ui.cardTiltGlare
@@ -79,11 +79,12 @@ internal fun CurrentClassCard(
     val tilt = rememberCardTiltState()
     val tiltStyle = rememberFocusCardTiltStyle()
     val motionAllowed = rememberMotionAllowed()
-    val sectionText = when {
-        item.course.startSection <= 0 -> null
-        item.course.startSection == item.course.endSection -> "第${item.course.startSection}节"
-        else -> "第${item.course.startSection}-${item.course.endSection}节"
-    }
+    val sectionText =
+        when {
+            item.course.startSection <= 0 -> null
+            item.course.startSection == item.course.endSection -> "第${item.course.startSection}节"
+            else -> "第${item.course.startSection}-${item.course.endSection}节"
+        }
 
     // 时间条：只在「进程内第一次进入今日」时做一次入场扫描（全亮 → 真实进度，900ms），
     // 之后每次进入直接落在当前进度上，不再自己动。
@@ -114,10 +115,11 @@ internal fun CurrentClassCard(
     val dotPulse by live.animateFloat(
         initialValue = 0.4f,
         targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1100),
-            repeatMode = RepeatMode.Reverse,
-        ),
+        animationSpec =
+            infiniteRepeatable(
+                animation = tween(durationMillis = 1100),
+                repeatMode = RepeatMode.Reverse,
+            ),
         label = "liveDot",
     )
 
@@ -136,8 +138,7 @@ internal fun CurrentClassCard(
                 style = tiltStyle,
                 highlight = tone.highlight,
                 shade = tone.shade,
-            )
-            .border(1.dp, tone.line, shape)
+            ).border(1.dp, tone.line, shape)
             .padding(horizontal = 18.dp, vertical = 16.dp),
     ) {
         Row(
@@ -148,7 +149,7 @@ internal fun CurrentClassCard(
                 Modifier
                     .size(10.dp)
                     .clip(RoundedCornerShape(3.dp))
-                    .background(tone.ink.copy(alpha = dotPulse))
+                    .background(tone.ink.copy(alpha = dotPulse)),
             )
             Spacer(Modifier.width(8.dp))
             Text(
@@ -164,10 +165,11 @@ internal fun CurrentClassCard(
                     color = tone.ink,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Medium,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(tone.ink.copy(alpha = 0.12f))
-                        .padding(horizontal = 8.dp, vertical = 3.dp),
+                    modifier =
+                        Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(tone.ink.copy(alpha = 0.12f))
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
                 )
             }
         }
@@ -180,9 +182,10 @@ internal fun CurrentClassCard(
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.cardTiltParallax(state = tilt, style = tiltStyle, depth = 12.dp),
         )
-        val info = listOf(item.course.room, item.course.teacher)
-            .filter { it.isNotBlank() }
-            .joinToString(" · ")
+        val info =
+            listOf(item.course.room, item.course.teacher)
+                .filter { it.isNotBlank() }
+                .joinToString(" · ")
         if (info.isNotBlank()) {
             Spacer(Modifier.height(4.dp))
             Text(
@@ -214,10 +217,11 @@ internal fun CurrentClassCard(
         Spacer(Modifier.height(12.dp))
         LinearProgressIndicator(
             progress = { progressAnim.value },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(4.dp)
-                .clip(RoundedCornerShape(2.dp)),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp)),
             color = tone.ink,
             trackColor = tone.line.copy(alpha = 0.5f),
         )
@@ -239,7 +243,10 @@ internal fun CurrentClassCard(
 }
 
 @Composable
-internal fun NextClassCard(item: TodayCourseItem, clock: State<LocalDateTime>) {
+internal fun NextClassCard(
+    item: TodayCourseItem,
+    clock: State<LocalDateTime>,
+) {
     val now = clock.value.toLocalTime()
     val colors = LocalCourseColors.current
     val start = item.startTime ?: return
@@ -248,9 +255,10 @@ internal fun NextClassCard(item: TodayCourseItem, clock: State<LocalDateTime>) {
     // 与 CurrentClassCard / 课表色块同一套派生，这门课的"身份色"两处必然一致
     val isDark = LocalIsDark.current
     val preset = LocalCoursePreset.current
-    val tone = remember(item.course.color, isDark, preset.toneBias) {
-        courseTone(Color(item.course.color), isDark, preset.toneBias)
-    }
+    val tone =
+        remember(item.course.color, isDark, preset.toneBias) {
+            courseTone(Color(item.course.color), isDark, preset.toneBias)
+        }
     val shape = RoundedCornerShape(14.dp)
 
     Row(
@@ -266,7 +274,7 @@ internal fun NextClassCard(item: TodayCourseItem, clock: State<LocalDateTime>) {
                 .width(3.dp)
                 .height(34.dp)
                 .clip(RoundedCornerShape(2.dp))
-                .background(tone.ink)
+                .background(tone.ink),
         )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
@@ -278,15 +286,17 @@ internal fun NextClassCard(item: TodayCourseItem, clock: State<LocalDateTime>) {
                 maxLines = 1,
             )
             Text(
-                text = buildString {
-                    if (item.course.room.isNotBlank()) append(item.course.room)
-                    val range = buildString {
-                        append(TimeUtils.formatTime(start))
-                        end?.let { append("–").append(TimeUtils.formatTime(it)) }
-                    }
-                    if (isNotEmpty()) append(" · ")
-                    append(range)
-                },
+                text =
+                    buildString {
+                        if (item.course.room.isNotBlank()) append(item.course.room)
+                        val range =
+                            buildString {
+                                append(TimeUtils.formatTime(start))
+                                end?.let { append("–").append(TimeUtils.formatTime(it)) }
+                            }
+                        if (isNotEmpty()) append(" · ")
+                        append(range)
+                    },
                 style = MaterialTheme.typography.bodySmall,
                 color = tone.inkMuted,
                 maxLines = 1,
@@ -299,10 +309,11 @@ internal fun NextClassCard(item: TodayCourseItem, clock: State<LocalDateTime>) {
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
-            modifier = Modifier
-                .clip(RoundedCornerShape(9.dp))
-                .background(colors.accent.copy(alpha = 0.12f))
-                .padding(horizontal = 9.dp, vertical = 5.dp),
+            modifier =
+                Modifier
+                    .clip(RoundedCornerShape(9.dp))
+                    .background(colors.accent.copy(alpha = 0.12f))
+                    .padding(horizontal = 9.dp, vertical = 5.dp),
         )
     }
 }

@@ -4,16 +4,16 @@ import com.zhijian.schedule.core.data.db.CourseEntity
 import com.zhijian.schedule.core.model.CourseDraft
 import com.zhijian.schedule.core.util.WeekMask
 import com.zhijian.schedule.feature.importer.parsers.ParseResult
-import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
-import java.util.zip.GZIPInputStream
-import java.util.zip.GZIPOutputStream
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.util.zip.GZIPInputStream
+import java.util.zip.GZIPOutputStream
 
 /**
  * 课程分享二维码的载荷编解码：「ZJKB1:」前缀 + gzip(紧凑数组 JSON)。
@@ -21,7 +21,6 @@ import kotlinx.serialization.json.intOrNull
  * 字段名越省，二维码容量越富余；解码产物直接进既有导入预览管线。
  */
 object QrPayload {
-
     /** QR version 40 / 纠错 L 的二进制容量上限（字节） */
     const val MAX_QR_BYTES = 2953
 
@@ -29,54 +28,90 @@ object QrPayload {
     private val PREFIX_BYTES = PREFIX.toByteArray(Charsets.US_ASCII)
 
     fun encode(courses: List<CourseEntity>): ByteArray {
-        val array = buildJsonArray {
-            courses.forEach { c ->
-                add(buildJsonArray {
-                    add(JsonPrimitive(c.name))
-                    add(JsonPrimitive(c.teacher))
-                    add(JsonPrimitive(c.room))
-                    add(JsonPrimitive(c.dayOfWeek))
-                    add(JsonPrimitive(c.startSection))
-                    add(JsonPrimitive(c.endSection))
-                    add(JsonPrimitive(c.weekMask))
-                })
+        val array =
+            buildJsonArray {
+                courses.forEach { c ->
+                    add(
+                        buildJsonArray {
+                            add(JsonPrimitive(c.name))
+                            add(JsonPrimitive(c.teacher))
+                            add(JsonPrimitive(c.room))
+                            add(JsonPrimitive(c.dayOfWeek))
+                            add(JsonPrimitive(c.startSection))
+                            add(JsonPrimitive(c.endSection))
+                            add(JsonPrimitive(c.weekMask))
+                        },
+                    )
+                }
             }
-        }
         val text = Json.encodeToString(JsonArray.serializer(), array)
         return PREFIX_BYTES + gzip(text.toByteArray(Charsets.UTF_8))
     }
 
-    fun decode(raw: ByteArray, totalWeeks: Int): ParseResult {
+    fun decode(
+        raw: ByteArray,
+        totalWeeks: Int,
+    ): ParseResult =
+        when (val payload = readPayload(raw)) {
+            is Payload.Parsed -> buildResult(payload.root, totalWeeks)
+            is Payload.Broken -> ParseResult.error(payload.message)
+        }
+
+    /** 解码中间结果：要么拿到课程数组，要么带着给用户看的原因失败 */
+    private sealed interface Payload {
+        data class Parsed(
+            val root: JsonArray,
+        ) : Payload
+
+        data class Broken(
+            val message: String,
+        ) : Payload
+    }
+
+    /** 校验前缀 → 解压 → 解析成 JSON 数组；三步各有各的提示语 */
+    private fun readPayload(raw: ByteArray): Payload {
         if (raw.size <= PREFIX_BYTES.size ||
             !raw.copyOfRange(0, PREFIX_BYTES.size).contentEquals(PREFIX_BYTES)
         ) {
-            return ParseResult.error("这不是「纸间课表」的课程分享码")
+            return Payload.Broken("这不是「纸间课表」的课程分享码")
         }
-        val text = runCatching { gunzip(raw, PREFIX_BYTES.size).toString(Charsets.UTF_8) }
-            .getOrElse {
-                return ParseResult.error("分享码数据不完整，请对准二维码重试")
-            }
-        val root = runCatching { Json.parseToJsonElement(text) as? JsonArray }.getOrNull()
-            ?: return ParseResult.error("分享码内容无法识别")
+        val text =
+            runCatching { gunzip(raw, PREFIX_BYTES.size).toString(Charsets.UTF_8) }.getOrNull()
+                ?: return Payload.Broken("分享码数据不完整，请对准二维码重试")
+        val root =
+            runCatching { Json.parseToJsonElement(text) as? JsonArray }.getOrNull()
+                ?: return Payload.Broken("分享码内容无法识别")
+        return Payload.Parsed(root)
+    }
+
+    private fun buildResult(
+        root: JsonArray,
+        totalWeeks: Int,
+    ): ParseResult {
         val drafts = mutableListOf<CourseDraft>()
         var skipped = 0
         root.forEach { element ->
             val draft = (element as? JsonArray)?.let { mapCourse(it, totalWeeks) }
             if (draft != null) drafts += draft else skipped++
         }
-        if (drafts.isEmpty()) {
-            return ParseResult(emptyList(), skipped, listOf("分享码里没有可用的课程"))
-        }
+        if (drafts.isEmpty()) return ParseResult(emptyList(), skipped, listOf("分享码里没有可用的课程"))
         return ParseResult(drafts, skipped)
     }
 
-    private fun mapCourse(arr: JsonArray, totalWeeks: Int): CourseDraft? {
+    private fun mapCourse(
+        arr: JsonArray,
+        totalWeeks: Int,
+    ): CourseDraft? {
         if (arr.size < 7) return null
+
         fun str(index: Int): String = (arr[index] as? JsonPrimitive)?.contentOrNull.orEmpty()
+
         fun int(index: Int): Int? = (arr[index] as? JsonPrimitive)?.intOrNull
-        val name = str(0).takeIf { it.isNotBlank() } ?: return null
-        val day = int(3) ?: return null
-        val start = int(4) ?: return null
+        val name = str(0).takeIf { it.isNotBlank() }
+        val day = int(3)
+        val start = int(4)
+        // 名 / 星期 / 起始节任一缺失即丢弃整条
+        if (name == null || day == null || start == null) return null
         val end = int(5) ?: start
         val mask = str(6).takeIf { it.isNotEmpty() && it.all { ch -> ch == '0' || ch == '1' } }
         return CourseDraft(
@@ -96,6 +131,8 @@ object QrPayload {
         return out.toByteArray()
     }
 
-    private fun gunzip(raw: ByteArray, offset: Int): ByteArray =
-        GZIPInputStream(ByteArrayInputStream(raw, offset, raw.size - offset)).use { it.readBytes() }
+    private fun gunzip(
+        raw: ByteArray,
+        offset: Int,
+    ): ByteArray = GZIPInputStream(ByteArrayInputStream(raw, offset, raw.size - offset)).use { it.readBytes() }
 }

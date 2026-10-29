@@ -5,23 +5,25 @@ import android.content.Context
 import android.content.Intent
 import com.zhijian.schedule.core.repository.ScheduleRepository
 import dagger.hilt.android.AndroidEntryPoint
-import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class ReminderReceiver : BroadcastReceiver() {
-
     @Inject
     lateinit var repository: ScheduleRepository
 
     @Inject
     lateinit var alarmScheduler: AlarmScheduler
 
-    override fun onReceive(context: Context, intent: Intent) {
+    override fun onReceive(
+        context: Context,
+        intent: Intent,
+    ) {
         val courseId = intent.getLongExtra(EXTRA_COURSE_ID, -1L)
         val name = intent.getStringExtra(EXTRA_COURSE_NAME).orEmpty()
         val room = intent.getStringExtra(EXTRA_ROOM).orEmpty()

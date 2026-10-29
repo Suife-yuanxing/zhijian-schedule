@@ -30,14 +30,15 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal fun CameraPreview(onDecoded: (ByteArray) -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val previewView = remember {
-        PreviewView(context).apply {
-            scaleType = PreviewView.ScaleType.FILL_CENTER
-            // SurfaceView 独立于窗口图层，退出时无法随 Compose 一起淡出/位移，会留下残影；
-            // TextureView 参与窗口合成，转场和窗口动画都能正常跟随。
-            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+    val previewView =
+        remember {
+            PreviewView(context).apply {
+                scaleType = PreviewView.ScaleType.FILL_CENTER
+                // SurfaceView 独立于窗口图层，退出时无法随 Compose 一起淡出/位移，会留下残影；
+                // TextureView 参与窗口合成，转场和窗口动画都能正常跟随。
+                implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+            }
         }
-    }
     val executor = remember { Executors.newSingleThreadExecutor() }
     val decodedOnce = remember { AtomicBoolean(false) }
 
@@ -53,25 +54,28 @@ internal fun CameraPreview(onDecoded: (ByteArray) -> Unit) {
             runCatching {
                 val cameraProvider = providerFuture.get()
                 provider = cameraProvider
-                val preview = Preview.Builder().build().also {
-                    it.surfaceProvider = previewView.surfaceProvider
-                }
-                val analysis = ImageAnalysis.Builder()
-                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                    .setResolutionSelector(
-                        ResolutionSelector.Builder()
-                            .setResolutionStrategy(
-                                ResolutionStrategy(
-                                    Size(1280, 960),
-                                    ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER,
-                                )
-                            )
-                            .build()
-                    )
-                    .build()
-                val qrAnalyzer = QrAnalyzer { bytes ->
-                    if (decodedOnce.compareAndSet(false, true)) onDecoded(bytes)
-                }
+                val preview =
+                    Preview.Builder().build().also {
+                        it.surfaceProvider = previewView.surfaceProvider
+                    }
+                val analysis =
+                    ImageAnalysis
+                        .Builder()
+                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                        .setResolutionSelector(
+                            ResolutionSelector
+                                .Builder()
+                                .setResolutionStrategy(
+                                    ResolutionStrategy(
+                                        Size(1280, 960),
+                                        ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER,
+                                    ),
+                                ).build(),
+                        ).build()
+                val qrAnalyzer =
+                    QrAnalyzer { bytes ->
+                        if (decodedOnce.compareAndSet(false, true)) onDecoded(bytes)
+                    }
                 analyzer = qrAnalyzer
                 analysis.setAnalyzer(executor, qrAnalyzer)
                 cameraProvider.unbindAll()
@@ -95,11 +99,13 @@ internal fun CameraPreview(onDecoded: (ByteArray) -> Unit) {
     AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
 }
 
-private class QrAnalyzer(private val onQr: (ByteArray) -> Unit) : ImageAnalysis.Analyzer {
-
-    private val scanner = BarcodeScanning.getClient(
-        BarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build()
-    )
+private class QrAnalyzer(
+    private val onQr: (ByteArray) -> Unit,
+) : ImageAnalysis.Analyzer {
+    private val scanner =
+        BarcodeScanning.getClient(
+            BarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build(),
+        )
     private val processing = AtomicBoolean(false)
 
     override fun analyze(image: ImageProxy) {
@@ -108,11 +114,11 @@ private class QrAnalyzer(private val onQr: (ByteArray) -> Unit) : ImageAnalysis.
             image.close()
             return
         }
-        scanner.process(InputImage.fromMediaImage(media, image.imageInfo.rotationDegrees))
+        scanner
+            .process(InputImage.fromMediaImage(media, image.imageInfo.rotationDegrees))
             .addOnSuccessListener { codes ->
                 codes.firstOrNull { it.rawBytes?.isNotEmpty() == true }?.rawBytes?.let(onQr)
-            }
-            .addOnCompleteListener {
+            }.addOnCompleteListener {
                 processing.set(false)
                 image.close()
             }

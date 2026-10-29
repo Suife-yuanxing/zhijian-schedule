@@ -16,7 +16,6 @@ import com.zhijian.schedule.core.theme.GlassSpec
  * 所有公开方法的调用点都必须先经 [supported] 短路，保证 minSdk 26 类加载安全。
  */
 object GlassRuntime {
-
     /** 真机降档预览开关（临时置 true 构建一次，截图后还原） */
     var forceFallbackForPreview: Boolean = false
 
@@ -25,9 +24,10 @@ object GlassRuntime {
     fun supported(context: Context): Boolean {
         supportedCache?.let { return it }
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        val ok = !forceFallbackForPreview &&
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            !am.isLowRamDevice
+        val ok =
+            !forceFallbackForPreview &&
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                !am.isLowRamDevice
         supportedCache = ok
         return ok
     }
@@ -68,10 +68,14 @@ object GlassRuntime {
      * 把折射着色器挂到背景图层上：uContent 自动采样图层内容（创建 Effect 时按名绑定）。
      * 注意：Effect 对 uniform 取快照——必须在挂载「之前」把静态参数写齐，挂载后再写不生效。
      */
-    fun attachLensEffect(layer: GraphicsLayer, shader: RuntimeShader) {
-        layer.renderEffect = android.graphics.RenderEffect
-            .createRuntimeShaderEffect(shader, "uContent")
-            .asComposeRenderEffect()
+    fun attachLensEffect(
+        layer: GraphicsLayer,
+        shader: RuntimeShader,
+    ) {
+        layer.renderEffect =
+            android.graphics.RenderEffect
+                .createRuntimeShaderEffect(shader, "uContent")
+                .asComposeRenderEffect()
     }
 
     fun updateLens(

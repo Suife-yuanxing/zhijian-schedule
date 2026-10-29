@@ -3,23 +3,23 @@ package com.zhijian.schedule
 import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
-import com.zhijian.schedule.core.notifications.ExamReminderCoordinator
-import com.zhijian.schedule.core.notifications.Notifications
-import com.zhijian.schedule.core.notifications.ReminderCoordinator
 import com.zhijian.schedule.core.calendar.CalendarSyncCoordinator
 import com.zhijian.schedule.core.data.prefs.SettingsStore
 import com.zhijian.schedule.core.jw.SchoolCatalog
 import com.zhijian.schedule.core.jw.ensureLoaded
+import com.zhijian.schedule.core.notifications.ExamReminderCoordinator
+import com.zhijian.schedule.core.notifications.Notifications
+import com.zhijian.schedule.core.notifications.ReminderCoordinator
 import com.zhijian.schedule.core.repository.ScheduleRepository
 import com.zhijian.schedule.core.sync.SyncScheduler
 import com.zhijian.schedule.core.update.ApkDownloader
 import dagger.hilt.android.HiltAndroidApp
-import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 @HiltAndroidApp
 class ZhiJianApp :

@@ -10,14 +10,14 @@ import com.zhijian.schedule.core.repository.ScheduleRepository
 import com.zhijian.schedule.core.util.TimeUtils
 import com.zhijian.schedule.core.util.WeekMask
 import dagger.hilt.android.lifecycle.HiltViewModel
-import java.time.LocalDate
-import java.time.LocalTime
-import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.LocalTime
+import javax.inject.Inject
 
 data class TodayCourseItem(
     val course: CourseEntity,
@@ -37,55 +37,75 @@ data class TodayUiState(
 )
 
 @HiltViewModel
-class TodayViewModel @Inject constructor(
-    private val repository: ScheduleRepository,
-    private val holidayDao: HolidayDao,
-) : ViewModel() {
+class TodayViewModel
+    @Inject
+    constructor(
+        private val repository: ScheduleRepository,
+        private val holidayDao: HolidayDao,
+    ) : ViewModel() {
+        val uiState: StateFlow<TodayUiState> =
+            combine(
+                repository.activeTimetable,
+                repository.activeCourses,
+                repository.activeSections,
+                holidayDao.observeAll(),
+                repository.activeExams,
+            ) { timetable, courses, sections, holidays, exams ->
+                val today = LocalDate.now()
+                val start = timetable?.let { TimeUtils.parseDate(it.startDate) }
+                val week =
+                    if (timetable != null && start != null) {
+                        TimeUtils.weekOfSemester(start, timetable.totalWeeks, today)
+                    } else {
+                        null
+                    }
+                val dow = TimeUtils.dayOfWeek(today)
+                val items =
+                    if (week != null) {
+                        courses
+                            .filter { it.dayOfWeek == dow && WeekMask.contains(it.weekMask, week) }
+                            .sortedBy { it.startSection }
+                            .map { c ->
+                                TodayCourseItem(
+                                    course = c,
+                                    startTime =
+                                        sections
+                                            .getOrNull(c.startSection - 1)
+                                            ?.startTime
+                                            ?.let { TimeUtils.parseTime(it) },
+                                    endTime =
+                                        sections
+                                            .getOrNull(c.endSection - 1)
+                                            ?.endTime
+                                            ?.let { TimeUtils.parseTime(it) },
+                                )
+                            }
+                    } else {
+                        emptyList()
+                    }
+                val nowMillis = System.currentTimeMillis()
+                val horizonMillis =
+                    today
+                        .plusDays(14)
+                        .atTime(23, 59)
+                        .atZone(java.time.ZoneId.systemDefault())
+                        .toInstant()
+                        .toEpochMilli()
+                val nextExam =
+                    exams
+                        .filter { it.examTime >= nowMillis && it.examTime <= horizonMillis }
+                        .minByOrNull { it.examTime }
+                TodayUiState(
+                    timetableName = timetable?.name.orEmpty(),
+                    week = week,
+                    today = today,
+                    courses = items,
+                    todayHoliday = holidays.firstOrNull { it.date == today.toString() },
+                    nextExam = nextExam,
+                )
+            }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), TodayUiState())
 
-    val uiState: StateFlow<TodayUiState> = combine(
-        repository.activeTimetable,
-        repository.activeCourses,
-        repository.activeSections,
-        holidayDao.observeAll(),
-        repository.activeExams,
-    ) { timetable, courses, sections, holidays, exams ->
-        val today = LocalDate.now()
-        val start = timetable?.let { TimeUtils.parseDate(it.startDate) }
-        val week = if (timetable != null && start != null) {
-            TimeUtils.weekOfSemester(start, timetable.totalWeeks, today)
-        } else null
-        val dow = TimeUtils.dayOfWeek(today)
-        val items = if (week != null) {
-            courses
-                .filter { it.dayOfWeek == dow && WeekMask.contains(it.weekMask, week) }
-                .sortedBy { it.startSection }
-                .map { c ->
-                    TodayCourseItem(
-                        course = c,
-                        startTime = sections.getOrNull(c.startSection - 1)?.startTime
-                            ?.let { TimeUtils.parseTime(it) },
-                        endTime = sections.getOrNull(c.endSection - 1)?.endTime
-                            ?.let { TimeUtils.parseTime(it) },
-                    )
-                }
-        } else emptyList()
-        val nowMillis = System.currentTimeMillis()
-        val horizonMillis = today.plusDays(14).atTime(23, 59)
-            .atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
-        val nextExam = exams
-            .filter { it.examTime >= nowMillis && it.examTime <= horizonMillis }
-            .minByOrNull { it.examTime }
-        TodayUiState(
-            timetableName = timetable?.name.orEmpty(),
-            week = week,
-            today = today,
-            courses = items,
-            todayHoliday = holidays.firstOrNull { it.date == today.toString() },
-            nextExam = nextExam,
-        )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), TodayUiState())
-
-    fun deleteCourse(id: Long) {
-        viewModelScope.launch { repository.deleteCourse(id) }
+        fun deleteCourse(id: Long) {
+            viewModelScope.launch { repository.deleteCourse(id) }
+        }
     }
-}

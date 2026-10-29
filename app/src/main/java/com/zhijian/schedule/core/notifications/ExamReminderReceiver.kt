@@ -5,18 +5,20 @@ import android.content.Context
 import android.content.Intent
 import com.zhijian.schedule.core.data.db.ExamDao
 import dagger.hilt.android.AndroidEntryPoint
-import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 /** 考前提醒触发；考试时刻固定无需续排，但需防幽灵闹钟（考试已删而闹钟未及撤销） */
 @AndroidEntryPoint
 class ExamReminderReceiver : BroadcastReceiver() {
-
     @Inject lateinit var examDao: ExamDao
 
-    override fun onReceive(context: Context, intent: Intent) {
+    override fun onReceive(
+        context: Context,
+        intent: Intent,
+    ) {
         val examId = intent.getLongExtra(EXTRA_EXAM_ID, -1L)
         if (examId <= 0) return
         val pending = goAsync()

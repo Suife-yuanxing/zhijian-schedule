@@ -31,15 +31,16 @@ import androidx.glance.unit.ColorProvider
 import com.zhijian.schedule.MainActivity
 
 class TodayWidget : GlanceAppWidget() {
-
-    override suspend fun provideGlance(context: Context, id: GlanceId) {
+    override suspend fun provideGlance(
+        context: Context,
+        id: GlanceId,
+    ) {
         val data = loadTodayData(context)
         provideContent { TodayContent(data) }
     }
 }
 
-private @Composable
-fun TodayContent(data: WidgetTodayData) {
+@Composable private fun TodayContent(data: WidgetTodayData) {
     val dark = isSystemDark(LocalContext.current)
     val palette = presetOf(data.themeId)
     val colors = if (dark) palette.dark else palette.light
@@ -80,7 +81,7 @@ fun TodayContent(data: WidgetTodayData) {
                     Spacer(
                         GlanceModifier
                             .size(8.dp)
-                            .background(ColorProvider(Color(course.color)))
+                            .background(ColorProvider(Color(course.color))),
                     )
                     Spacer(GlanceModifier.width(8.dp))
                     Text(
@@ -90,11 +91,12 @@ fun TodayContent(data: WidgetTodayData) {
                     Spacer(GlanceModifier.width(8.dp))
                     Text(
                         text = course.name,
-                        style = TextStyle(
-                            color = if (course.isCurrent) ColorProvider(colors.accent) else text,
-                            fontSize = 13.sp,
-                            fontWeight = if (course.isCurrent) FontWeight.Bold else FontWeight.Medium,
-                        ),
+                        style =
+                            TextStyle(
+                                color = if (course.isCurrent) ColorProvider(colors.accent) else text,
+                                fontSize = 13.sp,
+                                fontWeight = if (course.isCurrent) FontWeight.Bold else FontWeight.Medium,
+                            ),
                         maxLines = 1,
                     )
                     if (course.room.isNotBlank()) {

@@ -27,7 +27,7 @@ data class TimetableEntity(
             parentColumns = ["id"],
             childColumns = ["tableId"],
             onDelete = ForeignKey.CASCADE,
-        )
+        ),
     ],
     indices = [Index("tableId")],
 )
@@ -54,7 +54,7 @@ data class TimeModeEntity(
             parentColumns = ["id"],
             childColumns = ["modeId"],
             onDelete = ForeignKey.CASCADE,
-        )
+        ),
     ],
     indices = [Index("modeId")],
 )
@@ -80,7 +80,7 @@ data class SectionTimeEntity(
             parentColumns = ["id"],
             childColumns = ["tableId"],
             onDelete = ForeignKey.CASCADE,
-        )
+        ),
     ],
     indices = [Index("tableId")],
 )
@@ -115,7 +115,7 @@ data class CourseEntity(
             parentColumns = ["id"],
             childColumns = ["tableId"],
             onDelete = ForeignKey.CASCADE,
-        )
+        ),
     ],
     indices = [Index("tableId")],
 )
@@ -137,7 +137,7 @@ data class ImportSnapshotEntity(
             parentColumns = ["id"],
             childColumns = ["tableId"],
             onDelete = ForeignKey.CASCADE,
-        )
+        ),
     ],
     indices = [Index("tableId")],
 )
@@ -163,7 +163,7 @@ data class ExamEntity(
             parentColumns = ["id"],
             childColumns = ["courseId"],
             onDelete = ForeignKey.CASCADE,
-        )
+        ),
     ],
     indices = [Index("courseId")],
 )

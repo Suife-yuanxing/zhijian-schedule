@@ -33,12 +33,13 @@ fun TapButton(
     val source = remember { MutableInteractionSource() }
     Button(
         onClick = onClick,
-        modifier = modifier.buttonFeedback(
-            interactionSource = source,
-            pressedScale = 0.97f,
-            enabled = enabled,
-            hapticType = hapticType,
-        ),
+        modifier =
+            modifier.buttonFeedback(
+                interactionSource = source,
+                pressedScale = 0.97f,
+                enabled = enabled,
+                hapticType = hapticType,
+            ),
         enabled = enabled,
         colors = colors,
         contentPadding = contentPadding,
@@ -60,12 +61,13 @@ fun TapTextButton(
     val source = remember { MutableInteractionSource() }
     TextButton(
         onClick = onClick,
-        modifier = modifier.buttonFeedback(
-            interactionSource = source,
-            pressedScale = 0.93f,
-            enabled = enabled,
-            hapticType = hapticType,
-        ),
+        modifier =
+            modifier.buttonFeedback(
+                interactionSource = source,
+                pressedScale = 0.93f,
+                enabled = enabled,
+                hapticType = hapticType,
+            ),
         enabled = enabled,
         colors = colors,
         contentPadding = contentPadding,
@@ -87,12 +89,13 @@ fun TapOutlinedButton(
     val source = remember { MutableInteractionSource() }
     OutlinedButton(
         onClick = onClick,
-        modifier = modifier.buttonFeedback(
-            interactionSource = source,
-            pressedScale = 0.97f,
-            enabled = enabled,
-            hapticType = hapticType,
-        ),
+        modifier =
+            modifier.buttonFeedback(
+                interactionSource = source,
+                pressedScale = 0.97f,
+                enabled = enabled,
+                hapticType = hapticType,
+            ),
         enabled = enabled,
         colors = colors,
         contentPadding = contentPadding,
@@ -113,12 +116,13 @@ fun TapIconButton(
     val source = remember { MutableInteractionSource() }
     IconButton(
         onClick = onClick,
-        modifier = modifier.buttonFeedback(
-            interactionSource = source,
-            pressedScale = 0.88f,
-            enabled = enabled,
-            hapticType = hapticType,
-        ),
+        modifier =
+            modifier.buttonFeedback(
+                interactionSource = source,
+                pressedScale = 0.88f,
+                enabled = enabled,
+                hapticType = hapticType,
+            ),
         enabled = enabled,
         colors = colors,
         interactionSource = source,

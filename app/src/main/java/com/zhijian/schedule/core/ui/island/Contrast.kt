@@ -17,7 +17,6 @@ import kotlin.math.pow
  * 不动全局 textMuted，避免把正文整体压黑。
  */
 object Contrast {
-
     /** sRGB 通道（0~1，已含 gamma）→ 线性光强 */
     private fun linearize(v: Float): Double {
         val d = v.toDouble()
@@ -31,7 +30,10 @@ object Contrast {
             0.0722 * linearize(color.blue)
 
     /** 两色对比度，范围 1.0~21.0；正文门槛 4.5，图形/大字门槛 3.0 */
-    fun ratio(a: Color, b: Color): Double {
+    fun ratio(
+        a: Color,
+        b: Color,
+    ): Double {
         val la = luminance(a)
         val lb = luminance(b)
         val hi = max(la, lb)
@@ -45,7 +47,11 @@ object Contrast {
      * 在 sRGB（gamma）空间做线性插值——与 GPU 默认的 SRC_OVER 混合一致，
      * 这也是用户在屏幕上真正看到的颜色，比在线性空间合成更贴近实机。
      */
-    fun composite(fg: Color, bg: Color, alpha: Float): Color {
+    fun composite(
+        fg: Color,
+        bg: Color,
+        alpha: Float,
+    ): Color {
         val a = alpha.coerceIn(0f, 1f)
         return Color(
             red = fg.red * a + bg.red * (1f - a),
@@ -56,12 +62,16 @@ object Contrast {
     }
 
     /** 整体缩放 RGB（保持色相与饱和度），用于「同色相压深/提亮」 */
-    private fun scale(color: Color, factor: Float): Color = Color(
-        red = (color.red * factor).coerceIn(0f, 1f),
-        green = (color.green * factor).coerceIn(0f, 1f),
-        blue = (color.blue * factor).coerceIn(0f, 1f),
-        alpha = color.alpha,
-    )
+    private fun scale(
+        color: Color,
+        factor: Float,
+    ): Color =
+        Color(
+            red = (color.red * factor).coerceIn(0f, 1f),
+            green = (color.green * factor).coerceIn(0f, 1f),
+            blue = (color.blue * factor).coerceIn(0f, 1f),
+            alpha = color.alpha,
+        )
 
     /**
      * 以 [target] 为方向做线性插值，直到 [base] 压在 [under] 上达到 [minRatio]。
@@ -80,12 +90,13 @@ object Contrast {
         var best = target
         for (i in 1..steps) {
             val t = i.toFloat() / steps
-            val c = Color(
-                red = base.red + (target.red - base.red) * t,
-                green = base.green + (target.green - base.green) * t,
-                blue = base.blue + (target.blue - base.blue) * t,
-                alpha = base.alpha,
-            )
+            val c =
+                Color(
+                    red = base.red + (target.red - base.red) * t,
+                    green = base.green + (target.green - base.green) * t,
+                    blue = base.blue + (target.blue - base.blue) * t,
+                    alpha = base.alpha,
+                )
             if (ratio(c, under) >= minRatio) return c
             best = c
         }

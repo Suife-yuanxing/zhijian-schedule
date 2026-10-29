@@ -10,7 +10,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GlassThemeTest {
-
     @Test
     fun glassPresetRegistered() {
         val preset = ThemePresets.byId(ThemeIds.GLASS)
@@ -45,8 +44,16 @@ class GlassThemeTest {
     fun waterShaderSourceContainsRequiredUniforms() {
         val src = GlassShaders.buildWaterGlassSource()
         for (u in listOf(
-            "uSize", "uRadius", "uBand", "uTime", "uTint", "uBodyAlpha", "uSpec", "uFlow",
-            "uTilt", "uTiltSpec",
+            "uSize",
+            "uRadius",
+            "uBand",
+            "uTime",
+            "uTint",
+            "uBodyAlpha",
+            "uSpec",
+            "uFlow",
+            "uTilt",
+            "uTiltSpec",
         )) {
             assertTrue(
                 u,

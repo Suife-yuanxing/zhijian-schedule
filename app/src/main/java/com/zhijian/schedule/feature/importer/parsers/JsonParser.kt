@@ -4,17 +4,14 @@ import com.zhijian.schedule.core.model.CourseDraft
 import com.zhijian.schedule.core.util.WeekMask
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * JSON 课程导入：兼容标准格式与常见字段别名（含中文 key）。
  */
 object JsonParser : TimetableParser {
-
     override val format = TimetableFormat.JSON
 
     override val channels = setOf(ParserChannel.FILE)
@@ -25,21 +22,29 @@ object JsonParser : TimetableParser {
         return head.startsWith("{") || head.startsWith("[")
     }
 
-    override fun parse(input: ParserInput, context: ParseContext): ParseResult =
-        parse(input.text, context.totalWeeks)
+    override fun parse(
+        input: ParserInput,
+        context: ParseContext,
+    ): ParseResult = parse(input.text, context.totalWeeks)
 
     /** 直连入口：JSON 文本 + 总周数。 */
-    fun parse(text: String, totalWeeks: Int): ParseResult {
-        val root = runCatching { Json.parseToJsonElement(text) }.getOrElse {
-            return ParseResult.error("JSON 解析失败：${it.message}")
-        }
-        val array: JsonArray = when (root) {
-            is JsonArray -> root
-            is JsonObject -> (root["courses"] as? JsonArray)
-                ?: (root["course"] as? JsonArray)
-                ?: JsonArray(listOf(root))
-            else -> JsonArray(emptyList())
-        }
+    fun parse(
+        text: String,
+        totalWeeks: Int,
+    ): ParseResult {
+        val root =
+            runCatching { Json.parseToJsonElement(text) }.getOrElse {
+                return ParseResult.error("JSON 解析失败：${it.message}")
+            }
+        val array: JsonArray =
+            when (root) {
+                is JsonArray -> root
+                is JsonObject ->
+                    (root["courses"] as? JsonArray)
+                        ?: (root["course"] as? JsonArray)
+                        ?: JsonArray(listOf(root))
+                else -> JsonArray(emptyList())
+            }
         val drafts = mutableListOf<CourseDraft>()
         var skipped = 0
         array.forEach { element ->
@@ -49,38 +54,52 @@ object JsonParser : TimetableParser {
         return ParseResult(drafts, skipped)
     }
 
-    private fun mapObject(obj: JsonObject, totalWeeks: Int): CourseDraft? {
-        fun str(vararg keys: String): String? = keys.firstNotNullOfOrNull { key ->
-            (obj[key] as? JsonPrimitive)?.contentOrNullSafe()
+    /** 周次三种写法（位掩码 / 周次数组 / 表达式）依次兜底，都给不出就是全学期 */
+    private fun weekMaskOf(
+        obj: JsonObject,
+        totalWeeks: Int,
+    ): String {
+        val rawMask = firstString(obj, "weekMask")
+        if (rawMask != null && rawMask.isNotEmpty() && isBitMask(rawMask)) {
+            return WeekMask.normalize(rawMask, totalWeeks)
         }
+        val weeksArr = obj["weeks"] as? JsonArray
+        if (weeksArr != null) {
+            val picked = weeksArr.mapNotNull { (it as? JsonPrimitive)?.content?.toDoubleOrNull()?.toInt() }
+            return WeekMask.fromWeeks(totalWeeks, picked)
+        }
+        val text = firstString(obj, "周次", "周数", "weeksText")
+        return WeekMask.parseExpression(totalWeeks, text) ?: WeekMask.of(totalWeeks)
+    }
 
-        val name = str("name", "课程名", "课程名称", "课程") ?: return null
-        val day = str("dayOfWeek", "day", "星期", "周几")
-            ?.let { it.toIntOrNull() ?: TableMapping.parseDay(it) }
-            ?: return null
-        val start = str("startSection", "start", "开始节", "起始节")
-            ?.let { TableMapping.parseSection(it) }
-            ?: return null
-        val end = str("endSection", "end", "结束节")
-            ?.let { TableMapping.parseSection(it) }
-            ?: start
-        val mask: String = run {
-            val rawMask = str("weekMask")
-            if (rawMask != null && rawMask.all { it == '0' || it == '1' } && rawMask.isNotEmpty()) {
-                WeekMask.normalize(rawMask, totalWeeks)
-            } else {
-                val weeksArr = obj["weeks"] as? JsonArray
-                if (weeksArr != null) {
-                    WeekMask.fromWeeks(
-                        totalWeeks,
-                        weeksArr.mapNotNull { (it as? JsonPrimitive)?.content?.toDoubleOrNull()?.toInt() },
-                    )
-                } else {
-                    WeekMask.parseExpression(totalWeeks, str("周次", "周数", "weeksText"))
-                        ?: WeekMask.of(totalWeeks)
-                }
-            }
-        }
+    /** 依次试几个键，取第一个非空字符串值 */
+    private fun firstString(
+        obj: JsonObject,
+        vararg keys: String,
+    ): String? = keys.firstNotNullOfOrNull { key -> (obj[key] as? JsonPrimitive)?.contentOrNullSafe() }
+
+    private fun isBitMask(text: String): Boolean = text.all { it == '0' || it == '1' }
+
+    private fun mapObject(
+        obj: JsonObject,
+        totalWeeks: Int,
+    ): CourseDraft? {
+        fun str(vararg keys: String): String? = firstString(obj, *keys)
+
+        val name = str("name", "课程名", "课程名称", "课程")
+        val day =
+            str("dayOfWeek", "day", "星期", "周几")
+                ?.let { it.toIntOrNull() ?: TableMapping.parseDay(it) }
+        val start =
+            str("startSection", "start", "开始节", "起始节")
+                ?.let { TableMapping.parseSection(it) }
+        // 课程名 / 星期 / 起始节缺一即整条丢弃：三类缺失同一个出口
+        if (name == null || day == null || start == null) return null
+        val end =
+            str("endSection", "end", "结束节")
+                ?.let { TableMapping.parseSection(it) }
+                ?: start
+        val mask = weekMaskOf(obj, totalWeeks)
         return CourseDraft(
             name = name,
             teacher = str("teacher", "老师", "教师").orEmpty(),

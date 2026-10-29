@@ -7,7 +7,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WeekMaskTest {
-
     @Test
     fun `parse range expression`() {
         val mask = WeekMask.parseExpression(20, "1-16周")!!

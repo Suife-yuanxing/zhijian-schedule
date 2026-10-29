@@ -10,15 +10,14 @@ import com.zhijian.schedule.core.update.ReadVerdict
 import com.zhijian.schedule.core.update.ResumableDownload
 import com.zhijian.schedule.core.update.ResumePoint
 import com.zhijian.schedule.core.update.VerifyResult
-import java.io.File
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 class ResumableDownloadTest {
-
     // ---------- Content-Range ----------
 
     @Test
@@ -116,25 +115,34 @@ class ResumableDownloadTest {
 
     @Test
     fun partMetaRoundTripsThroughJson() {
-        val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
-        val meta = PartMeta(
-            version = "1.0.3",
-            url = "https://example.com/a.apk",
-            etag = "\"abc\"",
-            lastModified = "Wed, 15 Oct 2026 10:00:00 GMT",
-            totalBytes = 46920382L,
-            digest = "sha256:d3dba925",
-            chunkSize = 4L * 1024L * 1024L,
-            completedChunks = listOf(0, 3),
-            partialChunks = mapOf(1 to 1024L, 5 to 2048L),
-            sparseChunks = true,
-        )
+        val json =
+            Json {
+                ignoreUnknownKeys = true
+                encodeDefaults = true
+            }
+        val meta =
+            PartMeta(
+                version = "1.0.3",
+                url = "https://example.com/a.apk",
+                etag = "\"abc\"",
+                lastModified = "Wed, 15 Oct 2026 10:00:00 GMT",
+                totalBytes = 46920382L,
+                digest = "sha256:d3dba925",
+                chunkSize = 4L * 1024L * 1024L,
+                completedChunks = listOf(0, 3),
+                partialChunks = mapOf(1 to 1024L, 5 to 2048L),
+                sparseChunks = true,
+            )
         assertEquals(meta, json.decodeFromString<PartMeta>(json.encodeToString(meta)))
     }
 
     @Test
     fun partMetaKeepsOptionalsNullOnRoundTrip() {
-        val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+        val json =
+            Json {
+                ignoreUnknownKeys = true
+                encodeDefaults = true
+            }
         val meta = PartMeta(version = "1.0.3", url = "https://example.com/a.apk")
         val decoded = json.decodeFromString<PartMeta>(json.encodeToString(meta))
         assertEquals(meta, decoded)
@@ -145,9 +153,10 @@ class ResumableDownloadTest {
     @Test
     fun partMetaToleratesUnknownKeysAndMissingOptionals() {
         val json = Json { ignoreUnknownKeys = true }
-        val decoded = json.decodeFromString<PartMeta>(
-            """{"version":"1.0.3","url":"https://example.com/a.apk","futureField":42}"""
-        )
+        val decoded =
+            json.decodeFromString<PartMeta>(
+                """{"version":"1.0.3","url":"https://example.com/a.apk","futureField":42}""",
+            )
         assertEquals("1.0.3", decoded.version)
         assertNull(decoded.etag)
         assertEquals(0L, decoded.totalBytes)
@@ -166,7 +175,7 @@ class ResumableDownloadTest {
         assertNull(ResumableDownload.normalizeDigest(null))
         assertNull(ResumableDownload.normalizeDigest(""))
         assertNull(ResumableDownload.normalizeDigest("md5:$SHA256_ABC"))
-        assertNull(ResumableDownload.normalizeDigest("sha256:abc"))          // 长度不对
+        assertNull(ResumableDownload.normalizeDigest("sha256:abc")) // 长度不对
         assertNull(ResumableDownload.normalizeDigest("sha256:" + "z".repeat(64))) // 非十六进制
     }
 
@@ -374,20 +383,22 @@ class ResumableDownloadTest {
     @Test
     fun resumePointReusesPlanWhenSourceAndTotalMatch() {
         val plan = ResumableDownload.planChunks(10L, chunkSize = 4L)!!
-        val meta = PartMeta(
-            version = "1.0.3",
-            url = "https://example.com/a.apk",
-            totalBytes = 10L,
-            chunkSize = 4L,
-            completedChunks = listOf(0),
-        )
-        val point = ResumableDownload.resolveResumePoint(
-            version = "1.0.3",
-            url = "https://example.com/a.apk",
-            totalBytes = 10L,
-            partBytes = 6L,
-            rawMeta = meta,
-        )
+        val meta =
+            PartMeta(
+                version = "1.0.3",
+                url = "https://example.com/a.apk",
+                totalBytes = 10L,
+                chunkSize = 4L,
+                completedChunks = listOf(0),
+            )
+        val point =
+            ResumableDownload.resolveResumePoint(
+                version = "1.0.3",
+                url = "https://example.com/a.apk",
+                totalBytes = 10L,
+                partBytes = 6L,
+                rawMeta = meta,
+            )
         assertEquals(ResumePoint.Chunked(plan, listOf(0)), point)
     }
 
@@ -396,19 +407,21 @@ class ResumableDownloadTest {
         // v1 写的元数据没有 chunkSize/completedChunks（取默认值 0 与空表），分片大小归一化成 4 MiB。
         // 这里用真实的 4 MiB 分片、只是把总长缩到 16 MiB —— 才是在测生产路径，而不是靠一个假的小分片。
         val total = 16L * 1024L * 1024L
-        val meta = PartMeta(
-            version = "1.0.3",
-            url = "https://example.com/a.apk",
-            totalBytes = total,
-        )
+        val meta =
+            PartMeta(
+                version = "1.0.3",
+                url = "https://example.com/a.apk",
+                totalBytes = total,
+            )
         val plan = ResumableDownload.planChunks(total)!!
-        val point = ResumableDownload.resolveResumePoint(
-            version = "1.0.3",
-            url = "https://example.com/a.apk",
-            totalBytes = total,
-            partBytes = 10L * 1024L * 1024L,
-            rawMeta = meta,
-        )
+        val point =
+            ResumableDownload.resolveResumePoint(
+                version = "1.0.3",
+                url = "https://example.com/a.apk",
+                totalBytes = total,
+                partBytes = 10L * 1024L * 1024L,
+                rawMeta = meta,
+            )
         // 10 MiB = 前 2 片（各 4 MiB）完整 + 第 3 片半截，只有整片算数，半截那片重下
         assertEquals(ResumePoint.Chunked(plan, listOf(0, 1)), point)
     }
@@ -416,20 +429,22 @@ class ResumableDownloadTest {
     @Test
     fun resumePointStartsFreshWhenSourceChangedAndKeepsThePlan() {
         val plan = ResumableDownload.planChunks(16L, chunkSize = 4L)!!
-        val meta = PartMeta(
-            version = "1.0.3",
-            url = "https://mirror.example.com/a.apk",
-            totalBytes = 16L,
-            chunkSize = 4L,
-            completedChunks = listOf(0),
-        )
-        val point = ResumableDownload.resolveResumePoint(
-            version = "1.0.3",
-            url = "https://example.com/a.apk",
-            totalBytes = 16L,
-            partBytes = 10L,
-            rawMeta = meta,
-        )
+        val meta =
+            PartMeta(
+                version = "1.0.3",
+                url = "https://mirror.example.com/a.apk",
+                totalBytes = 16L,
+                chunkSize = 4L,
+                completedChunks = listOf(0),
+            )
+        val point =
+            ResumableDownload.resolveResumePoint(
+                version = "1.0.3",
+                url = "https://example.com/a.apk",
+                totalBytes = 16L,
+                partBytes = 10L,
+                rawMeta = meta,
+            )
         // 换了源：已下的字节必须作废，但分片计划要一起带出来，调用方不必再算一遍
         assertEquals(ResumePoint.Fresh(plan), point)
     }
@@ -454,22 +469,24 @@ class ResumableDownloadTest {
         // 稀疏写的 .part 里第 0 片整片完成、第 1 片只写了 1 MiB：续传必须从 1 MiB 处接着写
         val total = 16L * 1024L * 1024L
         val plan = ResumableDownload.planChunks(total)!!
-        val meta = PartMeta(
-            version = "1.0.3",
-            url = "https://example.com/a.apk",
-            totalBytes = total,
-            chunkSize = 4L * 1024L * 1024L,
-            completedChunks = listOf(0),
-            partialChunks = mapOf(1 to 1024L * 1024L),
-            sparseChunks = true,
-        )
-        val point = ResumableDownload.resolveResumePoint(
-            version = "1.0.3",
-            url = "https://example.com/a.apk",
-            totalBytes = total,
-            partBytes = 12L * 1024L * 1024L,
-            rawMeta = meta,
-        )
+        val meta =
+            PartMeta(
+                version = "1.0.3",
+                url = "https://example.com/a.apk",
+                totalBytes = total,
+                chunkSize = 4L * 1024L * 1024L,
+                completedChunks = listOf(0),
+                partialChunks = mapOf(1 to 1024L * 1024L),
+                sparseChunks = true,
+            )
+        val point =
+            ResumableDownload.resolveResumePoint(
+                version = "1.0.3",
+                url = "https://example.com/a.apk",
+                totalBytes = total,
+                partBytes = 12L * 1024L * 1024L,
+                rawMeta = meta,
+            )
         assertEquals(ResumePoint.Chunked(plan, listOf(0), mapOf(1 to 1024L * 1024L)), point)
     }
 
@@ -478,35 +495,38 @@ class ResumableDownloadTest {
         // 稀疏 .part 的长度是「最远写到的偏移」，不是已下字节；没记账就只能重下，不能把前 N 片当完成
         val total = 16L * 1024L * 1024L
         val plan = ResumableDownload.planChunks(total)!!
-        val meta = PartMeta(
-            version = "1.0.3",
-            url = "https://example.com/a.apk",
-            totalBytes = total,
-            chunkSize = 4L * 1024L * 1024L,
-            sparseChunks = true,
-        )
-        val point = ResumableDownload.resolveResumePoint(
-            version = "1.0.3",
-            url = "https://example.com/a.apk",
-            totalBytes = total,
-            partBytes = 12L * 1024L * 1024L,
-            rawMeta = meta,
-        )
+        val meta =
+            PartMeta(
+                version = "1.0.3",
+                url = "https://example.com/a.apk",
+                totalBytes = total,
+                chunkSize = 4L * 1024L * 1024L,
+                sparseChunks = true,
+            )
+        val point =
+            ResumableDownload.resolveResumePoint(
+                version = "1.0.3",
+                url = "https://example.com/a.apk",
+                totalBytes = total,
+                partBytes = 12L * 1024L * 1024L,
+                rawMeta = meta,
+            )
         assertEquals(ResumePoint.Fresh(plan), point)
     }
 
     @Test
     fun progressBytesCountsCompletedChunksAndInFlightOffsets() {
         val total = 16L * 1024L * 1024L
-        val meta = PartMeta(
-            version = "1.0.3",
-            url = "https://example.com/a.apk",
-            totalBytes = total,
-            chunkSize = 4L * 1024L * 1024L,
-            completedChunks = listOf(0),
-            partialChunks = mapOf(1 to 1024L * 1024L, 2 to 2L * 1024L * 1024L),
-            sparseChunks = true,
-        )
+        val meta =
+            PartMeta(
+                version = "1.0.3",
+                url = "https://example.com/a.apk",
+                totalBytes = total,
+                chunkSize = 4L * 1024L * 1024L,
+                completedChunks = listOf(0),
+                partialChunks = mapOf(1 to 1024L * 1024L, 2 to 2L * 1024L * 1024L),
+                sparseChunks = true,
+            )
         assertEquals(7L * 1024L * 1024L, ResumableDownload.progressBytes(meta))
         // 顺序路径的元数据没有稀疏标记，进度由 `.part` 长度说话
         assertEquals(0L, ResumableDownload.progressBytes(meta.copy(sparseChunks = false)))

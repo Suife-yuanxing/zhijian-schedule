@@ -41,20 +41,22 @@ internal fun ProfileChip(
         colors = profileChipColors(),
         border = profileChipBorder(selected),
         shape = RoundedCornerShape(12.dp),
-        modifier = Modifier
-            .pressScale(source, pressedScale = 0.94f)
-            .selectedPop(selected),
+        modifier =
+            Modifier
+                .pressScale(source, pressedScale = 0.94f)
+                .selectedPop(selected),
     )
 }
 
 /** 偏好选项：选中=强调色描边 + 浅色底 + 加粗；只保留按压回弹，选中不额外震动 */
 @Composable
-private fun profileChipColors() = FilterChipDefaults.filterChipColors(
-    containerColor = Color.Transparent,
-    labelColor = LocalCourseColors.current.textMuted,
-    selectedContainerColor = LocalCourseColors.current.accent.copy(alpha = ACCENT_SELECTED_ALPHA),
-    selectedLabelColor = LocalCourseColors.current.text,
-)
+private fun profileChipColors() =
+    FilterChipDefaults.filterChipColors(
+        containerColor = Color.Transparent,
+        labelColor = LocalCourseColors.current.textMuted,
+        selectedContainerColor = LocalCourseColors.current.accent.copy(alpha = ACCENT_SELECTED_ALPHA),
+        selectedLabelColor = LocalCourseColors.current.text,
+    )
 
 @Composable
 private fun profileChipBorder(selected: Boolean): BorderStroke {

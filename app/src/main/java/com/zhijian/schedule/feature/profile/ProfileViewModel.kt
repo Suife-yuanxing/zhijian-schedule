@@ -12,13 +12,13 @@ import com.zhijian.schedule.core.repository.ScheduleRepository
 import com.zhijian.schedule.core.util.TimeUtils
 import com.zhijian.schedule.feature.exam.ExamCountdown
 import dagger.hilt.android.lifecycle.HiltViewModel
-import java.time.LocalDate
-import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.time.LocalDate
+import javax.inject.Inject
 
 data class ProfileUiState(
     val settings: AppSettings = AppSettings(),
@@ -33,60 +33,69 @@ data class ProfileUiState(
 )
 
 @HiltViewModel
-class ProfileViewModel @Inject constructor(
-    private val repository: ScheduleRepository,
-    private val settingsStore: SettingsStore,
-    private val gradeDao: GradeDao,
-) : ViewModel() {
+class ProfileViewModel
+    @Inject
+    constructor(
+        private val repository: ScheduleRepository,
+        private val settingsStore: SettingsStore,
+        private val gradeDao: GradeDao,
+    ) : ViewModel() {
+        val uiState: StateFlow<ProfileUiState> =
+            combine(
+                repository.settings,
+                repository.activeTimetable,
+                repository.activeCourses,
+                gradeDao.observeAll(),
+                repository.activeExams,
+            ) { settings, timetable, courses, grades, exams ->
+                val today = LocalDate.now()
+                val week =
+                    timetable?.let { table ->
+                        TimeUtils
+                            .parseDate(table.startDate)
+                            ?.let { TimeUtils.weekOfSemester(it, table.totalWeeks, today) }
+                    }
+                val stats = GradeParser.stats(grades.map { it.toRecord() })
+                val nowDateTime = java.time.LocalDateTime.now()
+                val nextExam =
+                    exams
+                        .filter { it.examTime >= System.currentTimeMillis() }
+                        .minByOrNull { it.examTime }
+                val examPreview =
+                    nextExam
+                        ?.let { "${it.name} · ${ExamCountdown.badge(it.examTime, nowDateTime)}" }
+                        .orEmpty()
+                ProfileUiState(
+                    settings = settings,
+                    timetable = timetable,
+                    week = week,
+                    courseCount = courses.size,
+                    weightedGpa = stats.weightedGpa,
+                    totalCredits = stats.totalCredits,
+                    examPreview = examPreview,
+                )
+            }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ProfileUiState())
 
-    val uiState: StateFlow<ProfileUiState> = combine(
-        repository.settings,
-        repository.activeTimetable,
-        repository.activeCourses,
-        gradeDao.observeAll(),
-        repository.activeExams,
-    ) { settings, timetable, courses, grades, exams ->
-        val today = LocalDate.now()
-        val week = timetable?.let { table ->
-            TimeUtils.parseDate(table.startDate)
-                ?.let { TimeUtils.weekOfSemester(it, table.totalWeeks, today) }
+        fun setTheme(id: String) {
+            viewModelScope.launch { settingsStore.setTheme(id) }
         }
-        val stats = GradeParser.stats(grades.map { it.toRecord() })
-        val nowDateTime = java.time.LocalDateTime.now()
-        val nextExam = exams
-            .filter { it.examTime >= System.currentTimeMillis() }
-            .minByOrNull { it.examTime }
-        val examPreview = nextExam
-            ?.let { "${it.name} · ${ExamCountdown.badge(it.examTime, nowDateTime)}" }
-            .orEmpty()
-        ProfileUiState(
-            settings = settings,
-            timetable = timetable,
-            week = week,
-            courseCount = courses.size,
-            weightedGpa = stats.weightedGpa,
-            totalCredits = stats.totalCredits,
-            examPreview = examPreview,
-        )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ProfileUiState())
 
-    fun setTheme(id: String) {
-        viewModelScope.launch { settingsStore.setTheme(id) }
-    }
+        fun setGridStyle(id: String) {
+            viewModelScope.launch { settingsStore.setGridStyle(id) }
+        }
 
-    fun setGridStyle(id: String) {
-        viewModelScope.launch { settingsStore.setGridStyle(id) }
-    }
+        fun setDarkMode(mode: Int) {
+            viewModelScope.launch { settingsStore.setDarkMode(mode) }
+        }
 
-    fun setDarkMode(mode: Int) {
-        viewModelScope.launch { settingsStore.setDarkMode(mode) }
-    }
+        fun setShowWeekend(show: Boolean) {
+            viewModelScope.launch { settingsStore.setShowWeekend(show) }
+        }
 
-    fun setShowWeekend(show: Boolean) {
-        viewModelScope.launch { settingsStore.setShowWeekend(show) }
+        fun setReminder(
+            enabled: Boolean,
+            minutes: Int,
+        ) {
+            viewModelScope.launch { settingsStore.setReminder(enabled, minutes) }
+        }
     }
-
-    fun setReminder(enabled: Boolean, minutes: Int) {
-        viewModelScope.launch { settingsStore.setReminder(enabled, minutes) }
-    }
-}

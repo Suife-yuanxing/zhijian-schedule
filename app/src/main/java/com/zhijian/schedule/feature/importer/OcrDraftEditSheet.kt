@@ -26,9 +26,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -157,9 +157,10 @@ internal fun DraftEditSheet(
                     FilterChip(
                         selected = selected,
                         onClick = {
-                            weeks = weeks.toMutableSet().also { set ->
-                                if (w in set) set.remove(w) else set.add(w)
-                            }
+                            weeks =
+                                weeks.toMutableSet().also { set ->
+                                    if (w in set) set.remove(w) else set.add(w)
+                                }
                         },
                         label = { Text("$w", fontSize = 12.sp) },
                         modifier = Modifier.selectedPop(selected, popScale = 1.1f),
@@ -186,7 +187,7 @@ internal fun DraftEditSheet(
                                 startSection = startSection,
                                 endSection = endSection,
                                 weekMask = WeekMask.fromWeeks(totalWeeks, weeks),
-                            )
+                            ),
                         )
                     },
                 ) { Text("完成") }
@@ -207,7 +208,10 @@ private fun SheetLabel(text: String) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SectionPicker(label: String, onSelect: (Int) -> Unit) {
+private fun SectionPicker(
+    label: String,
+    onSelect: (Int) -> Unit,
+) {
     var open by remember { mutableStateOf(false) }
     Box {
         TapTextButton(onClick = { open = true }) { Text(label) }

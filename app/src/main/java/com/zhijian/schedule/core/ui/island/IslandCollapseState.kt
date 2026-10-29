@@ -33,7 +33,6 @@ import kotlinx.coroutines.launch
  */
 @Stable
 class IslandCollapseState {
-
     /** 目标值（0 展开 / 1 收起），滚动直接写这里 */
     var fraction by mutableFloatStateOf(0f)
         private set
@@ -58,7 +57,10 @@ class IslandCollapseState {
     /** 收满所需的滚动行程参考值（约 160dp，各种密度下都是「滚一小段」的手感） */
     private val fullTravelPx = 160f
 
-    internal fun setTarget(value: Float, scope: CoroutineScope) {
+    internal fun setTarget(
+        value: Float,
+        scope: CoroutineScope,
+    ) {
         val v = value.coerceIn(0f, 1f)
         if (v == fraction) return
         fraction = v
@@ -90,20 +92,24 @@ class IslandCollapseState {
     fun connection(
         scope: CoroutineScope,
         frozen: () -> Boolean = { false },
-    ): NestedScrollConnection = object : NestedScrollConnection {
-        override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-            if (source != NestedScrollSource.UserInput) return Offset.Zero
-            if (frozen()) return Offset.Zero
-            val dy = available.y
-            if (dy < 0f && -dy > collapseTriggerPx) {
-                // 向下滚（内容上移）：收起。按行程比例累加，不是一滚就到底
-                setTarget(fraction + (-dy / fullTravelPx), scope)
-            } else if (dy > 0f && dy > expandTriggerPx) {
-                setTarget(fraction - (dy / fullTravelPx), scope)
+    ): NestedScrollConnection =
+        object : NestedScrollConnection {
+            override fun onPreScroll(
+                available: Offset,
+                source: NestedScrollSource,
+            ): Offset {
+                if (source != NestedScrollSource.UserInput) return Offset.Zero
+                if (frozen()) return Offset.Zero
+                val dy = available.y
+                if (dy < 0f && -dy > collapseTriggerPx) {
+                    // 向下滚（内容上移）：收起。按行程比例累加，不是一滚就到底
+                    setTarget(fraction + (-dy / fullTravelPx), scope)
+                } else if (dy > 0f && dy > expandTriggerPx) {
+                    setTarget(fraction - (dy / fullTravelPx), scope)
+                }
+                return Offset.Zero
             }
-            return Offset.Zero
         }
-    }
 }
 
 @Composable

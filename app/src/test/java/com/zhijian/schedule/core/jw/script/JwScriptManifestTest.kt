@@ -5,8 +5,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class JwScriptManifestTest {
-
-    private val okScript = """
+    private val okScript =
+        """
         /**
          * PAPER_SCRIPT_MANIFEST
          * {
@@ -19,7 +19,7 @@ class JwScriptManifestTest {
          * }
          */
         globalThis.__paperScheduleScript = { fetchSchedule: async () => ({ courses: [] }) }
-    """.trimIndent()
+        """.trimIndent()
 
     @Test
     fun parsesManifestFromHeaderComment() {
@@ -61,9 +61,10 @@ class JwScriptManifestTest {
 
     @Test
     fun normalizesHostsToLowercase() {
-        val r = JwScriptManifest.parse(
-            "/** PAPER_SCRIPT_MANIFEST {\"id\":\"a\",\"name\":\"B\",\"hosts\":[\"JW.Example.EDU.cn\"]} */",
-        )
+        val r =
+            JwScriptManifest.parse(
+                "/** PAPER_SCRIPT_MANIFEST {\"id\":\"a\",\"name\":\"B\",\"hosts\":[\"JW.Example.EDU.cn\"]} */",
+            )
         assertEquals(listOf("jw.example.edu.cn"), (r as ManifestResult.Ok).manifest.hosts)
     }
 }

@@ -38,7 +38,7 @@ data class CardTiltStyle(
      * （1080×2376 @480dpi，`.tmp/cal_sweep.sh`）：传入值 v 对应的有效相机距离约为
      * `v × 64`。早期版本按「像素」直接传 `最长边 × 1.6 = 1536`，等效相机距离约 98,000px，
      * 等于正交投影——实测近边外溢只有 0%，画面只有"斜切 + 缩小"，读不出任何立体。
-     * 这才是"倾动不够夸张"的真正原因。现在按 [CameraDistanceUnit] 换算，
+     * 这才是"倾动不够夸张"的真正原因。现在按 [CAMERA_DISTANCE_UNIT] 换算，
      * 本值直接读作「相机距离是卡片最长边的几倍」。
      *
      * 别低于 1.1：再小远端会被压到相机后面，卡片会撕裂。
@@ -58,12 +58,13 @@ fun rememberCardTiltStyle(): CardTiltStyle {
             maxTiltDegrees = if (glass) 14f else 13f,
             // 反光强度：不必顶到 1.0。实测 1.0 时近指腹处被推到 (248,251,245)，
             // 等于把课程色洗成白纸——"被照亮"应该看得见底色，而不是把底色擦掉。
-            glareAlpha = when {
-                glass && dark -> 0.52f
-                glass -> 0.70f
-                dark -> 0.45f
-                else -> 0.62f
-            },
+            glareAlpha =
+                when {
+                    glass && dark -> 0.52f
+                    glass -> 0.70f
+                    dark -> 0.45f
+                    else -> 0.62f
+                },
             // 抬升对齐 Apple FOCUS-01（聚焦项放大 1.05~1.1 + 投影抬升）。那个量级是给
             // 10 英尺外的大屏卡片；手机上压到 2.8~3.4%，是"被指腹抬起来"里偏夸张的一档。
             liftScale = if (glass) 0.034f else 0.028f,
@@ -99,10 +100,11 @@ fun rememberFocusCardTiltStyle(): CardTiltStyle {
 }
 
 /** [rememberFocusCardTiltStyle] 的纯函数内核：取值可单测，两块焦点卡不可能各调各的。 */
-internal fun focusTiltStyle(base: CardTiltStyle): CardTiltStyle = base.copy(
-    maxTiltDegrees = 17f,
-    glareAlpha = (base.glareAlpha * 1.05f).coerceAtMost(1f),
-    liftScale = base.liftScale * 1.2f,
-    liftElevation = base.liftElevation + 10.dp,
-    perspectiveScale = 1.70f,
-)
+internal fun focusTiltStyle(base: CardTiltStyle): CardTiltStyle =
+    base.copy(
+        maxTiltDegrees = 17f,
+        glareAlpha = (base.glareAlpha * 1.05f).coerceAtMost(1f),
+        liftScale = base.liftScale * 1.2f,
+        liftElevation = base.liftElevation + 10.dp,
+        perspectiveScale = 1.70f,
+    )

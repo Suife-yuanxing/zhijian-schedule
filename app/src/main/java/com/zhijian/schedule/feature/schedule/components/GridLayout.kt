@@ -16,7 +16,6 @@ class GridLayout(
     val sections: List<SectionTimeEntity>,
     val metrics: GridMetrics = GridMetrics.Default,
 ) {
-
     val bands: List<GridBand>
     val totalHeight: Dp
 
@@ -36,14 +35,15 @@ class GridLayout(
         var cursor = 0.dp
         var index = 0
         groups.forEach { group ->
-            val band = GridBand(
-                label = bandLabelOf(group.first()),
-                startIndex = index,
-                count = group.size,
-                headTop = cursor,
-                bodyTop = cursor + metrics.bandHeadHeight,
-                timeRange = "${group.first().startTime} – ${group.last().endTime}",
-            )
+            val band =
+                GridBand(
+                    label = bandLabelOf(group.first()),
+                    startIndex = index,
+                    count = group.size,
+                    headTop = cursor,
+                    bodyTop = cursor + metrics.bandHeadHeight,
+                    timeRange = "${group.first().startTime} – ${group.last().endTime}",
+                )
             built.add(band)
             index += group.size
             cursor = band.bodyTop + metrics.sectionHeight * group.size + metrics.bandGap

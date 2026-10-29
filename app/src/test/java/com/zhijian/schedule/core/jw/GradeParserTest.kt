@@ -8,10 +8,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GradeParserTest {
-
     private fun sample(): String =
         checkNotNull(javaClass.classLoader?.getResourceAsStream("grade_list_sample.html"))
-            .bufferedReader(Charsets.UTF_8).readText()
+            .bufferedReader(Charsets.UTF_8)
+            .readText()
 
     @Test
     fun parsesAllRowsFromSample() {
@@ -57,12 +57,13 @@ class GradeParserTest {
 
     @Test
     fun emptyResultPageYieldsEmptyList() {
-        val html = """
+        val html =
+            """
             <html><body><table id="dataList" class="Nsb_r_list">
             <tr><th>序号</th><th>开课学期</th><th>课程名称</th><th>成绩</th><th>学分</th></tr>
             <tr><td colspan="5">未查询到数据</td></tr>
             </table></body></html>
-        """.trimIndent()
+            """.trimIndent()
         assertTrue(GradeParser.parse(html).isEmpty())
     }
 
@@ -96,11 +97,22 @@ class GradeParserTest {
 
     @Test
     fun failDetectionByScoreAndZeroGpa() {
-        val failByScore = GradeRecord(
-            term = "2025-2026-1", code = "", name = "高等数学（一）", score = "不及格",
-            scoreFlag = "", credit = 4.0, hours = null, gpa = null, retakeTerm = "",
-            examMode = "", examNature = "", attr = "", category = "",
-        )
+        val failByScore =
+            GradeRecord(
+                term = "2025-2026-1",
+                code = "",
+                name = "高等数学（一）",
+                score = "不及格",
+                scoreFlag = "",
+                credit = 4.0,
+                hours = null,
+                gpa = null,
+                retakeTerm = "",
+                examMode = "",
+                examNature = "",
+                attr = "",
+                category = "",
+            )
         assertTrue(GradeParser.isFail(failByScore))
         val failByGpa = failByScore.copy(score = "38", gpa = 0.0)
         assertTrue(GradeParser.isFail(failByGpa))

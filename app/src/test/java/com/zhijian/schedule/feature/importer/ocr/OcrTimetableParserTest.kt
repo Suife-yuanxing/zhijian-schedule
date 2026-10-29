@@ -8,12 +8,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class OcrTimetableParserTest {
+    private fun line(
+        text: String,
+        cx: Float,
+        cy: Float,
+        w: Float = 60f,
+        h: Float = 30f,
+    ) = OcrLine(text, cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2)
 
-    private fun line(text: String, cx: Float, cy: Float, w: Float = 60f, h: Float = 30f) =
-        OcrLine(text, cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2)
-
-    private fun jwHeaders(): List<OcrLine> = listOf("星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日")
-        .mapIndexed { i, name -> line(name, 400f + i * 300f, 100f, 100f, 40f) }
+    private fun jwHeaders(): List<OcrLine> =
+        listOf("星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日")
+            .mapIndexed { i, name -> line(name, 400f + i * 300f, 100f, 100f, 40f) }
 
     @Test
     fun parsesJwStyleGridWithBigSectionAnchors() {
@@ -79,13 +84,14 @@ class OcrTimetableParserTest {
 
     @Test
     fun parsesTextLinesWithoutHeaders() {
-        val lines = listOf(
-            line("包装材料与检测", 300f, 100f, 200f),
-            line("周一 3-4节", 300f, 140f, 150f),
-            line("1-16周", 300f, 180f, 90f),
-            line("8A206", 300f, 220f, 80f),
-            line("张三", 300f, 260f),
-        )
+        val lines =
+            listOf(
+                line("包装材料与检测", 300f, 100f, 200f),
+                line("周一 3-4节", 300f, 140f, 150f),
+                line("1-16周", 300f, 180f, 90f),
+                line("8A206", 300f, 220f, 80f),
+                line("张三", 300f, 260f),
+            )
 
         val result = OcrTimetableParser.parse(listOf(lines), totalWeeks = 20, totalSections = 12)
 
@@ -123,18 +129,20 @@ class OcrTimetableParserTest {
 
     @Test
     fun mergesSameCourseAcrossPages() {
-        val page1 = listOf(
-            line("包装材料与检测", 300f, 100f, 200f),
-            line("周一 3-4节", 300f, 140f, 150f),
-            line("1-16周", 300f, 180f, 90f),
-            line("8A206", 300f, 220f, 80f),
-            line("张三", 300f, 260f),
-        )
-        val page2 = listOf(
-            line("包装材料与检测", 300f, 100f, 200f),
-            line("周一 3-4节", 300f, 140f, 150f),
-            line("17-20周", 300f, 180f, 90f),
-        )
+        val page1 =
+            listOf(
+                line("包装材料与检测", 300f, 100f, 200f),
+                line("周一 3-4节", 300f, 140f, 150f),
+                line("1-16周", 300f, 180f, 90f),
+                line("8A206", 300f, 220f, 80f),
+                line("张三", 300f, 260f),
+            )
+        val page2 =
+            listOf(
+                line("包装材料与检测", 300f, 100f, 200f),
+                line("周一 3-4节", 300f, 140f, 150f),
+                line("17-20周", 300f, 180f, 90f),
+            )
 
         val result = OcrTimetableParser.parse(listOf(page1, page2), totalWeeks = 20, totalSections = 12)
 
@@ -147,12 +155,13 @@ class OcrTimetableParserTest {
 
     @Test
     fun parsesParityWeeksSuffix() {
-        val lines = listOf(
-            line("体育", 300f, 100f),
-            line("周三 5-6节", 300f, 140f, 150f),
-            line("1-12双周", 300f, 180f, 110f),
-            line("田径场", 300f, 220f, 90f),
-        )
+        val lines =
+            listOf(
+                line("体育", 300f, 100f),
+                line("周三 5-6节", 300f, 140f, 150f),
+                line("1-12双周", 300f, 180f, 110f),
+                line("田径场", 300f, 220f, 90f),
+            )
 
         val result = OcrTimetableParser.parse(listOf(lines), totalWeeks = 20, totalSections = 12)
 
@@ -187,13 +196,14 @@ class OcrTimetableParserTest {
 
     @Test
     fun treatsBareRangeLineAsWeeksWhenZhouCharMissing() {
-        val lines = listOf(
-            line("包装材料与检测", 300f, 100f, 200f),
-            line("周一 3-4节", 300f, 140f, 150f),
-            line("1-16ā", 300f, 180f, 80f),
-            line("8A206", 300f, 220f, 80f),
-            line("张三", 300f, 260f),
-        )
+        val lines =
+            listOf(
+                line("包装材料与检测", 300f, 100f, 200f),
+                line("周一 3-4节", 300f, 140f, 150f),
+                line("1-16ā", 300f, 180f, 80f),
+                line("8A206", 300f, 220f, 80f),
+                line("张三", 300f, 260f),
+            )
 
         val result = OcrTimetableParser.parse(listOf(lines), totalWeeks = 20, totalSections = 12)
 
@@ -205,12 +215,13 @@ class OcrTimetableParserTest {
 
     @Test
     fun doesNotTreatRoomLikeRangeAsWeeks() {
-        val lines = listOf(
-            line("包装材料与检测", 300f, 100f, 200f),
-            line("周一 3-4节", 300f, 140f, 150f),
-            line("10-305", 300f, 180f, 80f),
-            line("张三", 300f, 220f),
-        )
+        val lines =
+            listOf(
+                line("包装材料与检测", 300f, 100f, 200f),
+                line("周一 3-4节", 300f, 140f, 150f),
+                line("10-305", 300f, 180f, 80f),
+                line("张三", 300f, 220f),
+            )
 
         val result = OcrTimetableParser.parse(listOf(lines), totalWeeks = 20, totalSections = 12)
 

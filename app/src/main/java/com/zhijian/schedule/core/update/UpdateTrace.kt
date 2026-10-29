@@ -9,7 +9,6 @@ import android.util.Log
  * 这些日志在原实现里就是常开的，本次结构整理不改变日志语义。
  */
 internal object UpdateTrace {
-
     private const val TAG = "UpdateDownload"
 
     fun log(message: () -> String) {

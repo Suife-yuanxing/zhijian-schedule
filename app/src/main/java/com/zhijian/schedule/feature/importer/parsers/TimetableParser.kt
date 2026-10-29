@@ -8,7 +8,9 @@ import java.time.LocalDate
 enum class ParserChannel { PASTED_TEXT, FILE }
 
 /** 解析器声明的格式标识；[source] 供导入预览标注来源。 */
-enum class TimetableFormat(val source: ImportSource) {
+enum class TimetableFormat(
+    val source: ImportSource,
+) {
     ICS(ImportSource.ICS),
     XLSX(ImportSource.XLSX),
     JSON(ImportSource.JSON),
@@ -28,7 +30,6 @@ data class ParseContext(
  * 调用方按 [TimetableParsers] 的注册顺序遍历，不再散落 if-else 判断文件格式。
  */
 interface TimetableParser {
-
     val format: TimetableFormat
 
     /** 本解析器参与的入口通道；不在通道内的解析器不参与探测。 */
@@ -37,5 +38,8 @@ interface TimetableParser {
     /** 该输入是否像本格式；同一通道内按注册顺序取首个命中者。 */
     fun canParse(input: ParserInput): Boolean
 
-    fun parse(input: ParserInput, context: ParseContext): ParseResult
+    fun parse(
+        input: ParserInput,
+        context: ParseContext,
+    ): ParseResult
 }

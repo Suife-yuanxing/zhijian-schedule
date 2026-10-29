@@ -18,19 +18,24 @@ import kotlin.math.abs
  * 时间按当前课表作息映射为节次；同一课程多次出现时周次取并集。
  */
 object IcsParser : TimetableParser {
-
     override val format = TimetableFormat.ICS
 
     override val channels = setOf(ParserChannel.FILE, ParserChannel.PASTED_TEXT)
 
     private val TARGET_PROPS = setOf("SUMMARY", "DTSTART", "DTEND", "RRULE", "LOCATION", "DESCRIPTION")
 
+    /** RRULE 展开的安全上限：正常学期 20 周 × 7 天远小于这两个数，纯粹防畸形输入跑飞 */
+    private const val MAX_OCCURRENCES = 400
+    private const val MAX_WEEKS = 200
+
     /** 日历文件以 BEGIN:VCALENDAR 开头（允许 BOM 与前导空白）。 */
     override fun canParse(input: ParserInput): Boolean =
         input.trimmedText.startsWith("BEGIN:VCALENDAR", ignoreCase = true)
 
-    override fun parse(input: ParserInput, context: ParseContext): ParseResult =
-        parse(input.text, context.totalWeeks, context.semesterStart, context.sections)
+    override fun parse(
+        input: ParserInput,
+        context: ParseContext,
+    ): ParseResult = parse(input.text, context.totalWeeks, context.semesterStart, context.sections)
 
     /** 直连入口：.ics 文本 + 总周数 + 开学日期 + 作息节次。 */
     fun parse(
@@ -59,10 +64,14 @@ object IcsParser : TimetableParser {
             }
             val dtEnd = parseDateTime(props["DTEND"])
             val startSection = sectionAt(sortedSections, dtStart.toLocalTime()) ?: 1
-            val endSection = maxOf(
-                startSection,
-                sectionAt(sortedSections, dtEnd?.toLocalTime() ?: dtStart.toLocalTime().plusMinutes(45)) ?: startSection,
-            )
+            val endSection =
+                maxOf(
+                    startSection,
+                    sectionAt(
+                        sortedSections,
+                        dtEnd?.toLocalTime() ?: dtStart.toLocalTime().plusMinutes(45),
+                    ) ?: startSection,
+                )
             val description = props["DESCRIPTION"]?.let(::unescape).orEmpty()
             val location = props["LOCATION"]?.let(::unescape)?.trim().orEmpty()
             val room = location.ifBlank { extract(description, "教室", "地点", "上课地点") }
@@ -72,15 +81,21 @@ object IcsParser : TimetableParser {
             expandDates(startDate, props["RRULE"]).forEach { date ->
                 val week = TimeUtils.weekOfSemester(semesterStart, totalWeeks, date) ?: return@forEach
                 val day = date.dayOfWeek.value
-                val idx = accList.indexOfFirst { o ->
-                    o.name == summary && o.day == day && o.start == startSection && o.end == endSection &&
-                        compatible(o.room, room) && compatible(o.teacher, teacher)
-                }
-                val acc = if (idx < 0) {
-                    Acc(summary, day, startSection, endSection, room, teacher).also { accList += it }
-                } else {
-                    accList[idx]
-                }
+                val idx =
+                    accList.indexOfFirst { o ->
+                        o.name == summary &&
+                            o.day == day &&
+                            o.start == startSection &&
+                            o.end == endSection &&
+                            compatible(o.room, room) &&
+                            compatible(o.teacher, teacher)
+                    }
+                val acc =
+                    if (idx < 0) {
+                        Acc(summary, day, startSection, endSection, room, teacher).also { accList += it }
+                    } else {
+                        accList[idx]
+                    }
                 if (acc.room.isBlank()) acc.room = room
                 if (acc.teacher.isBlank()) acc.teacher = teacher
                 acc.weeks += week
@@ -89,23 +104,24 @@ object IcsParser : TimetableParser {
 
         if (accList.isEmpty()) {
             return ParseResult(
-                emptyList(), skipped,
+                emptyList(),
+                skipped,
                 listOf("事件都没能匹配到学期周次，请检查开学日期是否与课表一致"),
             )
         }
-        val drafts = accList
-            .map { acc ->
-                CourseDraft(
-                    name = acc.name,
-                    teacher = acc.teacher,
-                    room = acc.room,
-                    dayOfWeek = acc.day,
-                    startSection = acc.start,
-                    endSection = acc.end,
-                    weekMask = WeekMask.fromWeeks(totalWeeks, acc.weeks),
-                )
-            }
-            .sortedWith(compareBy({ it.dayOfWeek }, { it.startSection }, { it.name }))
+        val drafts =
+            accList
+                .map { acc ->
+                    CourseDraft(
+                        name = acc.name,
+                        teacher = acc.teacher,
+                        room = acc.room,
+                        dayOfWeek = acc.day,
+                        startSection = acc.start,
+                        endSection = acc.end,
+                        weekMask = WeekMask.fromWeeks(totalWeeks, acc.weeks),
+                    )
+                }.sortedWith(compareBy({ it.dayOfWeek }, { it.startSection }, { it.name }))
         val warnings = mutableListOf<String>()
         if (skipped > 0) warnings += "已跳过 $skipped 个无效事件（缺标题/全天事件等）"
         return ParseResult(drafts, skipped, warnings)
@@ -129,16 +145,22 @@ object IcsParser : TimetableParser {
                     current?.let { events += it }
                     current = null
                 }
-                current != null -> when {
-                    line.startsWith("BEGIN:", ignoreCase = true) -> depth++
-                    line.startsWith("END:", ignoreCase = true) -> depth--
-                    depth == 0 -> {
-                        val name = line.substringBefore(':').substringBefore(';').uppercase().trim()
-                        if (name in TARGET_PROPS && !current!!.containsKey(name)) {
-                            propertyValue(line)?.let { current!![name] = it }
+                current != null ->
+                    when {
+                        line.startsWith("BEGIN:", ignoreCase = true) -> depth++
+                        line.startsWith("END:", ignoreCase = true) -> depth--
+                        depth == 0 -> {
+                            val name =
+                                line
+                                    .substringBefore(':')
+                                    .substringBefore(';')
+                                    .uppercase()
+                                    .trim()
+                            if (name in TARGET_PROPS && !current!!.containsKey(name)) {
+                                propertyValue(line)?.let { current!![name] = it }
+                            }
                         }
                     }
-                }
             }
         }
         return events
@@ -178,37 +200,52 @@ object IcsParser : TimetableParser {
         if (digits.length != 12 && digits.length != 14) return null
         if (!digits.all { it.isDigit() }) return null
         return runCatching {
-            val dt = LocalDateTime.of(
-                digits.substring(0, 4).toInt(),
-                digits.substring(4, 6).toInt(),
-                digits.substring(6, 8).toInt(),
-                digits.substring(8, 10).toInt(),
-                digits.substring(10, 12).toInt(),
-            )
+            val dt =
+                LocalDateTime.of(
+                    digits.substring(0, 4).toInt(),
+                    digits.substring(4, 6).toInt(),
+                    digits.substring(6, 8).toInt(),
+                    digits.substring(8, 10).toInt(),
+                    digits.substring(10, 12).toInt(),
+                )
             if (utc) dt.atZone(ZoneOffset.UTC).withZoneSameInstant(ZoneId.systemDefault()).toLocalDateTime() else dt
         }.getOrNull()
     }
 
-    private fun expandDates(start: LocalDate, rrule: String?): List<LocalDate> {
+    private fun expandDates(
+        start: LocalDate,
+        rrule: String?,
+    ): List<LocalDate> {
         if (rrule.isNullOrBlank()) return listOf(start)
-        val parts = rrule.split(';').mapNotNull { seg ->
-            val i = seg.indexOf('=')
-            if (i <= 0) null else seg.substring(0, i).uppercase().trim() to seg.substring(i + 1).trim()
-        }.toMap()
+        val parts = rruleParts(rrule)
         if (parts["FREQ"]?.uppercase() != "WEEKLY") return listOf(start)
-        val interval = parts["INTERVAL"]?.toIntOrNull()?.coerceAtLeast(1) ?: 1
         val count = parts["COUNT"]?.toIntOrNull()?.coerceAtLeast(0)
-        val until = parts["UNTIL"]?.let { parseDateTime(it)?.toLocalDate() }
-        val byDays = parts["BYDAY"]?.split(',')
-            ?.mapNotNull { dayToken(it) }?.distinct()?.sorted()
-            ?.takeIf { it.isNotEmpty() }
-            ?: listOf(start.dayOfWeek)
         if (count == 0) return emptyList()
+        return weeklyDates(start, parts, count).sorted()
+    }
 
+    /** "FREQ=WEEKLY;INTERVAL=2" → map；没有 "=" 的片段直接丢掉 */
+    private fun rruleParts(rrule: String): Map<String, String> =
+        rrule
+            .split(';')
+            .mapNotNull { seg ->
+                val i = seg.indexOf('=')
+                if (i <= 0) null else seg.substring(0, i).uppercase().trim() to seg.substring(i + 1).trim()
+            }.toMap()
+
+    /** 按周展开：每 interval 周，把 BYDAY（缺省为起始日的星期）逐日产出，最多 400 条 / 200 周 */
+    private fun weeklyDates(
+        start: LocalDate,
+        parts: Map<String, String>,
+        count: Int?,
+    ): List<LocalDate> {
+        val interval = parts["INTERVAL"]?.toIntOrNull()?.coerceAtLeast(1) ?: 1
+        val until = parts["UNTIL"]?.let { parseDateTime(it)?.toLocalDate() }
+        val byDays = byDaysOf(parts, start)
         val firstMonday = start.with(DayOfWeek.MONDAY)
         val dates = mutableListOf<LocalDate>()
         var week = 0
-        while (dates.size < 400 && week <= 200) {
+        while (dates.size < MAX_OCCURRENCES && week <= MAX_WEEKS) {
             var produced = false
             for (d in byDays) {
                 if (count != null && dates.size >= count) break
@@ -218,39 +255,64 @@ object IcsParser : TimetableParser {
                 dates += date
                 produced = true
             }
-            if (!produced && until != null &&
-                firstMonday.plusWeeks(((week + 1) * interval).toLong()).isAfter(until)
-            ) break
+            // 这一周什么都没产出、且下一周已经越过 UNTIL：后面不会再有命中
+            val nextWeek = firstMonday.plusWeeks(((week + 1) * interval).toLong())
+            if (!produced && until != null && nextWeek.isAfter(until)) break
             week++
         }
-        return dates.sorted()
+        return dates
     }
 
-    private fun dayToken(token: String): DayOfWeek? = when (token.trim().takeLast(2).uppercase()) {
-        "MO" -> DayOfWeek.MONDAY
-        "TU" -> DayOfWeek.TUESDAY
-        "WE" -> DayOfWeek.WEDNESDAY
-        "TH" -> DayOfWeek.THURSDAY
-        "FR" -> DayOfWeek.FRIDAY
-        "SA" -> DayOfWeek.SATURDAY
-        "SU" -> DayOfWeek.SUNDAY
-        else -> null
-    }
+    /** BYDAY 列表；写不出合法值就退回起始日自己的星期 */
+    private fun byDaysOf(
+        parts: Map<String, String>,
+        start: LocalDate,
+    ): List<DayOfWeek> =
+        parts["BYDAY"]
+            ?.split(',')
+            ?.mapNotNull { dayToken(it) }
+            ?.distinct()
+            ?.sorted()
+            ?.takeIf { it.isNotEmpty() }
+            ?: listOf(start.dayOfWeek)
 
-    private fun sectionAt(sections: List<SectionTimeEntity>, time: LocalTime): Int? {
+    private fun dayToken(token: String): DayOfWeek? =
+        when (token.trim().takeLast(2).uppercase()) {
+            "MO" -> DayOfWeek.MONDAY
+            "TU" -> DayOfWeek.TUESDAY
+            "WE" -> DayOfWeek.WEDNESDAY
+            "TH" -> DayOfWeek.THURSDAY
+            "FR" -> DayOfWeek.FRIDAY
+            "SA" -> DayOfWeek.SATURDAY
+            "SU" -> DayOfWeek.SUNDAY
+            else -> null
+        }
+
+    private fun sectionAt(
+        sections: List<SectionTimeEntity>,
+        time: LocalTime,
+    ): Int? {
         if (sections.isEmpty()) return null
         sections.forEach { s ->
             val st = TimeUtils.parseTime(s.startTime) ?: return@forEach
             val et = TimeUtils.parseTime(s.endTime) ?: return@forEach
             if (!time.isBefore(st) && !time.isAfter(et)) return s.sectionNo
         }
-        return sections.minByOrNull { s ->
-            val st = TimeUtils.parseTime(s.startTime) ?: return@minByOrNull Long.MAX_VALUE
-            abs(java.time.Duration.between(st, time).toMinutes())
-        }?.sectionNo
+        return sections
+            .minByOrNull { s ->
+                val st = TimeUtils.parseTime(s.startTime) ?: return@minByOrNull Long.MAX_VALUE
+                abs(
+                    java.time.Duration
+                        .between(st, time)
+                        .toMinutes(),
+                )
+            }?.sectionNo
     }
 
-    private fun extract(description: String, vararg keys: String): String {
+    private fun extract(
+        description: String,
+        vararg keys: String,
+    ): String {
         if (description.isBlank()) return ""
         keys.forEach { key ->
             Regex("""$key[：:]\s*([^\s·,，;；|]{1,20})""").find(description)?.let {
@@ -260,14 +322,18 @@ object IcsParser : TimetableParser {
         return ""
     }
 
-    private fun unescape(value: String): String = value
-        .replace("\\n", "\n")
-        .replace("\\N", "\n")
-        .replace("\\,", ",")
-        .replace("\\;", ";")
-        .replace("\\\\", "\\")
+    private fun unescape(value: String): String =
+        value
+            .replace("\\n", "\n")
+            .replace("\\N", "\n")
+            .replace("\\,", ",")
+            .replace("\\;", ";")
+            .replace("\\\\", "\\")
 
-    private fun compatible(a: String, b: String): Boolean = a.isBlank() || b.isBlank() || a == b
+    private fun compatible(
+        a: String,
+        b: String,
+    ): Boolean = a.isBlank() || b.isBlank() || a == b
 
     private class Acc(
         val name: String,

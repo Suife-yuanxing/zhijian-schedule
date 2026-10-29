@@ -30,15 +30,16 @@ import androidx.glance.unit.ColorProvider
 import com.zhijian.schedule.MainActivity
 
 class NextCourseWidget : GlanceAppWidget() {
-
-    override suspend fun provideGlance(context: Context, id: GlanceId) {
+    override suspend fun provideGlance(
+        context: Context,
+        id: GlanceId,
+    ) {
         val data = loadNextData(context)
         provideContent { NextContent(data) }
     }
 }
 
-private @Composable
-fun NextContent(data: WidgetNextData) {
+@Composable private fun NextContent(data: WidgetNextData) {
     val dark = isSystemDark(LocalContext.current)
     val palette = presetOf(data.themeId)
     val colors = if (dark) palette.dark else palette.light
@@ -66,26 +67,28 @@ fun NextContent(data: WidgetNextData) {
                 Spacer(
                     GlanceModifier
                         .size(10.dp)
-                        .background(ColorProvider(Color(course.color)))
+                        .background(ColorProvider(Color(course.color))),
                 )
                 Spacer(GlanceModifier.width(6.dp))
                 Text(
                     text = course.startTime,
-                    style = TextStyle(
-                        color = ColorProvider(colors.text),
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                    ),
+                    style =
+                        TextStyle(
+                            color = ColorProvider(colors.text),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                        ),
                 )
             }
             Spacer(GlanceModifier.height(4.dp))
             Text(
                 text = course.name,
-                style = TextStyle(
-                    color = ColorProvider(colors.text),
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                ),
+                style =
+                    TextStyle(
+                        color = ColorProvider(colors.text),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                    ),
                 maxLines = 2,
             )
             if (course.room.isNotBlank()) {

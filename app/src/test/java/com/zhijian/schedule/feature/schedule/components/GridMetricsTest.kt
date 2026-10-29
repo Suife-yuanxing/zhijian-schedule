@@ -5,12 +5,12 @@ import com.zhijian.schedule.core.data.db.SectionTimeEntity
 import com.zhijian.schedule.feature.schedule.components.GridLayout
 import com.zhijian.schedule.feature.schedule.components.GridMetrics
 import com.zhijian.schedule.feature.schedule.components.blockContentFor
-import java.time.LocalTime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalTime
 
 /**
  * 网格几何与课块内容预算。
@@ -19,23 +19,33 @@ import org.junit.Test
  * 所以先把 1.0 倍的行为钉死，再验证放大后不会裁字。
  */
 class GridMetricsTest {
-
-    private val times = listOf(
-        "08:20" to "09:05", "09:15" to "10:00", "10:10" to "10:55", "11:05" to "11:45",
-        "14:20" to "15:05", "15:15" to "16:00", "16:05" to "16:50", "17:00" to "17:40",
-        "18:20" to "19:05", "19:15" to "20:00", "20:10" to "20:55", "21:05" to "21:35",
-    )
-
-    private fun sections(): List<SectionTimeEntity> = times.mapIndexed { i, (start, end) ->
-        SectionTimeEntity(
-            modeId = 1L,
-            sectionNo = i + 1,
-            periodNo = (i + 2) / 2,
-            session = if (i < 4) "AM" else "PM",
-            startTime = start,
-            endTime = end,
+    private val times =
+        listOf(
+            "08:20" to "09:05",
+            "09:15" to "10:00",
+            "10:10" to "10:55",
+            "11:05" to "11:45",
+            "14:20" to "15:05",
+            "15:15" to "16:00",
+            "16:05" to "16:50",
+            "17:00" to "17:40",
+            "18:20" to "19:05",
+            "19:15" to "20:00",
+            "20:10" to "20:55",
+            "21:05" to "21:35",
         )
-    }
+
+    private fun sections(): List<SectionTimeEntity> =
+        times.mapIndexed { i, (start, end) ->
+            SectionTimeEntity(
+                modeId = 1L,
+                sectionNo = i + 1,
+                periodNo = (i + 2) / 2,
+                session = if (i < 4) "AM" else "PM",
+                startTime = start,
+                endTime = end,
+            )
+        }
 
     // --- metrics ---
 

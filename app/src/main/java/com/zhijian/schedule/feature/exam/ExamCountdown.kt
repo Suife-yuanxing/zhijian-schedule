@@ -9,7 +9,6 @@ import java.util.Locale
 
 /** 考试倒计时与日期文案（纯逻辑，可单测） */
 object ExamCountdown {
-
     private val DATE_LINE = DateTimeFormatter.ofPattern("MM-dd E HH:mm", Locale.CHINA)
     private val CLOCK = DateTimeFormatter.ofPattern("HH:mm")
 
@@ -17,7 +16,10 @@ object ExamCountdown {
         LocalDateTime.ofInstant(Instant.ofEpochMilli(examTimeMillis), ZoneId.systemDefault())
 
     /** 行内徽标：3 天 / 5 小时 / 30 分钟；已开始 → 已开考 */
-    fun badge(examTimeMillis: Long, now: LocalDateTime): String {
+    fun badge(
+        examTimeMillis: Long,
+        now: LocalDateTime,
+    ): String {
         val d = Duration.between(now, local(examTimeMillis))
         return when {
             d.isNegative -> "已开考"
@@ -28,7 +30,11 @@ object ExamCountdown {
     }
 
     /** 今日页卡片主标题：当天带时刻，其余按天 */
-    fun cardTitle(name: String, examTimeMillis: Long, now: LocalDateTime): String {
+    fun cardTitle(
+        name: String,
+        examTimeMillis: Long,
+        now: LocalDateTime,
+    ): String {
         val at = local(examTimeMillis)
         return if (at.toLocalDate() == now.toLocalDate()) {
             "「$name」今天 ${at.format(CLOCK)} 开考"

@@ -32,36 +32,43 @@ object Routes {
     const val PROFILE_EXAMS = "profile_exams"
     const val PROFILE_JW_SCRIPTS = "profile_jw_scripts"
 
-    fun profileGrades(entryKey: String = ProfileEntryKeys.GRADES): String =
-        "profile_grades?entryKey=$entryKey"
+    fun profileGrades(entryKey: String = ProfileEntryKeys.GRADES): String = "profile_grades?entryKey=$entryKey"
 
-    fun scheduleEditor(courseId: Long? = null, day: Int? = null, section: Int? = null): String =
-        "schedule_editor?courseId=${courseId ?: -1L}&day=${day ?: -1}&section=${section ?: -1}"
+    fun scheduleEditor(
+        courseId: Long? = null,
+        day: Int? = null,
+        section: Int? = null,
+    ): String = "schedule_editor?courseId=${courseId ?: -1L}&day=${day ?: -1}&section=${section ?: -1}"
 
-    fun todayEditor(courseId: Long? = null, day: Int? = null, section: Int? = null): String =
-        "today_editor?courseId=${courseId ?: -1L}&day=${day ?: -1}&section=${section ?: -1}"
+    fun todayEditor(
+        courseId: Long? = null,
+        day: Int? = null,
+        section: Int? = null,
+    ): String = "today_editor?courseId=${courseId ?: -1L}&day=${day ?: -1}&section=${section ?: -1}"
 }
 
 /** 课程编辑页参数：今日 / 课表两个入口共用（缺省 -1 表示未指定） */
-internal val editorArgs = listOf(
-    navArgument("courseId") {
-        type = NavType.LongType
-        defaultValue = -1L
-    },
-    navArgument("day") {
-        type = NavType.IntType
-        defaultValue = -1
-    },
-    navArgument("section") {
-        type = NavType.IntType
-        defaultValue = -1
-    },
-)
+internal val editorArgs =
+    listOf(
+        navArgument("courseId") {
+            type = NavType.LongType
+            defaultValue = -1L
+        },
+        navArgument("day") {
+            type = NavType.IntType
+            defaultValue = -1
+        },
+        navArgument("section") {
+            type = NavType.IntType
+            defaultValue = -1
+        },
+    )
 
 /** 成绩页入口参数：入口卡 key 决定分段级联的落点 */
-internal val gradesArgs = listOf(
-    navArgument("entryKey") {
-        type = NavType.StringType
-        defaultValue = ProfileEntryKeys.GRADES
-    },
-)
+internal val gradesArgs =
+    listOf(
+        navArgument("entryKey") {
+            type = NavType.StringType
+            defaultValue = ProfileEntryKeys.GRADES
+        },
+    )

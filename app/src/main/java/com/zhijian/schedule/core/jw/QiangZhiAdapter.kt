@@ -24,7 +24,6 @@ import org.jsoup.nodes.Element
  * - 旧版：行首为「1-2节」td，课程直接铺在单元格文本里，多课以分隔线或相邻 div 分隔。
  */
 object QiangZhiAdapter : JwAdapter {
-
     override val id = "qiangzhi"
     override val name = "强智 jsxsd"
 
@@ -51,65 +50,74 @@ object QiangZhiAdapter : JwAdapter {
         }
     }
 
-    override fun ssoEntry(baseUrl: String): String? =
-        runCatching { "${normalizeBase(baseUrl)}sso.jsp" }.getOrNull()
+    override fun ssoEntry(baseUrl: String): String? = runCatching { "${normalizeBase(baseUrl)}sso.jsp" }.getOrNull()
 
     override suspend fun fetchSchedule(
         client: OkHttpClient,
         baseUrl: String,
         totalWeeks: Int,
-    ): JwFetchResult = withContext(Dispatchers.IO) {
-        try {
-            fetchCourses(client, baseUrl, totalWeeks)
-        } catch (e: JwException.NeedsLogin) {
-            // 会话过期：先尝试统一认证静默重登（后台自动同步与手动抓取共用），再重试一次
-            if (!JwSessionRecovery.trySilentRecover(client, this@QiangZhiAdapter, baseUrl)) throw e
-            fetchCourses(client, baseUrl, totalWeeks)
+    ): JwFetchResult =
+        withContext(Dispatchers.IO) {
+            try {
+                fetchCourses(client, baseUrl, totalWeeks)
+            } catch (e: JwException.NeedsLogin) {
+                // 会话过期：先尝试统一认证静默重登（后台自动同步与手动抓取共用），再重试一次
+                if (!JwSessionRecovery.trySilentRecover(client, this@QiangZhiAdapter, baseUrl)) throw e
+                fetchCourses(client, baseUrl, totalWeeks)
+            }
         }
-    }
 
     private suspend fun fetchCourses(
         client: OkHttpClient,
         baseUrl: String,
         totalWeeks: Int,
-    ): JwFetchResult = withContext(Dispatchers.IO) {
-        val base = normalizeBase(baseUrl)
-        val referer = "${base}framework/xsMain.jsp"
-        val candidates = listOf(
-            "${base}xskb/xskb_list.do",
-            "${base}xskb/xskb_list.do?Ves632DSdyV=NEW_XSD_PYGL",
-        )
-        var lastError: String? = null
-        for (url in candidates) {
-            val html = try {
-                get(client, url, referer)
-            } catch (e: JwException) {
-                throw e
-            } catch (e: Exception) {
-                lastError = e.message
-                continue
+    ): JwFetchResult =
+        withContext(Dispatchers.IO) {
+            val base = normalizeBase(baseUrl)
+            val referer = "${base}framework/xsMain.jsp"
+            val candidates =
+                listOf(
+                    "${base}xskb/xskb_list.do",
+                    "${base}xskb/xskb_list.do?Ves632DSdyV=NEW_XSD_PYGL",
+                )
+            var lastError: String? = null
+            for (url in candidates) {
+                val html =
+                    try {
+                        get(client, url, referer)
+                    } catch (e: JwException) {
+                        throw e
+                    } catch (e: Exception) {
+                        lastError = e.message
+                        continue
+                    }
+                if (isLoginPage(html)) throw JwException.NeedsLogin()
+                val drafts = parse(html, totalWeeks)
+                if (drafts.isNotEmpty()) {
+                    return@withContext JwFetchResult(drafts, SectionTimes.fromHtml(html))
+                }
+                lastError = "未在页面中找到课表数据"
             }
-            if (isLoginPage(html)) throw JwException.NeedsLogin()
-            val drafts = parse(html, totalWeeks)
-            if (drafts.isNotEmpty()) {
-                return@withContext JwFetchResult(drafts, SectionTimes.fromHtml(html))
-            }
-            lastError = "未在页面中找到课表数据"
+            throw JwException.ParseFailed("抓取失败：${lastError ?: "页面结构不匹配"}")
         }
-        throw JwException.ParseFailed("抓取失败：${lastError ?: "页面结构不匹配"}")
-    }
 
     private fun isLoginPage(html: String): Boolean =
         isSessionDeadPage(html) ||
             (html.contains("<title>登录</title>") && !html.contains("kbtable"))
 
-    private fun get(client: OkHttpClient, url: String, referer: String): String {
-        val request = Request.Builder()
-            .url(url)
-            .header("User-Agent", UA)
-            .header("Referer", referer)
-            .get()
-            .build()
+    private fun get(
+        client: OkHttpClient,
+        url: String,
+        referer: String,
+    ): String {
+        val request =
+            Request
+                .Builder()
+                .url(url)
+                .header("User-Agent", UA)
+                .header("Referer", referer)
+                .get()
+                .build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw httpFailure(response.code)
             return response.body?.string().orEmpty()
@@ -127,13 +135,16 @@ object QiangZhiAdapter : JwAdapter {
         val parsed = parseUrl(url) ?: throw JwException.NetworkFailed("教务地址无效")
         val path = parsed.encodedPath
         val idx = path.indexOf("/jsxsd/")
-        val basePath = when {
-            idx >= 0 -> path.substring(0, idx + "/jsxsd/".length)
-            path == "/jsxsd" -> "/jsxsd/"
-            else -> SchoolCatalog.knownBasePath(parsed.host)
-                ?: throw JwException.NetworkFailed("请在教务地址中包含 /jsxsd/ 路径")
-        }
-        return parsed.newBuilder()
+        val basePath =
+            when {
+                idx >= 0 -> path.substring(0, idx + "/jsxsd/".length)
+                path == "/jsxsd" -> "/jsxsd/"
+                else ->
+                    SchoolCatalog.knownBasePath(parsed.host)
+                        ?: throw JwException.NetworkFailed("请在教务地址中包含 /jsxsd/ 路径")
+            }
+        return parsed
+            .newBuilder()
             .encodedPath(basePath)
             .query(null)
             .fragment(null)
@@ -144,22 +155,27 @@ object QiangZhiAdapter : JwAdapter {
     private fun parseUrl(raw: String): HttpUrl? {
         val trimmed = raw.trim()
         if (trimmed.isEmpty()) return null
-        val withScheme = if (trimmed.startsWith("http", ignoreCase = true)) {
-            trimmed
-        } else {
-            "https://$trimmed"
-        }
+        val withScheme =
+            if (trimmed.startsWith("http", ignoreCase = true)) {
+                trimmed
+            } else {
+                "https://$trimmed"
+            }
         return withScheme.toHttpUrlOrNull()
     }
 
     // ---------- 解析 ----------
 
-    fun parse(html: String, totalWeeks: Int): List<CourseDraft> {
+    fun parse(
+        html: String,
+        totalWeeks: Int,
+    ): List<CourseDraft> {
         val doc = Jsoup.parse(html)
-        val table = doc.getElementById("kbtable")
-            ?: doc.selectFirst("table#kbtable")
-            ?: doc.selectFirst("table.kbtable")
-            ?: return emptyList()
+        val table =
+            doc.getElementById("kbtable")
+                ?: doc.selectFirst("table#kbtable")
+                ?: doc.selectFirst("table.kbtable")
+                ?: return emptyList()
         val rows = table.select("tr").filter { it.select("th,td").isNotEmpty() }
         if (rows.isEmpty()) return emptyList()
 
@@ -189,11 +205,12 @@ object QiangZhiAdapter : JwAdapter {
             val rowRange = parseSectionLabel(cells[0].text())
             val courseCells = if (headerDays.size >= 3) cells.takeLast(headerDays.size) else cells
             courseCells.forEachIndexed { colIdx, td ->
-                val day = when {
-                    headerDays.size >= 3 -> dayValues.getOrNull(colIdx)
-                    colIdx == 0 -> null
-                    else -> colIdx.takeIf { it in 1..7 }
-                } ?: return@forEachIndexed
+                val day =
+                    when {
+                        headerDays.size >= 3 -> dayValues.getOrNull(colIdx)
+                        colIdx == 0 -> null
+                        else -> colIdx.takeIf { it in 1..7 }
+                    } ?: return@forEachIndexed
                 drafts += parseCell(td, day, rowRange, ordinal, bigRowLayout, totalWeeks)
             }
         }
@@ -224,8 +241,13 @@ object QiangZhiAdapter : JwAdapter {
     private fun fragmentLines(fragment: String): List<String> =
         fragment
             .split(Regex("(?i)<br\\s*/?>"))
-            .map { Jsoup.parse(it).text().replace('\u00A0', ' ').trim() }
-            .filter { it.isNotEmpty() }
+            .map {
+                Jsoup
+                    .parse(it)
+                    .text()
+                    .replace('\u00A0', ' ')
+                    .trim()
+            }.filter { it.isNotEmpty() }
 
     private fun mapLines(
         lines: List<String>,
@@ -239,9 +261,10 @@ object QiangZhiAdapter : JwAdapter {
         val name = lines.first().trim().trimEnd('*', '（', '(')
         if (name.isEmpty() || name.length > 30) return null
 
-        val weekLine = lines.firstOrNull {
-            it.contains("周") && !it.contains("星期") && (it.any { c -> c.isDigit() } || it.contains("全"))
-        } ?: lines.firstOrNull { Regex("""^[\d,\-()（）单双]+$""").matches(it) && it.any { c -> c.isDigit() } }
+        val weekLine =
+            lines.firstOrNull {
+                it.contains("周") && !it.contains("星期") && (it.any { c -> c.isDigit() } || it.contains("全"))
+            } ?: lines.firstOrNull { Regex("""^[\d,\-()（）单双]+$""").matches(it) && it.any { c -> c.isDigit() } }
 
         val rest = lines.drop(1).filter { it != weekLine }
         val teacher = rest.firstOrNull()?.takeIf { it.length <= 20 }.orEmpty()
@@ -249,9 +272,10 @@ object QiangZhiAdapter : JwAdapter {
 
         val weekExpr = weekLine?.substringBefore('[')
         val mask = WeekMask.parseExpression(totalWeeks, weekExpr) ?: WeekMask.of(totalWeeks)
-        val range = bracketSections(weekLine)
-            ?: rowRange
-            ?: rowFallbackRange(ordinal, bigRowLayout)
+        val range =
+            bracketSections(weekLine)
+                ?: rowRange
+                ?: rowFallbackRange(ordinal, bigRowLayout)
         return CourseDraft(
             name = name,
             teacher = teacher,
@@ -271,7 +295,10 @@ object QiangZhiAdapter : JwAdapter {
         return nums.min()..nums.max()
     }
 
-    private fun rowFallbackRange(ordinal: Int, bigRowLayout: Boolean): IntRange =
+    private fun rowFallbackRange(
+        ordinal: Int,
+        bigRowLayout: Boolean,
+    ): IntRange =
         if (bigRowLayout) {
             val period = (ordinal + 1).coerceIn(1, 6)
             (period * 2 - 1)..(period * 2)
@@ -298,19 +325,20 @@ object QiangZhiAdapter : JwAdapter {
         }
     }
 
-    private fun cnNum(s: String): Int? = when (s) {
-        "一" -> 1
-        "二" -> 2
-        "三" -> 3
-        "四" -> 4
-        "五" -> 5
-        "六" -> 6
-        "七" -> 7
-        "八" -> 8
-        "九" -> 9
-        "十" -> 10
-        else -> s.toIntOrNull()
-    }
+    private fun cnNum(s: String): Int? =
+        when (s) {
+            "一" -> 1
+            "二" -> 2
+            "三" -> 3
+            "四" -> 4
+            "五" -> 5
+            "六" -> 6
+            "七" -> 7
+            "八" -> 8
+            "九" -> 9
+            "十" -> 10
+            else -> s.toIntOrNull()
+        }
 
     private fun parseDay(text: String): Int? {
         val t = text.trim()

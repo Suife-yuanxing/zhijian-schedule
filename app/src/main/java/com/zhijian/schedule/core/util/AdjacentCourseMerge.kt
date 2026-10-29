@@ -14,7 +14,6 @@ import java.time.Duration
  * 避免把不同周次或不同教学班误并。
  */
 object AdjacentCourseMerge {
-
     private const val MAX_BREAK_MINUTES = 30L
 
     fun drafts(
@@ -22,9 +21,10 @@ object AdjacentCourseMerge {
         totalWeeks: Int,
         sections: List<SectionTimeEntity>,
     ): List<CourseDraft> {
-        val ordered = drafts
-            .map { it.copy(weekMask = WeekMask.normalize(it.weekMask, totalWeeks)) }
-            .sortedWith(compareBy({ it.dayOfWeek }, { it.startSection }, { it.name }))
+        val ordered =
+            drafts
+                .map { it.copy(weekMask = WeekMask.normalize(it.weekMask, totalWeeks)) }
+                .sortedWith(compareBy({ it.dayOfWeek }, { it.startSection }, { it.name }))
         if (ordered.size < 2) return ordered
 
         val out = mutableListOf<CourseDraft>()
@@ -32,11 +32,12 @@ object AdjacentCourseMerge {
             val index = out.indexOfLast { prev -> prev.sameLessonAs(next) }
             if (index >= 0 && out[index].continuesWith(next, sections)) {
                 val prev = out[index]
-                out[index] = prev.copy(
-                    endSection = next.endSection,
-                    room = prev.room.ifBlank { next.room },
-                    teacher = prev.teacher.ifBlank { next.teacher },
-                )
+                out[index] =
+                    prev.copy(
+                        endSection = next.endSection,
+                        room = prev.room.ifBlank { next.room },
+                        teacher = prev.teacher.ifBlank { next.teacher },
+                    )
             } else {
                 out += next
             }
@@ -57,12 +58,13 @@ object AdjacentCourseMerge {
             val index = out.indexOfLast { prev -> prev.sameLessonAs(next, totalWeeks) }
             if (index >= 0 && out[index].continuesWith(next, sections)) {
                 val prev = out[index]
-                out[index] = prev.copy(
-                    endSection = next.endSection,
-                    room = prev.room.ifBlank { next.room },
-                    teacher = prev.teacher.ifBlank { next.teacher },
-                    manuallyEdited = prev.manuallyEdited || next.manuallyEdited,
-                )
+                out[index] =
+                    prev.copy(
+                        endSection = next.endSection,
+                        room = prev.room.ifBlank { next.room },
+                        teacher = prev.teacher.ifBlank { next.teacher },
+                        manuallyEdited = prev.manuallyEdited || next.manuallyEdited,
+                    )
             } else {
                 out += next
             }
@@ -80,7 +82,10 @@ object AdjacentCourseMerge {
             compatible(room, other.room) &&
             compatible(teacher, other.teacher)
 
-    private fun CourseEntity.sameLessonAs(other: CourseEntity, totalWeeks: Int): Boolean =
+    private fun CourseEntity.sameLessonAs(
+        other: CourseEntity,
+        totalWeeks: Int,
+    ): Boolean =
         tableId == other.tableId &&
             dayOfWeek == other.dayOfWeek &&
             name == other.name &&
@@ -94,14 +99,16 @@ object AdjacentCourseMerge {
     private fun CourseDraft.continuesWith(
         next: CourseDraft,
         sections: List<SectionTimeEntity>,
-    ): Boolean = next.startSection == endSection + 1 &&
-        bridgeAllowed(endSection, next.startSection, sections)
+    ): Boolean =
+        next.startSection == endSection + 1 &&
+            bridgeAllowed(endSection, next.startSection, sections)
 
     private fun CourseEntity.continuesWith(
         next: CourseEntity,
         sections: List<SectionTimeEntity>,
-    ): Boolean = next.startSection == endSection + 1 &&
-        bridgeAllowed(endSection, next.startSection, sections)
+    ): Boolean =
+        next.startSection == endSection + 1 &&
+            bridgeAllowed(endSection, next.startSection, sections)
 
     /** 课间要短到看起来是连堂；午休、晚饭这种大段间隔不能并 */
     private fun bridgeAllowed(
@@ -109,15 +116,23 @@ object AdjacentCourseMerge {
         startSection: Int,
         sections: List<SectionTimeEntity>,
     ): Boolean {
-        val end = sections.firstOrNull { it.sectionNo == endSection }
-            ?.endTime?.let(TimeUtils::parseTime)
-            ?: return false
-        val start = sections.firstOrNull { it.sectionNo == startSection }
-            ?.startTime?.let(TimeUtils::parseTime)
-            ?: return false
+        val end =
+            sections
+                .firstOrNull { it.sectionNo == endSection }
+                ?.endTime
+                ?.let(TimeUtils::parseTime)
+                ?: return false
+        val start =
+            sections
+                .firstOrNull { it.sectionNo == startSection }
+                ?.startTime
+                ?.let(TimeUtils::parseTime)
+                ?: return false
         return Duration.between(end, start).toMinutes() in 0..MAX_BREAK_MINUTES
     }
 
-    private fun compatible(a: String, b: String): Boolean =
-        a.isBlank() || b.isBlank() || a == b
+    private fun compatible(
+        a: String,
+        b: String,
+    ): Boolean = a.isBlank() || b.isBlank() || a == b
 }

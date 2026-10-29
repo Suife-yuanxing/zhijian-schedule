@@ -4,12 +4,12 @@ package com.zhijian.schedule.feature.importer.ocr
  * OCR 文本归一化：空白与全角数字收敛成可比较的形式，星期 / 节次的中文写法转成数字。
  */
 internal object OcrText {
-
     internal val DAY_HEADER = Regex("""^(?:星期|周|礼拜)([一二三四五六日天1-7])""")
     internal val DAY_INLINE = Regex("""(?:星期|周|礼拜)([一二三四五六日天1-7])""")
 
     fun cleanName(raw: String): String =
-        raw.trim()
+        raw
+            .trim()
             .trim('-', '·', '•', ':', '：', '|')
             .replace(Regex("""[（(]\s*[）)]"""), "")
             .trim()
@@ -29,16 +29,17 @@ internal object OcrText {
     fun restLooksLikeHeader(rest: String): Boolean =
         rest.isEmpty() || rest.all { it.isDigit() || it in "./月日号-—~·()（）" }
 
-    fun dayNumber(token: String): Int? = when (token) {
-        "一", "1" -> 1
-        "二", "2" -> 2
-        "三", "3" -> 3
-        "四", "4" -> 4
-        "五", "5" -> 5
-        "六", "6" -> 6
-        "日", "天", "7" -> 7
-        else -> null
-    }
+    fun dayNumber(token: String): Int? =
+        when (token) {
+            "一", "1" -> 1
+            "二", "2" -> 2
+            "三", "3" -> 3
+            "四", "4" -> 4
+            "五", "5" -> 5
+            "六", "6" -> 6
+            "日", "天", "7" -> 7
+            else -> null
+        }
 
     fun chineseNumber(s: String): Int? {
         s.trim().toIntOrNull()?.let { return it }

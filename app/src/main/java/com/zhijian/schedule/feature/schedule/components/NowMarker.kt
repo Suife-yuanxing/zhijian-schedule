@@ -63,15 +63,17 @@ internal fun NowMarker(
     // （顺带一个实测事实：这条呼吸灯让课表页**静置**就恒在 ~62fps 重绘，12s 画 741 帧。
     //  这是本页最贵的固定开销；要彻底归零只能去掉呼吸效果，属于设计取舍，没动。）
     val breath = rememberInfiniteTransition(label = "nowMarker")
-    val pulse = breath.animateFloat(
-        initialValue = 0.55f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1800, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "nowMarkerPulse",
-    )
+    val pulse =
+        breath.animateFloat(
+            initialValue = 0.55f,
+            targetValue = 1f,
+            animationSpec =
+                infiniteRepeatable(
+                    animation = tween(durationMillis = 1800, easing = LinearEasing),
+                    repeatMode = RepeatMode.Reverse,
+                ),
+            label = "nowMarkerPulse",
+        )
     val lineAlphaBase = if (slot.inClass) 0.72f else 0.4f
 
     // 时间轴里的时间胶囊：宽度吃满时间轴，高度随网格一起放大（字体放大后 16dp 装不下 9sp 翻倍的字）
@@ -101,7 +103,7 @@ internal fun NowMarker(
             .offset(x = metrics.timeAxisWidth - 3.dp * box, y = slot.y - 3.dp * box)
             .size(6.dp * box)
             .clip(CircleShape)
-            .drawBehind { drawRect(accentTone.ink.copy(alpha = pulse.value)) }
+            .drawBehind { drawRect(accentTone.ink.copy(alpha = pulse.value)) },
     )
     // 横线
     Box(
@@ -110,6 +112,6 @@ internal fun NowMarker(
             .fillMaxWidth()
             .height(1.5.dp * box)
             .padding(start = metrics.timeAxisWidth)
-            .drawBehind { drawRect(accentTone.ink.copy(alpha = lineAlphaBase * pulse.value)) }
+            .drawBehind { drawRect(accentTone.ink.copy(alpha = lineAlphaBase * pulse.value)) },
     )
 }

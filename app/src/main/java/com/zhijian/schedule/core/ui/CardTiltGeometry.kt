@@ -9,7 +9,10 @@ import kotlin.math.min
  * 触摸点 → 以卡片中心为原点的 [-1,1]（x 右正、y 下正）。
  * 手指拖出卡片后夹到边缘，倾角不会继续无界增大。
  */
-internal fun tiltNormalized(position: Offset, size: Size): Offset {
+internal fun tiltNormalized(
+    position: Offset,
+    size: Size,
+): Offset {
     if (size.width <= 0f || size.height <= 0f) return Offset.Zero
     val nx = (position.x / size.width * 2f - 1f).coerceIn(-1f, 1f)
     val ny = (position.y / size.height * 2f - 1f).coerceIn(-1f, 1f)
@@ -21,7 +24,10 @@ internal fun tiltNormalized(position: Offset, size: Size): Offset {
  * 再以 `rotateX(tiltY) rotateY(tiltX)` 施加）：**指腹压住的那一角朝观看者抬起来**。
  * 右侧下压时 rotateY 为负，下侧下压时 rotateX 为正。
  */
-internal fun tiltAngles(normalized: Offset, maxDegrees: Float): TiltAngles {
+internal fun tiltAngles(
+    normalized: Offset,
+    maxDegrees: Float,
+): TiltAngles {
     val max = maxDegrees.coerceAtLeast(0f)
     val nx = normalized.x.coerceIn(-1f, 1f)
     val ny = normalized.y.coerceIn(-1f, 1f)
@@ -31,7 +37,10 @@ internal fun tiltAngles(normalized: Offset, maxDegrees: Float): TiltAngles {
     )
 }
 
-internal data class TiltAngles(val rotationX: Float, val rotationY: Float)
+internal data class TiltAngles(
+    val rotationX: Float,
+    val rotationY: Float,
+)
 
 /**
  * 反光的几何：全部由纯函数给出，便于单测钉住（见 `CardTiltTest`）。
@@ -54,25 +63,31 @@ internal data class GlareGeometry(
  * 半径用 `farthest-corner`（指腹到四个角里最远的那个）而不是卡面尺寸的固定倍率：
  * 前者在任何落点都刚好盖满卡面，后者在贴边时会露出渐变的硬边。
  */
-internal fun glareGeometry(position: Offset, size: Size): GlareGeometry {
+internal fun glareGeometry(
+    position: Offset,
+    size: Size,
+): GlareGeometry {
     val width = size.width
     val height = size.height
     if (width <= 0f || height <= 0f) {
         return GlareGeometry(Offset.Zero, 1f, 1f, Offset.Zero, Offset.Zero, 0f)
     }
-    val center = Offset(
-        x = position.x.coerceIn(0f, width),
-        y = position.y.coerceIn(0f, height),
-    )
-    val corners = listOf(
-        Offset.Zero,
-        Offset(width, 0f),
-        Offset(0f, height),
-        Offset(width, height),
-    )
-    val broadRadius = corners
-        .maxOf { (center - it).getDistance() }
-        .coerceAtLeast(1f)
+    val center =
+        Offset(
+            x = position.x.coerceIn(0f, width),
+            y = position.y.coerceIn(0f, height),
+        )
+    val corners =
+        listOf(
+            Offset.Zero,
+            Offset(width, 0f),
+            Offset(0f, height),
+            Offset(width, height),
+        )
+    val broadRadius =
+        corners
+            .maxOf { (center - it).getDistance() }
+            .coerceAtLeast(1f)
 
     val longSide = max(width, height)
     val shortSide = min(width, height)

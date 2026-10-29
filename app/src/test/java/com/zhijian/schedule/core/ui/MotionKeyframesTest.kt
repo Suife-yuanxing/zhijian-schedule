@@ -4,7 +4,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class MotionKeyframesTest {
-
     private val keys = arrayOf(0f to 1f, 0.5f to 2f, 1f to 1f)
 
     @Test
