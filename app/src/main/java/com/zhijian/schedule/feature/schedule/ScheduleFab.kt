@@ -28,24 +28,30 @@ import com.zhijian.schedule.core.ui.buttonFeedback
 import com.zhijian.schedule.navigation.IslandContentPadding
 
 /**
- * 课表页的加号按钮：随每次进入课表重新弹一次，并把按钮自身的 root 坐标交给调用方，
+ * 课表页的加号按钮：本次进程第一次进入课表时弹一次，并把按钮自身的 root 坐标交给调用方，
  * 供「从加号圆形扩散进编辑页」用。
  */
 @Composable
 internal fun ScheduleFab(
-    entryEpoch: Int,
+    playEntrance: Boolean,
     onAddCourseFromFab: (Rect) -> Unit,
 ) {
     val colors = LocalCourseColors.current
     val fabSource = remember { MutableInteractionSource() }
     // 加号在 Compose 根坐标系里的位置：编辑页从这个圆里长出来
     var fabBounds by remember { mutableStateOf(Rect.Zero) }
-    // 与课块同一拍：每进入一次课表重新弹一次。用 Animatable 而不是 animateFloatAsState，
-    // 是为了新的回合能瞬间回 0（拉目标值会先播一段收缩）
-    val fabScale = remember { Animatable(0f) }
-    LaunchedEffect(entryEpoch) {
-        fabScale.snapTo(0f)
-        fabScale.animateTo(1f, Motion.PopSpring)
+    // 与课块同一拍：只有本次进程第一次进入课表才弹。用 Animatable 而不是 animateFloatAsState，
+    // 是为了新的回合能瞬间回 0（拉目标值会先播一段收缩）。
+    // 不播时 snapshot 到 1f 落位——加号是常驻控件，切页时它跟着页面一起滑就行，
+    // 再叠一次「缩回 0 再长出来」只会强化「整页刷新」的观感。
+    val fabScale = remember { Animatable(if (playEntrance) 0f else 1f) }
+    LaunchedEffect(playEntrance) {
+        if (playEntrance) {
+            fabScale.snapTo(0f)
+            fabScale.animateTo(1f, Motion.PopSpring)
+        } else {
+            fabScale.snapTo(1f)
+        }
     }
     Box(Modifier.fillMaxSize()) {
         FloatingActionButton(

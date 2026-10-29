@@ -155,39 +155,37 @@ fun StaggerIn(
 }
 
 /**
- * 级联入场：延迟 [delayMs] 后淡入 + 弹簧放大 + 自下而上落位（课块随 tab 切页涌入）。
- * [delayMs] < 0 表示不启用、直接落位。
+ * 级联入场：延迟 [delayMs] 后淡入 + 弹簧放大 + 自下而上落位（首次进入课表时课块逐个涌入）。
  *
- * [restartKey] 是「这一轮入场」的标识：它一变就换一个新的 [Animatable]，从 0 重播。
+ * [delayMs] < 0 表示**不启用**、首帧直接落位。课表页用它表达「这次切页不播级联」：
+ * 之前每次进入都重播，每切一次 tab 整屏课块都要从 alpha=0 按阅读顺序重长一遍（整轮封顶
+ * 700ms），而切页滑动只要约 230ms——读起来就是「这一页刷新了一遍、内容从左上角摊开」。
  *
- * 为什么非要这个 key（真机复现的坑）：navigation-compose 的转场是按 back stack entry 的
- * **id** 复用内容槽，而 `saveState` / `restoreState` 恢复出来的 entry 用的还是同一个 id。
- * 所以「切走 → 在上一段转场收尾前切回来」时，页面根本没有离开组合，`remember` 与
- * `LaunchedEffect(delayMs)` 都不会重跑——级联就静默地不播了。真机表现是「慢切有入场、
- * 快切没有」（实测：慢切 1.5s 能看到明显级联，相隔约 150ms 的快切里所有课块第一帧就是
- * 满不透明度）。
+ * 历史（保留是因为别再踩）：这里一度有个 `restartKey`，用来在「转场复用内容槽、
+ * 页面没离开组合」时强推重播（navigation-compose 按 back stack entry 的 **id** 复用内容槽，
+ * `saveState`/`restoreState` 恢复的 entry 还是同一个 id，所以 `remember` 与
+ * `LaunchedEffect(delayMs)` 都不会重跑）。那个 key 解决了「快切没有入场」，代价是
+ * 「每次切页都刷新一遍」。现在改成宿主闸门控制「播不播」，key 就没有存在必要了。
  *
  * 不能反过来「把 target 拉回 0 再拉回 1」：那样会先播一段反向收缩，块会缩回去再长出来。
- * 换一个新实例是瞬时的，读到的第一帧就是 0。
  */
 @Composable
 fun Modifier.cascadeIn(
     delayMs: Long,
-    restartKey: Any? = Unit,
     startScale: Float = 0.78f,
     riseDp: Float = 10f,
 ): Modifier {
-    val progress =
-        remember(restartKey) {
-            Animatable(if (delayMs < 0) 1f else 0f)
-        }
-    LaunchedEffect(restartKey, delayMs) {
+    val progress = remember { Animatable(if (delayMs < 0) 1f else 0f) }
+    LaunchedEffect(delayMs) {
         if (delayMs < 0) {
             progress.snapTo(1f)
-        } else {
-            delay(delayMs)
-            progress.animateTo(1f, Motion.CascadeEnter)
+            return@LaunchedEffect
         }
+        // 已经落位就不重播：延迟值随课表数据变化（增删课会改序号 → 改延迟）时，
+        // 重播会把一整屏课块重新洗一遍，观感与「切页刷新」同源。
+        if (progress.value >= 1f) return@LaunchedEffect
+        delay(delayMs)
+        progress.animateTo(1f, Motion.CascadeEnter)
     }
     return graphicsLayer {
         val p = progress.value

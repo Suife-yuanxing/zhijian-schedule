@@ -48,7 +48,7 @@ internal fun CourseOverlay(
     layout: GridLayout,
     dayWidth: Dp,
     clock: State<LocalDateTime>,
-    entranceEpoch: Int,
+    playEntrance: Boolean,
     selectedCourseId: Long?,
     metrics: GridMetrics,
     onCourseClick: (CourseEntity) -> Unit,
@@ -78,7 +78,7 @@ internal fun CourseOverlay(
             selected = course.id == selectedCourseId,
             clock = clock,
             entranceDelayMs = index * step,
-            entranceEpoch = entranceEpoch,
+            playEntrance = playEntrance,
             onClick = { onCourseClick(course) },
         )
     }
@@ -103,9 +103,10 @@ private fun CourseCell(
     isTodayColumn: Boolean,
     selected: Boolean,
     clock: State<LocalDateTime>,
-    /** 这一块在入场序列里的起播延迟（序号 × 节拍，见 entranceStepMs） */
+    /** 这一块在入场序列里的起播延迟（序号 × 节拍，见 entranceStepMs；< 0 关闭级联） */
     entranceDelayMs: Long,
-    entranceEpoch: Int,
+    /** 是否播放级联：本次进程第一次进入课表才为 true */
+    playEntrance: Boolean,
     onClick: () -> Unit,
 ) {
     val startIndex = course.startSection.coerceIn(1, sections.size)
@@ -153,10 +154,9 @@ private fun CourseCell(
             modifier = Modifier.fillMaxSize(),
             selected = selected,
             // 逐个入场：延迟由序列序号给出（见 CourseOverlay）。
-            // 回合由 entranceEpoch 打点而不是靠重新组合：快速来回切 tab 时页面留在组合里，
-            // 级联不会自己重播（真机上就是「慢切有、快切没有」）
-            entranceDelayMs = entranceDelayMs,
-            entranceKey = entranceEpoch,
+            // 只有本次进程第一次进入课表才播（playEntrance）；之后切回直接落位——
+            // 否则每切一次 tab 整屏课块都要从 alpha=0 按阅读顺序重长一遍，读起来像刷新。
+            entranceDelayMs = if (playEntrance) entranceDelayMs else -1L,
             remainingMin = remainingMin,
             metrics = metrics,
             onClick = onClick,

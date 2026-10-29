@@ -44,7 +44,7 @@ import com.zhijian.schedule.core.util.WeekMask
  * 交互（扁平无阴影）：按压 0.94 回弹，点击时一下轻震（[rememberTapHaptic]，ContextClick）；
  * 详情打开期间「弹起 + 深色描边 + 容器加深」，
  * 关闭动作一开始即快速回落（见 [Motion.SelectionExit]）与面板滑出并行完成。
- * 入场：随 tab 切页错峰淡入放大（[entranceDelayMs]，见 cascadeIn）。
+ * 入场：首次进入课表时错峰淡入放大（[entranceDelayMs]，见 cascadeIn）；之后切页直接落位。
  */
 @Composable
 fun CourseBlock(
@@ -53,10 +53,13 @@ fun CourseBlock(
     isDark: Boolean,
     modifier: Modifier = Modifier,
     selected: Boolean = false,
-    /** 级联入场延迟（毫秒）；< 0 关闭，用于非课表网格场景 */
+    /**
+     * 级联入场延迟（毫秒）；< 0 关闭级联、首帧直接落位。
+     *
+     * 关闭的实际调用场景是「非首次进入课表」与课块之外的所有网格：切页只做整页位移，
+     * 不再让每块都从 alpha=0 长一遍（那正是「切页像刷新、内容从左上角摊开」的来源）。
+     */
     entranceDelayMs: Long = -1L,
-    /** 入场回合标识：变了就重播级联。tab 快速往返时页面留在组合里，只能靠它重新起播 */
-    entranceKey: Any = Unit,
     /** 正在上的课剩余分钟数；null 表示不显示 */
     remainingMin: Int? = null,
     /** 网格节奏：系统字体放大时块会一起长高，行数按剩余空间收敛 */
@@ -98,7 +101,7 @@ fun CourseBlock(
         modifier =
             modifier
                 .zIndex(if (selected) 1f else 0f)
-                .cascadeIn(entranceDelayMs, restartKey = entranceKey)
+                .cascadeIn(entranceDelayMs)
                 .graphicsLayer {
                     val scale = press * (1f + 0.045f * lift)
                     scaleX = scale

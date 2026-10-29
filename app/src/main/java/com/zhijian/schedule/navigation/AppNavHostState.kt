@@ -32,14 +32,23 @@ internal class AppNavHostState(
         private set
 
     /**
-     * 课表页的「入场回合」：每次真的切到课表就自增一次。
-     * 为什么不能只靠组合重建撑场面：navigation-compose 的转场按 back stack entry 的 id
-     * 复用内容槽，而 saveState/restoreState 恢复的 entry 还是同一个 id——在上一段转场
-     * 收尾前切回来时，课表根本没离开组合，`remember` 不重跑，课块级联就静默不播了
-     * （真机表现：慢慢切有入场动画，快速来回切没有）。
+     * 课表课块级联是否已播过：与今日页 / 我的页同一套闸门，本次进程只放行一次。
+     *
+     * 为什么需要宿主闸门而不是只看组合生命周期：navigation-compose 的转场按 back stack
+     * entry 的 id 复用内容槽，而 saveState/restoreState 恢复的 entry 还是同一个 id——
+     * 在上一段转场收尾前切回来时，课表根本没离开组合，级联不会自己重播；反过来，切走
+     * 够久让页面真被销毁，切回时又会从 alpha=0 重来。同一个动作两种结果，取决于转场
+     * 有没有收尾，这就是「偶发」的来源。
+     *
+     * 为什么不保留「每次进入都重播」：那会把所有课块 alpha 归零，再按阅读顺序（先上排、
+     * 上排内从左到右）逐块长回来，整轮封顶 700ms；而切页滑动只要约 230ms，读起来就是
+     * 「这一页重新刷新了一遍、内容从左上角摊开」（真机抓帧：点课表后 30ms 全块不可见、
+     * 90/300/500ms 才逐列浮出）。改成一次性之后与今日 / 我的完全同构：切 tab 只做位移。
      */
-    var scheduleEntryEpoch by mutableIntStateOf(0)
-        private set
+    private var scheduleEntrancePlayed by mutableStateOf(false)
+
+    /** 课表这次进场要不要播课块级联：只有本次进程第一次进入时为 true */
+    val playScheduleEntrance: Boolean get() = !scheduleEntrancePlayed
 
     /** 「我的」页分段级联的回合号：只在本次进程第一次进入时自增 */
     var profileEntranceEpoch by mutableIntStateOf(0)
@@ -51,9 +60,7 @@ internal class AppNavHostState(
     /**
      * 今日页的分段入场是否已播过。
      *
-     * 课表页的「课块级联 + 加号弹出」不再有宿主闸门：每次进入课表都重播一次
-     * （回合起点是目的地自己的组合生命周期，切走即销毁、切回即重来）。
-     * 今日页仍然是「只在第一次进入时播分段入场」：它的 StaggerIn 最晚到 708ms，
+     * 今日页与课表页同一条规矩：只在第一次进入时播分段入场。它的 StaggerIn 最晚到 708ms，
      * 切页本身只要 224ms，叠在一起就是「滑完了内容还在长」，中途再切走还会闪。
      */
     var todayEntrancePlayed by mutableStateOf(false)
@@ -63,7 +70,7 @@ internal class AppNavHostState(
      * 「我的」的分段级联只在本次进程**第一次**进入时播一次，之后切回来直接落位。
      * 每次重播的话页面会先空一帧（全部区块 alpha=0）再从上往下长出来；这一页又是从右边
      * 滑入的，空帧 + 顶部先出现，读起来就是「整页从右上角打开」（连续快速切换时实测抓到了
-     * 整屏只剩底色的空帧）。课表页的课块级联不设闸门，切回来会重播（见 ScheduleScreen）。
+     * 整屏只剩底色的空帧）。课表页的课块级联走同一套闸门（见 [playScheduleEntrance]）。
      */
     private var profileEntrancePlayed by mutableStateOf(false)
 
@@ -71,8 +78,14 @@ internal class AppNavHostState(
         scrollToTopTick++
     }
 
-    fun onScheduleShown() {
-        scheduleEntryEpoch++
+    /**
+     * 标记课表入场已经用过：之后每次切回课表都直接落位，不再叠一层
+     * 「全部课块先透明再长出来」——那一层正是「切页像刷新、内容从左上角摊开」的来源。
+     *
+     * 与今日页 / 我的页同一套策略（[markTodayEntrancePlayed] / [playProfileEntranceOnce]）。
+     */
+    fun markScheduleEntrancePlayed() {
+        scheduleEntrancePlayed = true
     }
 
     /** 上方有二级页要进场时调用：本次进程只放行一次分段级联 */

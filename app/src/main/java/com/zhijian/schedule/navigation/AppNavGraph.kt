@@ -173,7 +173,7 @@ internal fun AppNavHost(
                     ScheduleScreen(
                         islandCollapse = state.islandCollapse,
                         scrollToTopTick = state.scrollToTopTick,
-                        entryEpoch = state.scheduleEntryEpoch,
+                        playEntrance = state.playScheduleEntrance,
                         onAddCourse = { day, section ->
                             state.fabOrigin = null
                             navController.navigate(Routes.scheduleEditor(day = day, section = section))

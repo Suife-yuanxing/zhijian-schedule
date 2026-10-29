@@ -136,14 +136,14 @@ private fun AppScaffold(
         )
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
-    // 课表的入场回合：只要「当前目的地」变成课表根页就自增一次（entry 一变就是一次导航）。
-    // 为什么不能只靠组合重建：转场会按 entry id 复用内容槽，切走再快速切回来时页面根本没
-    // 离开组合，remember / LaunchedEffect 都不重跑，课块级联就静默不播了（真机表现正是
-    // 「慢慢切有入场动画，快速来回切没有」）。
+    // 课表的入场闸门：与今日页 / 我的页同一条规矩——本次进程第一次进入才播课块级联，
+    // 之后切回来直接落位。不加闸门时，每切一次 tab 都要把所有课块 alpha 归零、按阅读顺序
+    // （先上排、上排内从左到右）逐块长回来（整轮封顶 700ms），而切页滑动只要约 230ms，
+    // 读起来就是「这一页刷新了一遍、内容从左上角摊开」（真机抓帧确认过）。
     // 注意比的是叶子路由 Routes.SCHEDULE（"schedule"），不是 tab 图的 Routes.SCHEDULE_TAB——
     // currentDestination 给出的是叶子，拿 tab 图路由去比永远不相等（这条踩过）。
     LaunchedEffect(backStackEntry) {
-        if (backStackEntry?.destination?.route == Routes.SCHEDULE) navState.onScheduleShown()
+        if (backStackEntry?.destination?.route == Routes.SCHEDULE) navState.markScheduleEntrancePlayed()
     }
     // 浮岛只在三个 tab 根页显示；二级页隐藏（内容也不再为其预留空间）
     val showBottomBar = tabs.any { tab -> tab.rootRoute == currentDestination?.route }

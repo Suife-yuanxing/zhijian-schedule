@@ -9,7 +9,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -42,17 +41,23 @@ fun ScheduleScreen(
     islandCollapse: IslandCollapseState? = null,
     scrollToTopTick: Int = 0,
     /**
-     * 入场回合：每次进入课表由宿主自增（见 AppRoot 的 scheduleEntryEpoch）。
+     * 是否播放课块级联入场：本次进程第一次进入课表时为 true（见 AppNavHostState.playScheduleEntrance）。
      *
-     * 为什么不能只靠「组合重新创建」：navigation-compose 的转场按 entry id 复用内容槽，
-     * 而 saveState/restoreState 恢复的 entry 还是原来那个 id。于是在上一段转场收尾前
-     * 切回来时，这一页根本没离开组合，`remember` 不重跑、级联不重播——真机上就是
-     * 「慢慢切有入场动画、快速切没有」。
+     * 为什么需要宿主闸门而不是只看组合生命周期：navigation-compose 的转场按 entry id 复用
+     * 内容槽，而 saveState/restoreState 恢复的 entry 还是原来那个 id——在上一段转场收尾前
+     * 切回来时，这一页根本没离开组合，级联不会自己重播；反过来，切走够久让页面真被销毁，
+     * 切回时又会从 alpha=0 重来。同一个动作两种结果，取决于转场有没有收尾，这就是「偶发」。
+     *
+     * 为什么不每次进入都播：那会把所有课块 alpha 归零、按阅读顺序逐块长回来（整轮封顶
+     * 700ms），而切页滑动只要约 230ms，读起来就是「这一页刷新了一遍、从左上角摊开」。
      */
-    entryEpoch: Int = 0,
+    playEntrance: Boolean = false,
     viewModel: ScheduleViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
+    // 冻结成本次组合的常量：首回合起播之后，宿主把闸门关掉会让入参变 false，
+    // 但这一轮级联已经在跑，不能中途把 delay 改成 -1 把它按停（那会留下半透明的块）。
+    val entranceOnce = remember { playEntrance }
     var selectedCourse by remember { mutableStateOf<CourseEntity?>(null) }
     // 面板目标可见性：关闭动作一开始即置回 false，让课块高亮与面板滑出并行恢复
     var detailSheetVisible by remember { mutableStateOf(false) }
@@ -126,14 +131,18 @@ fun ScheduleScreen(
             )
 
             if (emptyState) {
-                // key(entryEpoch)：空状态卡片也按「回合」重播，和课块同一拍
-                key(entryEpoch) {
-                    StaggerIn(index = 0, modifier = Modifier.fillMaxSize()) {
-                        EmptyScheduleCard(
-                            onAdd = { onAddCourse(null, null) },
-                            onImport = onOpenImport,
-                        )
-                    }
+                // 空状态卡片与课块同一拍：只有本次进程第一次进入才播，之后首帧直接落位。
+                // 旧实现用 key(entryEpoch) 强制重播——key 会把整棵子树销毁重建，比"重播一段
+                // 淡入"重得多，而它换来的正是「切页像刷新」的观感。
+                StaggerIn(
+                    index = 0,
+                    modifier = Modifier.fillMaxSize(),
+                    skip = !entranceOnce,
+                ) {
+                    EmptyScheduleCard(
+                        onAdd = { onAddCourse(null, null) },
+                        onImport = onOpenImport,
+                    )
                 }
             } else {
                 Box(Modifier.weight(1f)) {
@@ -156,7 +165,7 @@ fun ScheduleScreen(
                             },
                             modifier = Modifier.fillMaxSize(),
                             selectedCourseId = selectedCourse?.id?.takeIf { detailSheetVisible },
-                            entranceEpoch = entryEpoch,
+                            playEntrance = entranceOnce,
                             islandCollapse = islandCollapse,
                             // 只有落定的那一页才算浮岛的持有者：beyondViewportPageCount=1 时邻页是
                             // 提前组合的，而每周 grid 各自 remember 一份新的 ScrollState（初始为 0），
@@ -172,7 +181,7 @@ fun ScheduleScreen(
         }
     }
 
-    ScheduleFab(entryEpoch = entryEpoch, onAddCourseFromFab = onAddCourseFromFab)
+    ScheduleFab(playEntrance = entranceOnce, onAddCourseFromFab = onAddCourseFromFab)
     selectedCourse?.let { course ->
         CourseDetailSheet(
             course = course,
