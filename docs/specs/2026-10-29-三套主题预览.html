@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>三套主题重构 · 真实渲染色</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0a0a0b;color:#e9e9ec;font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif}
+  .wrap{max-width:1400px;margin:0 auto;padding:44px 30px 70px}
+  h1{font-size:21px;font-weight:600;margin-bottom:7px;letter-spacing:.01em}
+  .sub{color:#82828a;font-size:12.5px;line-height:1.75;margin-bottom:34px}
+  .sub b{color:#b9b9c2;font-weight:600}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+  @media(max-width:1080px){.grid{grid-template-columns:1fr}}
+  .colhead{display:flex;align-items:baseline;gap:9px;margin-bottom:8px}
+  .colhead b{font-size:15.5px;font-weight:650}
+  .colhead span{font-size:10.5px;color:#6e6e77;letter-spacing:.05em}
+  .thesis{font-size:11.5px;color:#93939c;line-height:1.7;margin-bottom:14px;min-height:56px}
+
+  /* ── 素墨 ── */
+  .sumi{--bg:#FBFBFC;--surface:#FFFFFF;--sv:#F1F2F4;--text:#17181A;--muted:#6E7278;--border:#E3E5E9;--accent:#C0412C;
+        --r:10px;--pad:20px;--gap:5px}
+  /* ── 灯下 ── */
+  .lamp{--bg:#000000;--surface:#0A0A0B;--sv:#121214;--text:#E8E3D9;--muted:#9B9384;--border:#26262A;--accent:#F2A93B;
+        --r:6px;--pad:12px;--gap:3px}
+  /* ── 文具盒 ── */
+  .kit{--bg:#FFFCF4;--surface:#FFFFFF;--sv:#FFF1C9;--text:#241E1A;--muted:#6F6355;--border:#EFE2C8;--accent:#CE3B26;
+        --r:14px;--pad:16px;--gap:6px}
+
+  .app{border-radius:16px;overflow:hidden;border:1px solid #1f1f22;background:var(--bg);color:var(--text);
+       font-size:13px;box-shadow:0 14px 44px rgba(0,0,0,.55)}
+  .statusbar{height:24px;display:flex;align-items:center;justify-content:space-between;
+             padding:0 var(--pad);font-size:9.5px;color:var(--muted)}
+  .topbar{padding:2px var(--pad) 11px;display:flex;align-items:flex-end;justify-content:space-between}
+  .title{font-size:18.5px;font-weight:600;letter-spacing:-.01em}
+  .sumi .title,.lamp .title{font-family:Georgia,"Songti SC","Noto Serif SC",serif}
+  .lamp .title{font-weight:500;font-size:17.5px}
+  .kit .title{font-weight:800;letter-spacing:-.025em}
+  .weekwrap{font-size:11px;color:var(--muted)}
+  .sumi .weekwrap{color:var(--accent);border-bottom:1.5px solid var(--accent);padding-bottom:1px}
+  .lamp .weekwrap{color:var(--accent)}
+  .kit .weekwrap{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:2px 9px;box-shadow:inset 0 -3px 0 #7C5CFF}
+
+  .days{display:grid;grid-template-columns:30px repeat(5,1fr);gap:var(--gap);padding:0 var(--pad) 5px}
+  .days div{font-size:9.5px;text-align:center;color:var(--muted)}
+  .days div:first-child{text-align:left}
+  .kit .days div{font-weight:650}
+  .lamp .days div{font-variant-numeric:tabular-nums}
+
+  .gridwrap{padding:0 var(--pad) 8px}
+  .rows{display:grid;grid-template-columns:30px repeat(5,1fr);gap:var(--gap)}
+  .tcell{font-size:9px;color:var(--muted);padding-top:5px}
+  .lamp .tcell{font-variant-numeric:tabular-nums}
+  .sumi .tcell{font-family:Georgia,serif}
+
+  /* 课块：真实渲染规则 = container 底 + 1dp line 描边 + ink 正文 */
+  .blk{border-radius:var(--r);padding:5px 6px;min-height:54px;display:flex;flex-direction:column;
+       justify-content:center;gap:1px;border:1px solid var(--line);background:var(--c)}
+  .blk .n{font-size:10.5px;font-weight:600;line-height:1.3;color:var(--ink);letter-spacing:-.005em}
+  .kit .blk .n{font-weight:700}
+  .blk .r{font-size:8.5px;color:var(--inkm);line-height:1.2}
+  .sumi .blk.today{border-color:rgba(192,65,44,.45)}
+  .kit .blk.today{border-color:rgba(36,30,26,.22)}
+
+  .empty{margin:0 var(--pad) 2px;padding:11px 0;border-top:1px solid var(--border);color:var(--muted);font-size:10.5px;line-height:1.6}
+  .sumi .empty strong{font-family:Georgia,serif;display:block;color:var(--text);font-size:13px;font-weight:500;margin-bottom:2px}
+  .lamp .empty{margin:0;padding:11px var(--pad);border-top:1px solid var(--border);background:var(--sv)}
+  .lamp .empty strong{display:block;color:var(--text);font-size:10.5px;font-weight:500}
+  .kit .empty{border:none;background:var(--border);border-radius:11px;padding:11px;margin:0 var(--pad) 2px}
+  .kit .empty strong{display:block;color:var(--text);font-size:11.5px;font-weight:800;margin-bottom:2px}
+
+  .nav{display:grid;grid-template-columns:repeat(4,1fr);padding:8px var(--pad) 10px;border-top:1px solid var(--border);background:var(--surface)}
+  .sumi .nav{background:transparent}
+  .navitem{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:9px;color:var(--muted)}
+  .navitem i{width:14px;height:14px;border-radius:4px;border:1.5px solid currentColor;display:block}
+  .sumi .navitem.on{color:var(--text);position:relative}
+  .sumi .navitem.on::after{content:"";position:absolute;bottom:-4px;width:3px;height:3px;border-radius:50%;background:var(--accent)}
+  .lamp .navitem.on{color:var(--accent)}
+  .lamp .navitem.on i{background:currentColor}
+  .kit .navitem.on{color:var(--text)}
+  .kit .navitem.on i{border-color:#7C5CFF;background:rgba(124,92,255,.20)}
+
+  .spec{margin-top:9px;display:flex;flex-wrap:wrap;gap:5px}
+  .spec span{font-size:9.5px;color:#82828a;border:1px solid #242428;border-radius:5px;padding:2.5px 6px;font-variant-numeric:tabular-nums}
+  .foot{margin-top:38px;border-top:1px solid #1c1c1f;padding-top:20px;font-size:11.5px;color:#7d7d85;line-height:1.95}
+  .foot b{color:#c3c3cb;font-weight:600}
+  .sw{display:flex;gap:4px;margin:9px 0 18px}
+  .sw i{width:20px;height:20px;border-radius:4px;display:block}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>三套主题重构 · 真实渲染色</h1>
+  <div class="sub">
+    下面的课块颜色不是手填的，是把新色板喂进 <b>courseTone(source, isDark, toneBias)</b> 跑出来的实际结果。<br>
+    素墨 → 清爽极简　·　灯下 → 墨夜纯黑　·　文具盒 → 多彩活泼
+  </div>
+
+  <div class="grid">
+
+    <!-- 素墨 -->
+    <section>
+      <div class="colhead"><b>素墨</b><span>清爽极简</span></div>
+      <div class="thesis">留白是内容，朱砂是标记。<br>只有「今天」允许有颜色，其余全是墨的浓淡。</div>
+      <div class="app sumi">
+        <div class="statusbar"><span>9:41</span><span>周三 · 第 3 周</span></div>
+        <div class="topbar"><div class="title">本周课表</div><div class="weekwrap">第 3 周</div></div>
+        <div class="days"><div>节</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div></div>
+        <div class="gridwrap">
+          <div class="rows">
+            <div class="tcell">1</div>
+            <div class="blk" style="--c:#eef4fb;--line:#bad2eb;--ink:#224a70;--inkm:#415f7d"><div class="n">高等数学</div><div class="r">A201 · 王</div></div>
+            <div class="blk" style="--c:#fbf1eb;--line:#ecc7b0;--ink:#6e360a;--inkm:#7d5033"><div class="n">大学物理</div><div class="r">B305 · 李</div></div>
+            <div class="blk today" style="--c:#eef6f1;--line:#b9d8c8;--ink:#19543d;--inkm:#3d6654"><div class="n">数据结构</div><div class="r">机房 2 · 陈</div></div>
+            <div class="blk" style="--c:#edf5f8;--line:#b5d6df;--ink:#09505f;--inkm:#37646f"><div class="n">英语</div><div class="r">C108 · 刘</div></div>
+            <div class="blk" style="--c:#f7f1f8;--line:#ddc7df;--ink:#5b395f;--inkm:#6d516f"><div class="n">近代史</div><div class="r">D401 · 赵</div></div>
+
+            <div class="tcell">3</div>
+            <div class="blk" style="--c:#f4f4eb;--line:#d4d1b0;--ink:#4f4903;--inkm:#625e32"><div class="n">线性代数</div><div class="r">A305 · 孙</div></div>
+            <div class="blk today" style="--c:#f2f3f5;--line:#ccd0d5;--ink:#424850;--inkm:#585d63"><div class="n">程序设计</div><div class="r">机房 1 · 周</div></div>
+            <div class="blk" style="--c:#f1f4f8;--line:#c5d1e0;--ink:#364960;--inkm:#4f5e70"><div class="n">体育</div><div class="r">操场</div></div>
+            <div class="blk" style="--c:#eef4fb;--line:#bad2eb;--ink:#224a70;--inkm:#415f7d"><div class="n">概率论</div><div class="r">B202 · 吴</div></div>
+            <div class="blk" style="--c:#fbf1eb;--line:#ecc7b0;--ink:#6e360a;--inkm:#7d5033"><div class="n">选修 · 摄影</div><div class="r">艺术楼</div></div>
+          </div>
+        </div>
+        <div class="empty"><strong>周五下午，空着。</strong>让它空着。</div>
+        <div class="nav">
+          <div class="navitem on"><i></i>课表</div><div class="navitem"><i></i>日程</div>
+          <div class="navitem"><i></i>统计</div><div class="navitem"><i></i>我的</div>
+        </div>
+      </div>
+      <div class="spec"><span>#C0412C</span><span>L 0.965</span><span>C ×0.55</span><span>r 10</span><span>serif</span></div>
+    </section>
+
+    <!-- 灯下 -->
+    <section>
+      <div class="colhead"><b>灯下</b><span>墨夜纯黑</span></div>
+      <div class="thesis">纯黑不是没有光，是只有一盏灯。<br>阴影投不出来，就用「灯照到哪一列」分层。</div>
+      <div class="app lamp">
+        <div class="statusbar"><span>9:41</span><span>周三 · 第 3 周</span></div>
+        <div class="topbar"><div class="title">本周课表</div><div class="weekwrap">第 3 周</div></div>
+        <div class="days"><div>节</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div></div>
+        <div class="gridwrap">
+          <div class="rows">
+            <div class="tcell">1</div>
+            <div class="blk" style="--c:#2b1700;--line:#5b4320;--ink:#f8e7d0;--inkm:#cdbba2"><div class="n">高等数学</div><div class="r">A201 · 王</div></div>
+            <div class="blk" style="--c:#300f19;--line:#633a45;--ink:#ffe0e7;--inkm:#d5b4bb"><div class="n">大学物理</div><div class="r">B305 · 李</div></div>
+            <div class="blk" style="--c:#181f00;--line:#434d26;--ink:#e6eed4;--inkm:#b9c2a6"><div class="n">数据结构</div><div class="r">机房 2 · 陈</div></div>
+            <div class="blk" style="--c:#00202a;--line:#1f4f5c;--ink:#d2eff8;--inkm:#a4c4ce"><div class="n">英语</div><div class="r">C108 · 刘</div></div>
+            <div class="blk" style="--c:#23142f;--line:#513f60;--ink:#f0e4fc;--inkm:#c5b7d2"><div class="n">近代史</div><div class="r">D401 · 赵</div></div>
+
+            <div class="tcell">3</div>
+            <div class="blk" style="--c:#301202;--line:#623d2a;--ink:#fee3d6;--inkm:#d4b7a8"><div class="n">线性代数</div><div class="r">A305 · 孙</div></div>
+            <div class="blk" style="--c:#191c20;--line:#45484d;--ink:#e7eaed;--inkm:#bbbec2"><div class="n">程序设计</div><div class="r">机房 1 · 周</div></div>
+            <div class="blk" style="--c:#002317;--line:#225242;--ink:#d4f2e5;--inkm:#a6c6b9"><div class="n">体育</div><div class="r">操场</div></div>
+            <div class="blk" style="--c:#2b1700;--line:#5b4320;--ink:#f8e7d0;--inkm:#cdbba2"><div class="n">概率论</div><div class="r">B202 · 吴</div></div>
+            <div class="blk" style="--c:#300f19;--line:#633a45;--ink:#ffe0e7;--inkm:#d5b4bb"><div class="n">选修 · 摄影</div><div class="r">艺术楼</div></div>
+          </div>
+        </div>
+        <div class="empty"><strong>周五下午没有课</strong></div>
+        <div class="nav">
+          <div class="navitem on"><i></i>课表</div><div class="navitem"><i></i>日程</div>
+          <div class="navitem"><i></i>统计</div><div class="navitem"><i></i>我的</div>
+        </div>
+      </div>
+      <div class="spec"><span>#F2A93B</span><span>L 0.225</span><span>C ×1.25</span><span>r 6</span><span>#E8E3D9</span></div>
+    </section>
+
+    <!-- 文具盒 -->
+    <section>
+      <div class="colhead"><b>文具盒</b><span>多彩活泼</span></div>
+      <div class="thesis">颜色是有编号的，不是撒出来的。<br>色相均分、明度归一、封顶 8 色，顺序不可变。</div>
+      <div class="app kit">
+        <div class="statusbar"><span>9:41</span><span>周三 · 第 3 周</span></div>
+        <div class="topbar"><div class="title">本周课表</div><div class="weekwrap">第 3 周</div></div>
+        <div class="days"><div>节</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div></div>
+        <div class="gridwrap">
+          <div class="rows">
+            <div class="tcell">1</div>
+            <div class="blk" style="--c:#fcecd6;--line:#e6cba4;--ink:#604104;--inkm:#77551c"><div class="n">高等数学</div><div class="r">A201 · 王</div></div>
+            <div class="blk" style="--c:#ffe8e8;--line:#f4c0c1;--ink:#782931;--inkm:#85474a"><div class="n">大学物理</div><div class="r">B305 · 李</div></div>
+            <div class="blk today" style="--c:#feeae2;--line:#f3c3b1;--ink:#762e0d;--inkm:#844b35"><div class="n">数据结构</div><div class="r">机房 2 · 陈</div></div>
+            <div class="blk" style="--c:#e5f0fd;--line:#b4d3f6;--ink:#0e4880;--inkm:#375e8b"><div class="n">英语</div><div class="r">C108 · 刘</div></div>
+            <div class="blk" style="--c:#fee8ee;--line:#f2c0ce;--ink:#742945;--inkm:#83475a"><div class="n">近代史</div><div class="r">D401 · 赵</div></div>
+
+            <div class="tcell">3</div>
+            <div class="blk" style="--c:#edecff;--line:#cbcaf6;--ink:#443c7f;--inkm:#58548a"><div class="n">线性代数</div><div class="r">A305 · 孙</div></div>
+            <div class="blk today" style="--c:#d6f6f3;--line:#a2ddd8;--ink:#005350;--inkm:#1b6965"><div class="n">程序设计</div><div class="r">机房 1 · 周</div></div>
+            <div class="blk" style="--c:#dcf6e8;--line:#addcc3;--ink:#0e553a;--inkm:#266b4d"><div class="n">体育</div><div class="r">操场</div></div>
+            <div class="blk" style="--c:#fcecd6;--line:#e6cba4;--ink:#604104;--inkm:#77551c"><div class="n">概率论</div><div class="r">B202 · 吴</div></div>
+            <div class="blk" style="--c:#ffe8e8;--line:#f4c0c1;--ink:#782931;--inkm:#85474a"><div class="n">选修 · 摄影</div><div class="r">艺术楼</div></div>
+          </div>
+        </div>
+        <div class="empty"><strong>这周还是空盒子</strong>点右上角 + 塞一节课进去。</div>
+        <div class="nav">
+          <div class="navitem on"><i></i>课表</div><div class="navitem"><i></i>日程</div>
+          <div class="navitem"><i></i>统计</div><div class="navitem"><i></i>我的</div>
+        </div>
+      </div>
+      <div class="spec"><span>#CE3B26</span><span>L 0.950</span><span>C ×1.20</span><span>r 14</span><span>#FFFCF4</span></div>
+    </section>
+
+  </div>
+
+  <div class="foot">
+    <b>课块明度对照</b>（同源色 #3A7DFF 跑三套 bias 的亮色卡面）
+    <div class="sw">
+      <i style="background:#eef4fb"></i><i style="background:#f9f1fa"></i><i style="background:#edecff"></i>
+    </div>
+    <b>三条不撞脸判据</b>　① 糊成灰度图，靠课块明度与圆角仍可辨：素墨最淡最细、灯下最沉最方、文具盒最跳最圆
+    　② 只留一个强调色像素：朱砂 / 琥珀 / 橡皮红　③ 动效曲线两两不同：1.0/480 · 0.85/380 · 0.55/620
+    <div class="sw" style="margin-top:14px">
+      <i style="background:#3A5A7A"></i><i style="background:#3F6B57"></i><i style="background:#8A5A3B"></i><i style="background:#6B4E6E"></i>
+      <i style="background:#2F5F6B"></i><i style="background:#6E6A3A"></i><i style="background:#56667A"></i><i style="background:#5A5F66"></i>
+      <i style="width:12px;background:transparent"></i>
+      <i style="background:#E0A243"></i><i style="background:#C97B52"></i><i style="background:#94A85B"></i><i style="background:#4FA98A"></i>
+      <i style="background:#4E9DB3"></i><i style="background:#A98BC4"></i><i style="background:#C9718A"></i><i style="background:#8C9199"></i>
+      <i style="width:12px;background:transparent"></i>
+      <i style="background:#C98A00"></i><i style="background:#F26A2E"></i><i style="background:#E8465C"></i><i style="background:#E85C90"></i>
+      <i style="background:#7C5CFF"></i><i style="background:#2F8FEF"></i><i style="background:#22B37D"></i><i style="background:#14A8A2"></i>
+    </div>
+  </div>
+</div>
+</body>
+</html>

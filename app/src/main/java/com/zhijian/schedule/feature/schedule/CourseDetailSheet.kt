@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import com.zhijian.schedule.core.data.db.CourseEntity
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.theme.LocalIsDark
+import com.zhijian.schedule.core.theme.LocalCoursePreset
 import com.zhijian.schedule.core.theme.courseTone
 import com.zhijian.schedule.core.ui.StaggerIn
 import com.zhijian.schedule.core.ui.pressScale
@@ -78,7 +79,10 @@ fun CourseDetailSheet(
     val deleteSource = remember { MutableInteractionSource() }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val isDark = LocalIsDark.current
-    val tone = remember(course.color, isDark) { courseTone(Color(course.color), isDark) }
+    val preset = LocalCoursePreset.current
+    val tone = remember(course.color, isDark, preset.toneBias) {
+        courseTone(Color(course.color), isDark, preset.toneBias)
+    }
 
     LaunchedEffect(sheetState) {
         snapshotFlow { sheetState.targetValue != SheetValue.Hidden }

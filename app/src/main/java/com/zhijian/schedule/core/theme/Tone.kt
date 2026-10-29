@@ -102,14 +102,19 @@ private fun tonal(l: Float, c: Float, h: Float): Color {
 
 /**
  * 由课程源色派生色调。暗色模式换一组 L/C，色相始终跟随课程身份。
+ *
+ * @param bias 主题级偏置：只平移卡面明度、缩放卡面彩度，色相与派生逻辑不变。
+ *   默认值等价于改版前的硬编码常量，因此不传参数的调用点行为完全不变。
+ *   ink / inkMuted / highlight / shade 不参与偏置——它们由 container 与正文门槛反解，
+ *   一起动会破掉 [CourseToneTest] 钉住的 AAA / AA 保证。
  */
-fun courseTone(source: Color, isDark: Boolean): CourseTone {
+fun courseTone(source: Color, isDark: Boolean, bias: CourseToneBias = CourseToneBias.Default): CourseTone {
     val oklch = hueAndChromaOf(source)
     if (oklch == null) {
         // 中性色（灰/白/黑）：只走明度阶梯，避免算出无意义的色相
         return if (isDark) {
             CourseTone(
-                container = tonal(0.285f, 0f, 0f),
+                container = tonal(bias.darkL, 0f, 0f),
                 line = tonal(0.400f, 0f, 0f),
                 ink = tonal(0.935f, 0f, 0f),
                 inkMuted = tonal(0.800f, 0f, 0f),
@@ -118,7 +123,7 @@ fun courseTone(source: Color, isDark: Boolean): CourseTone {
             )
         } else {
             CourseTone(
-                container = tonal(0.965f, 0f, 0f),
+                container = tonal(bias.lightL, 0f, 0f),
                 line = tonal(0.855f, 0f, 0f),
                 ink = tonal(0.400f, 0f, 0f),
                 inkMuted = tonal(0.475f, 0f, 0f),
@@ -133,8 +138,8 @@ fun courseTone(source: Color, isDark: Boolean): CourseTone {
     val scale = (chroma / 0.09f).coerceIn(0.12f, 1f)
     return if (isDark) {
         CourseTone(
-            container = tonal(0.285f, 0.045f * scale, hue),
-            line = tonal(0.400f, 0.060f * scale, hue),
+            container = tonal(bias.darkL, 0.045f * scale * bias.darkChroma, hue),
+            line = tonal(0.400f, 0.060f * scale * bias.darkChroma, hue),
             ink = tonal(0.935f, 0.035f * scale, hue),
             inkMuted = tonal(0.800f, 0.040f * scale, hue),
             // 暗色主题：卡面本身够暗（L 0.285），受光侧还有彩度可用，
@@ -145,8 +150,8 @@ fun courseTone(source: Color, isDark: Boolean): CourseTone {
         )
     } else {
         CourseTone(
-            container = tonal(0.945f, 0.028f * scale, hue),
-            line = tonal(0.855f, 0.060f * scale, hue),
+            container = tonal(bias.lightL, 0.028f * scale * bias.lightChroma, hue),
+            line = tonal(0.855f, 0.060f * scale * bias.lightChroma, hue),
             ink = tonal(0.400f, 0.110f * scale, hue),
             inkMuted = tonal(0.475f, 0.085f * scale, hue),
             // 亮色主题：高光取 0.97 明度的同色相浅调。

@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.theme.LocalIsDark
 import com.zhijian.schedule.core.theme.courseTone
+import com.zhijian.schedule.core.theme.LocalCoursePreset
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.cardTilt
 import com.zhijian.schedule.core.ui.cardTiltGlare
@@ -246,7 +247,10 @@ internal fun NextClassCard(item: TodayCourseItem, clock: State<LocalDateTime>) {
     val minutes = Duration.between(now, start).toMinutes()
     // 与 CurrentClassCard / 课表色块同一套派生，这门课的"身份色"两处必然一致
     val isDark = LocalIsDark.current
-    val tone = remember(item.course.color, isDark) { courseTone(Color(item.course.color), isDark) }
+    val preset = LocalCoursePreset.current
+    val tone = remember(item.course.color, isDark, preset.toneBias) {
+        courseTone(Color(item.course.color), isDark, preset.toneBias)
+    }
     val shape = RoundedCornerShape(14.dp)
 
     Row(

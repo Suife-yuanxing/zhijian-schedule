@@ -17,13 +17,47 @@ data class CourseColors(
 )
 
 /**
- * 课块渲染样式：透明填充 + 左色条（一套渲染规则适配全部风格）。
+ * 课块渲染样式：**已废弃**，仅保留字段以免旧预设字面量编译不过。
+ *
+ * 历史：课块早期是「透明填充 + 左色条」，后来改成 [CourseTone] 的同色系容器 + 1dp 同色描边
+ * （见 `feature/schedule/components/CourseBlock.kt` 的类注释「去掉左色条」）。
+ * 从此这三个参数不再有任何渲染消费点，主题之间的视觉差异改由 [CourseToneBias] 承担。
+ * 新主题不要在这里调参数——调了不会有任何效果。
  */
 data class BlockStyle(
     val fillAlphaLight: Float,
     val fillAlphaDark: Float,
     val barWidthDp: Float,
 )
+
+/**
+ * 课程色的**主题级偏置**：同一门课在不同主题下应该有不同的「面色」。
+ *
+ * 为什么需要它：`courseTone(source, isDark)` 只按源色相派生明度/彩度，与主题无关——
+ * 于是三套主题的课块长得一模一样，主题切换只换得了页面底色，换不了课块性格。
+ * 把明度与彩度做成主题参数之后，同一门课在「素墨」是淡到几乎融纸的墨，
+ * 在「灯下」是灯照出的一小片暖，在「文具盒」是高彩度的便利贴。
+ *
+ * 全部是**系数**而不是绝对值：色相与彩度关系仍由 [courseTone] 从课程源色推导，
+ * 这里只整体平移明度、缩放彩度，不会把八门课压成同一个颜色。
+ *
+ * 默认值等于改版前的硬编码常量，所以不传 = 行为完全不变（纸本暖白/动态取色/液态玻璃零风险）。
+ */
+data class CourseToneBias(
+    /** 亮色卡面明度（OKLCH L）。基准 0.945，越高越接近纸 */
+    val lightL: Float = 0.945f,
+    /** 亮色卡面彩度系数。基准 1.0，越低越像淡墨 */
+    val lightChroma: Float = 1f,
+    /** 暗色卡面明度。基准 0.285，越低越沉 */
+    val darkL: Float = 0.285f,
+    /** 暗色卡面彩度系数。基准 1.0，越高越像被灯光照亮 */
+    val darkChroma: Float = 1f,
+) {
+    companion object {
+        /** 改版前的硬编码值，行为等价 */
+        val Default = CourseToneBias()
+    }
+}
 
 data class TypePreset(
     val serifTitle: Boolean,
@@ -75,6 +109,8 @@ data class ThemePreset(
     val isDynamic: Boolean = false,
     /** 非空 = 启用玻璃材质渲染（仅 glass 预设） */
     val glass: GlassSpec? = null,
+    /** 课块「面色」的主题级偏置；默认等价于改版前行为 */
+    val toneBias: CourseToneBias = CourseToneBias.Default,
 )
 
 object ThemeIds {

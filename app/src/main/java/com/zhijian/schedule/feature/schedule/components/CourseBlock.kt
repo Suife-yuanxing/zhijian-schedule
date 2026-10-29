@@ -63,7 +63,10 @@ fun CourseBlock(
     metrics: GridMetrics = GridMetrics.Default,
     onClick: () -> Unit,
 ) {
-    val tone = remember(course.color, isDark) { courseTone(Color(course.color), isDark) }
+    // 课块的「面色」跟随主题：同一门课在素墨是淡墨、在灯下是被灯照到的一小片、在文具盒是便利贴
+    val tone = remember(course.color, isDark, preset.toneBias) {
+        courseTone(Color(course.color), isDark, preset.toneBias)
+    }
     val shape = RoundedCornerShape(preset.radius.blockDp.dp)
     val span = (course.endSection - course.startSection + 1).coerceAtLeast(1)
     val pressSource = remember { MutableInteractionSource() }

@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.theme.LocalIsDark
 import com.zhijian.schedule.core.theme.courseTone
+import com.zhijian.schedule.core.theme.LocalCoursePreset
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.rememberTapHaptic
 import com.zhijian.schedule.core.util.TimeUtils
@@ -67,7 +68,10 @@ internal fun CourseRow(
     val alpha = if (finished) 0.45f else 1f
     // 行也用课表色块的派生色：整页「这门课是什么颜色」只有一套算法
     val isDark = LocalIsDark.current
-    val tone = remember(item.course.color, isDark) { courseTone(Color(item.course.color), isDark) }
+    val preset = LocalCoursePreset.current
+    val tone = remember(item.course.color, isDark, preset.toneBias) {
+        courseTone(Color(item.course.color), isDark, preset.toneBias)
+    }
     val pressSource = remember { MutableInteractionSource() }
     val pressed by pressSource.collectIsPressedAsState()
     val tapHaptic = rememberTapHaptic()
