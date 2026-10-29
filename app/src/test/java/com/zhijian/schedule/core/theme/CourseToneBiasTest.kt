@@ -156,7 +156,7 @@ class CourseToneBiasTest {
 
     @Test
     fun `彩度偏置确实按比例生效`() {
-        // 素墨砍到 55%，文具盒拉到 120%——两者对同一源色的彩度必须拉开
+        // 素墨砍到 55%，文具盒拉到 350%——两者对同一源色的彩度必须拉开
         val src = Color(0xFFC98A00)
 
         fun spread(c: Color) = maxOf(c.red, c.green, c.blue) - minOf(c.red, c.green, c.blue)
@@ -166,14 +166,81 @@ class CourseToneBiasTest {
     }
 
     @Test
-    fun `中性课程色在偏置下仍保持中性`() {
-        val gray = Color(0xFF8A8F98)
+    fun `文具盒亮色课块比素墨显著更艳且八色仍可分`() {
+        // 这条钉住「A 方案」要解决的那个真机问题：旧参数下素墨与文具盒对同一门课
+        // 只差 RGB [1,6,10]，肉眼等同；同时八色两两最小 ΔE 只有 0.0075，几乎糊成一片。
+        //
+        // 实测：把 lightL 从 0.950 让到 0.930、lightChroma 从 1.20 提到 3.50 后，
+        // 平均彩度 ×1.93、八色最小两两 ΔE ×1.37。门槛取实测值略低一档留调色余量，
+        // 但足以拦住「悄悄把系数调回去」的回归。
+        fun spread(c: Color) = maxOf(c.red, c.green, c.blue) - minOf(c.red, c.green, c.blue)
+
+        val kitAvg = kit.map { spread(courseTone(it, false, ThemePresets.candy.toneBias).container) }.average()
+        val sumiAvg = sumi.map { spread(courseTone(it, false, ThemePresets.minimal.toneBias).container) }.average()
+        assertTrue("文具盒平均彩度应达素墨 1.5 倍以上: $kitAvg vs $sumiAvg", kitAvg > sumiAvg * 1.5)
+
+        fun oklab(c: Color): DoubleArray {
+            fun lin(v: Float): Double {
+                val d = v.toDouble()
+                return if (d <= 0.04045) d / 12.92 else ((d + 0.055) / 1.055).pow(2.4)
+            }
+            val r = lin(c.red)
+            val g = lin(c.green)
+            val b = lin(c.blue)
+            val l = (0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b).pow(1.0 / 3.0)
+            val m = (0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b).pow(1.0 / 3.0)
+            val s = (0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b).pow(1.0 / 3.0)
+            return doubleArrayOf(
+                0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+                1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+                0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s,
+            )
+        }
+        val labs = kit.map { oklab(courseTone(it, false, ThemePresets.candy.toneBias).container) }
+        var minDistance = Double.MAX_VALUE
+        for (i in labs.indices) {
+            for (j in i + 1 until labs.size) {
+                val a = labs[i]
+                val b = labs[j]
+                val d = ((a[0] - b[0]).pow(2) + (a[1] - b[1]).pow(2) + (a[2] - b[2]).pow(2)).pow(0.5)
+                if (d < minDistance) minDistance = d
+            }
+        }
+        assertTrue("文具盒八色最近的一对只差 $minDistance，肉眼分不开", minDistance > 0.009)
+    }
+
+    @Test
+    fun `真中性源色走中性分支保持完全中性`() {
+        // 这里必须用 OKLCH chroma < 0.012 的**真中性色**：它们走 courseTone 的 null 分支，
+        // 容器彩度恒为 0，与 lightChroma 无关——这才是「中性不被染色」的真实语义。
+        //
+        // 旧版用 #8A8F98 测这条，但它在 OKLCH 里 hue 262.4°、chroma 0.0146，走的是彩色分支，
+        // 断言能过纯粹是因为当时 lightChroma 只有 1.2（染色量被压得很小）。文具盒把系数提到
+        // 3.5 之后它如实地泛蓝，旧断言于是暴露了它一直测错了对象。
+        val neutrals = listOf(0xFF000000, 0xFFFFFFFF, 0xFF808080, 0xFFC0C0C0, 0xFF7A7A7A)
         val presets = listOf(ThemePresets.minimal, ThemePresets.amoled, ThemePresets.candy)
         for (preset in presets) {
             for (isDark in listOf(false, true)) {
-                val c = courseTone(gray, isDark, preset.toneBias).container
+                for (src in neutrals) {
+                    val c = courseTone(Color(src), isDark, preset.toneBias).container
+                    val s = maxOf(c.red, c.green, c.blue) - minOf(c.red, c.green, c.blue)
+                    assertEquals("${preset.name} 中性源色被上了色 $src (isDark=$isDark)", 0f, s, 0.001f)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `近中性冷灰只被轻微染色而不是变成一块蓝`() {
+        // #8A8F98 走彩色分支（chroma 0.0146），系数放大后必然泛蓝。允许染色，但必须守住
+        // 上界：它出现在色板第 8 位，用户看到的应该仍是"偏冷的灰"，不是一种蓝。
+        val coolGray = Color(0xFF8A8F98)
+        val presets = listOf(ThemePresets.minimal, ThemePresets.amoled, ThemePresets.candy)
+        for (preset in presets) {
+            for (isDark in listOf(false, true)) {
+                val c = courseTone(coolGray, isDark, preset.toneBias).container
                 val s = maxOf(c.red, c.green, c.blue) - minOf(c.red, c.green, c.blue)
-                assertTrue("${preset.name} 灰课被上了色 (isDark=$isDark): $s", s < 0.04f)
+                assertTrue("${preset.name} 冷灰被染过头 (isDark=$isDark): $s", s <= 0.075f)
             }
         }
     }

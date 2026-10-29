@@ -196,8 +196,10 @@ object ThemePresets {
         blockStyle = BlockStyle(fillAlphaLight = 0.20f, fillAlphaDark = 0.32f, barWidthDp = 4f),
         typography = TypePreset(serifTitle = false),
         radius = RadiusPreset(blockDp = 14f, cardDp = 18f, sheetDp = 24f),
-        // 便利贴：彩度是主角（亮 120%、暗 130%），同时抬高明度让八色都能在同一张奶油纸上并排成立
-        toneBias = CourseToneBias(lightL = 0.950f, lightChroma = 1.20f, darkL = 0.300f, darkChroma = 1.30f),
+        // 便利贴：彩度是主角。亮色明度必须让到 0.930 —— L 0.95 处 sRGB 色域只剩 ~0.03 彩度，
+        // 系数乘多大都会被色域截断，这正是「三套主题课块长得一样」的真正原因（真机实测过）。
+        // 暗色不动：0.300 处色域够宽，彩度已到 0.30，再拉会把卡片推离「沉进暗背景」的区间。
+        toneBias = CourseToneBias(lightL = 0.930f, lightChroma = 3.50f, darkL = 0.300f, darkChroma = 1.30f),
     )
 
     /** 6. 液态玻璃：纯净底色 + 底部清水玻璃浮岛（零模糊，流动实时渲染） */
