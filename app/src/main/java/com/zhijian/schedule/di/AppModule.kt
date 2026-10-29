@@ -18,6 +18,8 @@ import com.zhijian.schedule.core.data.db.MIGRATION_2_3
 import com.zhijian.schedule.core.data.db.TimeModeDao
 import com.zhijian.schedule.core.data.db.TimetableDao
 import com.zhijian.schedule.core.jw.script.ScriptStore
+import com.zhijian.schedule.core.net.ExpiredCertTolerance
+import com.zhijian.schedule.core.net.ToleratedTls
 import com.zhijian.schedule.core.net.WebViewCookieJar
 import dagger.Module
 import dagger.Provides
@@ -80,14 +82,25 @@ object AppModule {
         prettyPrint = false
     }
 
+    /**
+     * 通用客户端。
+     *
+     * TLS 走 [ToleratedTls]：系统 TrustManager 原样保留，只在"本校门户证书过期"
+     * 这一种失败上放行（见 [ExpiredCertTolerance]）——WebView 能过、抓取也必须能过，
+     * 否则用户登进去却抓不到课表，报的还是同一个证书错误。
+     */
     @Provides
     @Singleton
-    fun provideOkHttpClient(): OkHttpClient = OkHttpClient.Builder()
-        .cookieJar(WebViewCookieJar())
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
-        .followRedirects(true)
-        .build()
+    fun provideOkHttpClient(): OkHttpClient {
+        val tls = ToleratedTls.create()
+        return OkHttpClient.Builder()
+            .cookieJar(WebViewCookieJar())
+            .sslSocketFactory(tls.socketFactory, tls.trustManager)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(20, TimeUnit.SECONDS)
+            .followRedirects(true)
+            .build()
+    }
 
     /**
      * 下载专用客户端。通用客户端的 readTimeout=20s 对 46 MB 的安装包不够用；

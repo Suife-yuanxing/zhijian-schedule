@@ -18,12 +18,17 @@
 - test(jw): 新增 `TimetableInfoAuditTest`（6 例）与 `ImportPreviewInfoHintTest`（3 例）
 - feat(jw): 单列广西工程职业学院（`gxgc`）——智慧校园门户 `zhxy.gxgcedu.com` 的主机识别 + 校外端口拦截提示，解析复用 URP；校方 2022 年通知里的 `http://edu.gxgcedu.com/` 已 NXDOMAIN，条目写进 `SchoolCatalog` 内置表以免被 `tools/gen_school_catalog.py` 重新生成时覆盖
 - test(jw): 新增 `GxgcSchoolProfileTest`（6 例）与 `GuangXiGcAdapterTest`（14 例）
+- fix(jw): 广西工程职业学院门户证书过期导致无法登录——校方 Let's Encrypt 证书有效期只到 2026-10-28，过期后 WebView 报 `SSL_DATE_INVALID`、OkHttp 抛 `CertificateExpiredException`，学生连登录页都打不开。新增 `ExpiredCertTolerance`（纯逻辑）+ `ExpiredCertTrustManager` + `ToleratedTls`：只对 `zhxy.gxgcedu.com` 这一台主机、只对"证书过期"这一种失败、只在过期后 30 天内放行；主机名不匹配 / 自签名 / 签发者未知 / 过期太久一律照旧拦下。WebView 与 OkHttp 共用同一套判定，登录和抓取一起恢复；放行时在导入页给一句实话（"证书已过期 N 天（学校未续期），本次已放行"），学校续期后提示自动消失
+- fix(jw): 教务导入页白屏——WebView 在量到尺寸之前就提交了第一次导航，Chromium 把视口高度锁成 0，此后任何重排都不再更新；依赖 100vh / 百分比高度的页面（广西工程门户、百度首页同样复现）整页塌成 0 高。新增 `loadWhenSized`（等布局量到尺寸再 loadUrl，同一 WebView 只保留最后一个待加载请求）+ `VIEWPORT_HEIGHT_REPAIR_JS` 兜底（仅在 100vh 量出来接近 0 时给 html 一个像素高度，量得正常则一个字节都不改）；`shouldLoadWhenSized` 抽成纯函数进单测
+- test(jw): 新增 `JwWebViewViewportTest`（6 例）——尺寸未量到必须等、兜底脚本只在视口真的坏掉时动手、写回高度带 `!important`、只碰 html/body 不碰内容节点
+- test(net): 新增 `ExpiredCertToleranceTest`（16 例）——三闸门逐个钉住：主机名单精确匹配、只认过期不认其它错误、30 天窗口边界、SAN 通配符只跨一层、WebView 与 OkHttp 两条入口判据一致
 
 ### Changed
 
 - chore(repo): 仓库规范化——补 `.gitattributes`（只钉死 `gradlew`/`gradlew.bat` 的换行符 + 二进制标记，不做全仓 renormalize）；`.editorconfig` 补 Room schema 生成物的尾换行豁免（生成器不写尾换行，之前规则与工具互相打架）
 - docs: 把散在各处的陈旧统计按实测重算并写清统计口径（`.kt` 300 个 / 42924 行 / 超 120 列 32 行；提交 135 个、`git log --merges` 为空；截图 12 张），`CHANGELOG` 的 v1.0.13 / v1.0.14 段补回缺失的发布日期、提交区间与版本号表条目
 - test(jw): 去掉 `JwScriptOutputTest.kt` 的 UTF-8 BOM（`.editorconfig` 声明的是 `charset = utf-8`，BOM 会让首个 token 带不可见前缀）
+- chore(quality): 重新生成 `config/ktlint/baseline.xml`（3551 → 3383 条）——`c3c1488` 改过 `SettingsStore` / `TimetableImportService` 等文件后旧记录的行号整体漂移，`AppModule` / `JwImportWebView` 的既有违例也因本次编辑而错位；重新生成只是把同类违例的定位跟上新代码，没有新增豁免，新写的 `ExpiredCertTolerance` / `ExpiredCertTrustManager` / `ToleratedTls` 全部零违例、不在 baseline 里
 
 ## [1.0.14] - 2026-10-28
 

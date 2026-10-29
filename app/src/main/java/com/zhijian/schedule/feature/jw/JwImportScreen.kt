@@ -208,6 +208,33 @@ fun JwImportScreen(
                 )
             }
 
+            // 证书过期放行提示：不是失败（页面照常可用），但用户有权知道自己踩在一个
+            // 过期证书上。用与上面 HTTP 提示同一档的字号，不额外占一整块版面。
+            viewModel.certNotice?.let { notice ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 4.dp, bottom = 2.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Text(
+                        text = notice,
+                        color = colors.accent,
+                        fontSize = 10.5.sp,
+                        lineHeight = 15.sp,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TapIconButton(onClick = viewModel::dismissCertNotice, modifier = Modifier.size(28.dp)) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "关闭证书提示",
+                            tint = colors.textMuted,
+                            modifier = Modifier.size(13.dp),
+                        )
+                    }
+                }
+            }
+
             // 步骤进度 + 两行下一步提示（识别的教务类型挂在进度行右端）
             GuideBar(
                 colors = colors,
@@ -249,6 +276,7 @@ fun JwImportScreen(
                     onProgress = viewModel::onLoadProgress,
                     onError = viewModel::onLoadError,
                     onHttpError = viewModel::onHttpError,
+                    onCertNotice = viewModel::onCertNotice,
                     onWebView = { webView = it },
                     modifier = Modifier.fillMaxSize().clipToBounds(),
                 )

@@ -67,6 +67,15 @@ class JwImportViewModel @Inject constructor(
     var scriptNotice by mutableStateOf<String?>(null)
         private set
 
+    /**
+     * 证书过期放行提示（本校门户专属）。
+     *
+     * 与 [pageError] 分开：这不是失败，页面照常可用，只是要让用户知道
+     * "证书确实过期了，这次是 App 让它过的"。
+     */
+    var certNotice by mutableStateOf<String?>(null)
+        private set
+
     /** WebView 当前停在登录页（动态引导文案用） */
     val onLoginPage: Boolean
         get() = isJwLoginPage(pageUrl)
@@ -129,6 +138,7 @@ class JwImportViewModel @Inject constructor(
         if (target.isBlank()) return
         url = target
         pageError = null
+        certNotice = null
         loadRequest = WebLoadRequest(target, loadRequest.nonce + 1)
     }
 
@@ -146,6 +156,14 @@ class JwImportViewModel @Inject constructor(
 
     fun onHttpError(code: Int) {
         httpErrorHint = code
+    }
+
+    fun onCertNotice(message: String) {
+        certNotice = message
+    }
+
+    fun dismissCertNotice() {
+        certNotice = null
     }
 
     fun dismissHttpError() {

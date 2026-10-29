@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.net.http.SslError
 import android.os.Message
+import android.view.View
 import android.webkit.CookieManager
 import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
@@ -22,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import com.zhijian.schedule.core.jw.JwAdapterRegistry
 import com.zhijian.schedule.core.jw.script.JwScriptRunner
+import com.zhijian.schedule.core.net.ExpiredCertTolerance
 import java.net.URI
 import org.json.JSONObject
 
@@ -139,6 +141,117 @@ private const val WAF_ERROR_CHECK_JS = """
 })()
 """
 
+/**
+ * 修「视口单位塌成 0」：页面白屏而 DOM 完好的真凶。
+ *
+ * ## 现象
+ * 广西工程门户登录页（html/body 都是 height:100%，登录卡片垂直居中）在 WebView 里整页空白：
+ * 正文 innerText 有内容、节点存在、样式表全部加载成功，但
+ * documentElement.getBoundingClientRect().height === 0、100vh 实测 0px——
+ * 初始包含块高度是 0，百分比高度沿 html → body → 卡片全链路解析成 0，内容被压成一条 0 高的线。
+ *
+ * ## 为什么是 0
+ * WebView 在还没量到尺寸（宽高为 0）时就提交了第一次导航，Chromium 把视口高度按 0 锁住，
+ * 之后再怎么重排都不再更新。对照实验：同一台机器上百度首页的 100vh 同样是 0px，
+ * 说明与学校页面无关，是本工程 WebView 的加载时序问题（[loadWhenSized] 从源头修，
+ * 本段只做兜底，防止其它时序再次把它锁死）。
+ *
+ * ## 什么时候动手
+ * 只在「视口其实有高度、但 100vh 量出来接近 0」时才给 html 一个像素高度；
+ * 内容更高的页面照常滚动（scrollHeight 由内容撑开）。量出来正常就一个字节都不改，
+ * 所以对本来排版正确的教务页是空操作。
+ */
+internal const val VIEWPORT_HEIGHT_REPAIR_JS = """
+(function () {
+  try {
+    var h = (window.visualViewport && visualViewport.height) || window.innerHeight || 0;
+    if (!h || h < 1) return;
+    var root = document.documentElement;
+    if (!root) return;
+    var probe = document.createElement('div');
+    probe.style.cssText = 'position:absolute;top:-9999px;left:0;width:0;height:100vh';
+    (document.body || root).appendChild(probe);
+    var vh = probe.getBoundingClientRect().height;
+    probe.parentNode && probe.parentNode.removeChild(probe);
+    if (vh > 1) return;
+    root.style.setProperty('height', h + 'px', 'important');
+    root.style.setProperty('min-height', h + 'px', 'important');
+    if (document.body) document.body.style.setProperty('min-height', h + 'px', 'important');
+  } catch (e) {}
+})()
+"""
+
+/**
+ * 这个 SSL 错误是不是"证书日期不对"。
+ *
+ * Chromium 网络栈报 `SSL_DATE_INVALID`，老实现报 `SSL_EXPIRED`，两者同义；
+ * 其余错误码（主机名不匹配、自签名、签发者未知）一律不认——它们与过期不是一回事。
+ */
+private fun isCertDateError(error: SslError?): Boolean =
+    error != null &&
+        (error.primaryError == SslError.SSL_DATE_INVALID || error.primaryError == SslError.SSL_EXPIRED)
+
+private const val PENDING_LOAD_TAG: Int = 0x7A6A6C31
+
+/**
+ * 现在能不能提交导航：宽高都量到了才算。
+ *
+ * 抽成纯函数是为了能进本机 JVM 单测——判定本身只有一行，但它是白屏的开关：
+ * 尺寸为 0 就导航会让 Chromium 把视口高度锁成 0，页面永远塌成 0 高。
+ */
+internal fun shouldLoadWhenSized(
+    width: Int,
+    height: Int,
+): Boolean = width > 0 && height > 0
+
+/**
+ * 量到尺寸之后再提交导航——白屏的真正成因就在这里。
+ *
+ * AndroidView 的 factory / update 都在**布局之前**执行：那一刻 WebView 的宽高还是 0，
+ * 直接 loadUrl 会让 Chromium 把视口高度按 0 锁死，此后任何重排都不再更新它。
+ * 依赖 100vh / 百分比高度的页面（实测：广西工程门户与百度首页都一样）因此整页塌成 0 高，
+ * 只剩一片空白。
+ *
+ * 尺寸已经是正数时立刻加载，不多等一帧；否则挂一个布局监听，等第一次量到尺寸再加载。
+ * 同一个 WebView 上只保留**最后一个**待加载请求：地址栏连点两次时，旧监听器必须摘掉，
+ * 否则两个 URL 会依次导航，用户看到的是先加载旧地址又跳新地址。
+ */
+private fun loadWhenSized(
+    webView: WebView,
+    url: String,
+) {
+    (webView.getTag(PENDING_LOAD_TAG) as? View.OnLayoutChangeListener)?.let {
+        webView.removeOnLayoutChangeListener(it)
+        webView.setTag(PENDING_LOAD_TAG, null)
+    }
+    if (shouldLoadWhenSized(webView.width, webView.height)) {
+        webView.loadUrl(url)
+        return
+    }
+    val listener =
+        object : View.OnLayoutChangeListener {
+            override fun onLayoutChange(
+                view: View,
+                left: Int,
+                top: Int,
+                right: Int,
+                bottom: Int,
+                oldLeft: Int,
+                oldTop: Int,
+                oldRight: Int,
+                oldBottom: Int,
+            ) {
+                if (shouldLoadWhenSized(view.width, view.height)) {
+                    view.removeOnLayoutChangeListener(this)
+                    view.setTag(PENDING_LOAD_TAG, null)
+                    webView.loadUrl(url)
+                }
+            }
+        }
+    webView.setTag(PENDING_LOAD_TAG, listener)
+    webView.addOnLayoutChangeListener(listener)
+}
+
 /** WAF 5xx 多为瞬时抖动：自动重试两次再交给用户，避免一进来就是错误页 */
 private const val WAF_MAX_RETRIES = 2
 private const val WAF_RETRY_DELAY_MS = 1500L
@@ -155,6 +268,7 @@ internal fun WebViewBox(
     onProgress: (Int) -> Unit,
     onError: (String) -> Unit,
     onHttpError: (Int) -> Unit,
+    onCertNotice: (String) -> Unit = {},
     onWebView: (WebView?) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -213,6 +327,8 @@ internal fun WebViewBox(
 
                     override fun onPageFinished(view: WebView?, url: String?) {
                         url?.takeIf { it.isNotBlank() }?.let(onPageUrl)
+                        // 先补视口高度：白屏页面在这里被救回来，后面的脚本才有可用的版面
+                        view?.evaluateJavascript(VIEWPORT_HEIGHT_REPAIR_JS, null)
                         view?.evaluateJavascript(FIT_VIEWPORT_JS, null)
                         if (ssoJs.isNotEmpty()) view?.evaluateJavascript(ssoJs, null)
                         view?.evaluateJavascript(JW_SHELL_FIX_JS, null)
@@ -255,13 +371,33 @@ internal fun WebViewBox(
                         }
                     }
 
+                    /**
+                     * 校方证书过期（`SSL_DATE_INVALID`）时按 [ExpiredCertTolerance] 放行，
+                     * 其余 SSL 错误一律拦下。
+                     *
+                     * 只有"这台主机的证书过期"这一种情况能过：主机名精确匹配 +
+                     * 过期天数在窗口内。放行时把实话告诉用户（[onCertNotice]），
+                     * 不做成"证书错误已忽略"这种糊弄。
+                     */
                     override fun onReceivedSslError(
                         view: WebView?,
                         handler: SslErrorHandler?,
                         error: SslError?,
                     ) {
-                        handler?.cancel()
-                        onError("HTTPS 证书校验失败（${error?.url ?: "未知地址"}）")
+                        // SslCertificate 的 getter 是 getValidNotAfterDate()，Kotlin 侧属性名随之
+                        val expiredAt =
+                            runCatching { error?.certificate?.validNotAfterDate?.time }.getOrNull()
+                        val now = System.currentTimeMillis()
+                        val tolerated =
+                            isCertDateError(error) &&
+                                ExpiredCertTolerance.shouldProceedOnSslError(error?.url, expiredAt, now)
+                        if (tolerated) {
+                            handler?.proceed()
+                            onCertNotice(ExpiredCertTolerance.sslNotice(expiredAt ?: 0L, now))
+                        } else {
+                            handler?.cancel()
+                            onError("HTTPS 证书校验失败（${error?.url ?: "未知地址"}）")
+                        }
                     }
                 }
             }.also(onWebView)
@@ -270,7 +406,7 @@ internal fun WebViewBox(
             if (lastLoaded.value != request) {
                 lastLoaded.value = request
                 wafRetries[0] = 0
-                webView.loadUrl(request.url)
+                loadWhenSized(webView, request.url)
             }
         },
     )
