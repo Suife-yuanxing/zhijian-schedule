@@ -129,7 +129,10 @@ private fun AppScaffold(
     // 浮岛收敛状态：由三个根页的纵向滚动源驱动（见 IslandScroll.kt）。
     // 挂在 AppScaffold 而不是浮岛内部——浮岛自己监听手势会与页面滚动抢事件。
     val islandCollapse = rememberIslandCollapseState()
-    val navState = remember { AppNavHostState(reveal, islandCollapse, entryTransitions, entryLayer) }
+    // 三个根页共用的入场闸门：宿主创建一次，页面只读、由页面自己关闸（见 RootEntrancePolicy）
+    val entrance = rememberRootEntranceGate()
+    val navState =
+        remember(entrance) { AppNavHostState(reveal, islandCollapse, entryTransitions, entryLayer, entrance) }
     val colors = LocalCourseColors.current
     val tabs =
         listOf(
@@ -139,15 +142,6 @@ private fun AppScaffold(
         )
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
-    // 课表的入场闸门：与今日页 / 我的页同一条规矩——本次进程第一次进入才播课块级联，
-    // 之后切回来直接落位。不加闸门时，每切一次 tab 都要把所有课块 alpha 归零、按阅读顺序
-    // （先上排、上排内从左到右）逐块长回来（整轮封顶 700ms），而切页滑动只要约 230ms，
-    // 读起来就是「这一页刷新了一遍、内容从左上角摊开」（真机抓帧确认过）。
-    // 注意比的是叶子路由 Routes.SCHEDULE（"schedule"），不是 tab 图的 Routes.SCHEDULE_TAB——
-    // currentDestination 给出的是叶子，拿 tab 图路由去比永远不相等（这条踩过）。
-    LaunchedEffect(backStackEntry) {
-        if (backStackEntry?.destination?.route == Routes.SCHEDULE) navState.markScheduleEntrancePlayed()
-    }
     // 浮岛只在三个 tab 根页显示；二级页隐藏（内容也不再为其预留空间）
     val showBottomBar = tabs.any { tab -> tab.rootRoute == currentDestination?.route }
     // 玻璃主题：把根内容录制成可折射背景图层（绘制指令级复用，零截屏；其余主题返回 null 零开销）。
@@ -254,9 +248,9 @@ private fun AppScaffold(
                                     // 其他 tab：切换（切页本身也触发弹跳），回顶交给新页自己首帧归位。
                                     bounceTrigger++
                                     if (tab.rootRoute != currentDestination?.route) {
-                                        if (tab.rootRoute == Routes.PROFILE_TAB) {
-                                            navState.playProfileEntranceOnce()
-                                        }
+                                        // 切 tab 只做位移：入场闸门在宿主里，且只对冷启动首帧放行
+                                        // 一次（见 RootEntrancePolicy）。这里**不要**再给任何一页
+                                        // 开入场，否则就是「切页刷新、从右上方打开」的来源。
 
                                         // 换 tab 一定把浮岛恢复正常态：收起只跟随「当前这一页」的滚动，
                                         // 换了页就不该继续矮着。翻周不算换页（那是 pager 内部），

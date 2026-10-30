@@ -40,7 +40,7 @@ fun ScheduleScreen(
     islandCollapse: IslandCollapseState? = null,
     scrollToTopTick: Int = 0,
     /**
-     * 是否播放课块级联入场：本次进程第一次进入课表时为 true（见 AppNavHostState.playScheduleEntrance）。
+     * 是否播放课块级联入场：只有冷启动首帧为 true（见 RootEntrancePolicy）。
      *
      * 为什么需要宿主闸门而不是只看组合生命周期：navigation-compose 的转场按 entry id 复用
      * 内容槽，而 saveState/restoreState 恢复的 entry 还是原来那个 id——在上一段转场收尾前
@@ -51,12 +51,16 @@ fun ScheduleScreen(
      * 700ms），而切页滑动只要约 230ms，读起来就是「这一页刷新了一遍、从左上角摊开」。
      */
     playEntrance: Boolean = false,
+    /** 首帧入场已经开始：宿主据此关闸，之后切回（含二级页返回、Activity 重建）不再重播 */
+    onEntranceShown: () -> Unit = {},
     viewModel: ScheduleViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     // 冻结成本次组合的常量：首回合起播之后，宿主把闸门关掉会让入参变 false，
     // 但这一轮级联已经在跑，不能中途把 delay 改成 -1 把它按停（那会留下半透明的块）。
     val entranceOnce = remember { playEntrance }
+    // 与今日页 / 我的页同一写法：入场起播就关闸，三个根页共用宿主那一份闸门
+    LaunchedEffect(Unit) { if (entranceOnce) onEntranceShown() }
     var selectedCourse by remember { mutableStateOf<CourseEntity?>(null) }
     // 面板目标可见性：关闭动作一开始即置回 false，让课块高亮与面板滑出并行恢复
     var detailSheetVisible by remember { mutableStateOf(false) }
@@ -89,9 +93,18 @@ fun ScheduleScreen(
             pageCount = { ui.totalWeeks },
         )
 
-    // 课表加载完成、或开学日期/总周数被修改后，重新定位到当前周
-    LaunchedEffect(ui.timetable?.id, ui.timetable?.startDate, ui.timetable?.totalWeeks) {
-        val target = ((ui.currentWeek ?: 1) - 1).coerceIn(0, ui.totalWeeks - 1)
+    // 定位到当前周：**只认锚点变化**（课表 id / 开学日期 / 总周数）。
+    //
+    // 旧实现直接把这个副作用挂在上面那三个 key 上，于是页面每次重新进入组合都会跑一次
+    // ——切 tab 回来、从编辑页返回、Activity 重建都算——把用户手选的周次覆盖回「自然当前周」。
+    // 那正是「根页面切换时刷新位置错误」：翻到第 10 周、切走再切回，位置变回第 9 周。
+    // 现在用 anchor 记住「上次是按哪份课表定位的」，锚点没变就一个字节都不动，
+    // 页码交给 pager 自己的 saveable 状态恢复（规则与单测见 WeekAnchorPolicy）。
+    val anchor = WeekAnchorPolicy.anchorOf(ui.timetable?.id, ui.timetable?.startDate, ui.totalWeeks)
+    LaunchedEffect(anchor) {
+        // 锚点存在 ViewModel 里：页面重建（切页 / 返回 / Activity 重建）不会把它清零
+        if (!viewModel.shouldRelocate(anchor)) return@LaunchedEffect
+        val target = WeekAnchorPolicy.targetPage(ui.currentWeek, ui.totalWeeks)
         if (pagerState.currentPage != target) pagerState.scrollToPage(target)
     }
     LaunchedEffect(pagerState) {

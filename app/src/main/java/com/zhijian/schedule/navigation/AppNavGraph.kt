@@ -92,11 +92,14 @@ internal fun AppNavHost(
                     TodayScreen(
                         islandCollapse = state.islandCollapse,
                         scrollToTopTick = state.scrollToTopTick,
-                        playEntrance = !state.todayEntrancePlayed,
-                        onEntranceShown = { state.markTodayEntrancePlayed() },
+                        // 三个根页读同一个闸门：只有冷启动首帧为 true，其余（切 tab / 二级页返回 /
+                        // Activity 重建）一律 false → 首帧直接落位。见 RootEntrancePolicy。
+                        playEntrance = state.entrance.shouldPlay(Routes.TODAY),
+                        onEntranceShown = { state.entrance.markPlayed() },
                         onEditCourse = { id -> navController.navigate(Routes.todayEditor(courseId = id)) },
                         onOpenExams = {
-                            state.playProfileEntranceOnce()
+                            // 直达考试页：先切 tab 再 push。切 tab 不播入场（闸门在宿主），
+                            // 所以这里不需要也不应该再给「我的」开一次级联。
                             navController.navigateToTab(Routes.PROFILE_TAB)
                             navController.navigate(Routes.PROFILE_EXAMS) { launchSingleTop = true }
                         },
@@ -173,7 +176,8 @@ internal fun AppNavHost(
                     ScheduleScreen(
                         islandCollapse = state.islandCollapse,
                         scrollToTopTick = state.scrollToTopTick,
-                        playEntrance = state.playScheduleEntrance,
+                        playEntrance = state.entrance.shouldPlay(Routes.SCHEDULE),
+                        onEntranceShown = { state.entrance.markPlayed() },
                         onAddCourse = { day, section ->
                             state.fabOrigin = null
                             navController.navigate(Routes.scheduleEditor(day = day, section = section))
@@ -329,7 +333,8 @@ internal fun AppNavHost(
                         scrollToTopTick = state.scrollToTopTick,
                         entryTransitions = state.entryTransitions,
                         reveal = state.reveal,
-                        entranceEpoch = state.profileEntranceEpoch,
+                        playEntrance = state.entrance.shouldPlay(Routes.PROFILE),
+                        onEntranceShown = { state.entrance.markPlayed() },
                         onOpenImport = {
                             navController.navigate(Routes.PROFILE_IMPORTER) { launchSingleTop = true }
                         },

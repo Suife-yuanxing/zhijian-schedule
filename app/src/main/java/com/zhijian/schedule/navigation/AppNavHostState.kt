@@ -26,78 +26,25 @@ internal class AppNavHostState(
     val entryTransitions: ProfileEntryTransitions,
     /** 二级页持续录进的图层：返回时浮层直接重绘它（无位图读回） */
     val entryLayer: GraphicsLayer,
+    /**
+     * 三个根页共用的入场闸门。
+     *
+     * **一处持有、三页共读**是本次修复的关键：上一版是三个各自独立的布尔（课表已闸门、
+     * 今日「进程内第一次进入」、我的「进程内第一次进入 + epoch」），于是每个进程的
+     * 头一次切 tab 照样会播入场——读出来就是「整页从右上方打开、刷新了一遍」。
+     * 现在收成一个闸门，语义只有一句话：冷启动首帧放行一次，其余一律落位。
+     * 规则本体见 [RootEntrancePolicy]（纯逻辑，有单测）。
+     */
+    val entrance: RootEntranceGate,
 ) {
     /** 复点当前 tab 的回顶请求：自增即触发，页面各自消费 */
     var scrollToTopTick by mutableIntStateOf(0)
         private set
 
-    /**
-     * 课表课块级联是否已播过：与今日页 / 我的页同一套闸门，本次进程只放行一次。
-     *
-     * 为什么需要宿主闸门而不是只看组合生命周期：navigation-compose 的转场按 back stack
-     * entry 的 id 复用内容槽，而 saveState/restoreState 恢复的 entry 还是同一个 id——
-     * 在上一段转场收尾前切回来时，课表根本没离开组合，级联不会自己重播；反过来，切走
-     * 够久让页面真被销毁，切回时又会从 alpha=0 重来。同一个动作两种结果，取决于转场
-     * 有没有收尾，这就是「偶发」的来源。
-     *
-     * 为什么不保留「每次进入都重播」：那会把所有课块 alpha 归零，再按阅读顺序（先上排、
-     * 上排内从左到右）逐块长回来，整轮封顶 700ms；而切页滑动只要约 230ms，读起来就是
-     * 「这一页重新刷新了一遍、内容从左上角摊开」（真机抓帧：点课表后 30ms 全块不可见、
-     * 90/300/500ms 才逐列浮出）。改成一次性之后与今日 / 我的完全同构：切 tab 只做位移。
-     */
-    private var scheduleEntrancePlayed by mutableStateOf(false)
-
-    /** 课表这次进场要不要播课块级联：只有本次进程第一次进入时为 true */
-    val playScheduleEntrance: Boolean get() = !scheduleEntrancePlayed
-
-    /** 「我的」页分段级联的回合号：只在本次进程第一次进入时自增 */
-    var profileEntranceEpoch by mutableIntStateOf(0)
-        private set
-
     /** 从加号进课程编辑页时记下加号的位置：返回时页面要反向收回这里 */
     var fabOrigin by mutableStateOf<Rect?>(null)
 
-    /**
-     * 今日页的分段入场是否已播过。
-     *
-     * 今日页与课表页同一条规矩：只在第一次进入时播分段入场。它的 StaggerIn 最晚到 708ms，
-     * 切页本身只要 224ms，叠在一起就是「滑完了内容还在长」，中途再切走还会闪。
-     */
-    var todayEntrancePlayed by mutableStateOf(false)
-        private set
-
-    /**
-     * 「我的」的分段级联只在本次进程**第一次**进入时播一次，之后切回来直接落位。
-     * 每次重播的话页面会先空一帧（全部区块 alpha=0）再从上往下长出来；这一页又是从右边
-     * 滑入的，空帧 + 顶部先出现，读起来就是「整页从右上角打开」（连续快速切换时实测抓到了
-     * 整屏只剩底色的空帧）。课表页的课块级联走同一套闸门（见 [playScheduleEntrance]）。
-     */
-    private var profileEntrancePlayed by mutableStateOf(false)
-
     fun requestScrollToTop() {
         scrollToTopTick++
-    }
-
-    /**
-     * 标记课表入场已经用过：之后每次切回课表都直接落位，不再叠一层
-     * 「全部课块先透明再长出来」——那一层正是「切页像刷新、内容从左上角摊开」的来源。
-     *
-     * 与今日页 / 我的页同一套策略（[markTodayEntrancePlayed] / [playProfileEntranceOnce]）。
-     */
-    fun markScheduleEntrancePlayed() {
-        scheduleEntrancePlayed = true
-    }
-
-    /** 上方有二级页要进场时调用：本次进程只放行一次分段级联 */
-    fun playProfileEntranceOnce() {
-        if (!profileEntrancePlayed) {
-            profileEntrancePlayed = true
-            profileEntranceEpoch++
-        }
-    }
-
-    /** 今日页首帧落位后调用，之后切回不再重播分段入场 */
-    fun markTodayEntrancePlayed() {
-        todayEntrancePlayed = true
     }
 }

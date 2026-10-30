@@ -118,6 +118,28 @@ class ScheduleViewModel
             selectedWeek.value = week.coerceIn(1, uiState.value.totalWeeks)
         }
 
+        /**
+         * 上一次「按哪份课表定位过页码」的锚点签名（见 [WeekAnchorPolicy]）。
+         *
+         * 存在 ViewModel 而不是组合里：切 tab / 从二级页返回 / Activity 重建都会让
+         * 课表页重新进入组合，但 ViewModel 归 back stack entry 所有、且 popUpTo(saveState)
+         * 会一并保存它。放在 remember 里的话每次重建都是 null，等于「每次进入都重新定位」，
+         * 正是「切页刷新位置错误」本身。
+         */
+        private var lastAnchor: String? = null
+
+        /**
+         * 这次进入要不要把 pager 拉回自然当前周。
+         *
+         * 只有课表本身换了（id / 开学日期 / 总周数变化）才返回 true；
+         * 用户手选的周次在同一份课表里始终保留。
+         */
+        fun shouldRelocate(anchor: String?): Boolean {
+            if (!WeekAnchorPolicy.shouldRelocate(lastAnchor, anchor)) return false
+            lastAnchor = anchor
+            return true
+        }
+
         fun deleteCourse(id: Long) {
             viewModelScope.launch { repository.deleteCourse(id) }
         }

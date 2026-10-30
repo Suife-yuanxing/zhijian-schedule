@@ -59,8 +59,7 @@ fun WeekGrid(
     /** 弹起高亮中的课程（详情打开期间；面板一开始滑出即恢复，见 CourseDetailSheet） */
     selectedCourseId: Long? = null,
     /**
-     * 是否播放课块级联入场：本次进程第一次进入课表时为 true
-     * （见 AppNavHostState.playScheduleEntrance）。
+     * 是否播放课块级联入场：只有冷启动首帧为 true（见 RootEntrancePolicy）。
      *
      * 之前每次进入都重播：转场复用内容槽时页面不会离开组合，级联也就不会自己重播，
      * 于是用「回合号换 key」强推；代价是每切一次 tab 整屏课块都从 alpha=0 长一遍。

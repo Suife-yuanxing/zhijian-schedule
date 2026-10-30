@@ -23,10 +23,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
@@ -74,7 +72,18 @@ internal const val ACCENT_SELECTED_ALPHA = 0.20f
 fun ProfileScreen(
     entryTransitions: ProfileEntryTransitions,
     reveal: RevealState,
-    entranceEpoch: Int = 0,
+    /**
+     * 是否播放整页分段入场：只有冷启动首帧为 true（见 RootEntrancePolicy）。
+     *
+     * 之前这里是 `entranceEpoch: Int` + `rememberSaveable` 比对，语义等价于
+     * 「本进程第一次进入时放行一次」——而「第一次进入」恰好就是第一次切过去，
+     * 于是每个进程的头一次切 tab 照样会播：整页从 alpha=0 从上往下长出来，
+     * 叠在右滑入的位移上，读作「整页从右上角打开、刷新了一遍」。
+     * 换成与今日 / 课表同构的布尔之后，三个根页只剩一条规矩。
+     */
+    playEntrance: Boolean = false,
+    /** 首帧入场已经开始：宿主据此关闸，之后切回不再重播 */
+    onEntranceShown: () -> Unit = {},
     islandCollapse: IslandCollapseState? = null,
     scrollToTopTick: Int = 0,
     onOpenImport: () -> Unit = {},
@@ -89,14 +98,11 @@ fun ProfileScreen(
     var showPrivacy by remember { mutableStateOf(false) }
     var showUpdate by remember { mutableStateOf(false) }
     var showCustomReminder by remember { mutableStateOf(false) }
-    // 每次从其他 tab 切到「我的」都重播级联；从二级页返回时直接落位，
-    // 保证入口卡锚点第一帧就可见（epoch 未变化 → skip）。
-    var animatedEpoch by rememberSaveable { mutableIntStateOf(Int.MIN_VALUE) }
-    val playEntrance = animatedEpoch != entranceEpoch
-    val skipEntrance = !playEntrance
-    LaunchedEffect(entranceEpoch) {
-        if (animatedEpoch != entranceEpoch) animatedEpoch = entranceEpoch
-    }
+    // 冻结成本次组合的常量：回调关闸后入参会变 false，但这一轮入场已经在跑，
+    // 不能中途把它按停（那会留下半透明的半张页面）。与今日页 / 课表页同一写法。
+    val entranceOnce = remember { playEntrance }
+    LaunchedEffect(Unit) { if (entranceOnce) onEntranceShown() }
+    val skipEntrance = !entranceOnce
 
     val scrollState = rememberScrollState()
     // 复点「我的」回顶
