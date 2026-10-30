@@ -165,7 +165,7 @@ chore(db): 提交 Room v3 导出 schema
 
 App 的更新检查直接读 GitHub Releases（`core/update/UpdateChecker.kt` → `api.github.com/repos/Suife-yuanxing/zhijian-schedule/releases/latest`），所以发版节奏由 Release 决定：
 
-1. 同步改 `app/build.gradle.kts` 的 `versionCode` 与 `versionName`（当前是 15 / "1.0.14"）。
+1. 同步改 `app/build.gradle.kts` 的 `versionCode` 与 `versionName`（当前是 16 / "1.0.15"）。
 2. 提交：`版本号提升至 v1.0.15（versionCode 16）准备发布构建`（照这次的格式，填下一版的号）。
 3. 构建：`./gradlew assembleRelease`。
 4. 在 `Suife-yuanxing/zhijian-schedule` 建 Release：

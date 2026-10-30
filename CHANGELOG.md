@@ -12,8 +12,19 @@
 
 ## [Unreleased]
 
+## [1.0.15] - 2026-10-30
+
+*提交区间：v1.0.14..v1.0.15（20 个提交）— 水银镜面主题、涟漪加载态、根页切换重构*
+
 ### Added
 
+- feat(theme): 液态玻璃换成**水银镜面**（`chrome`）——玻璃的辨识特征是「透 + 边缘折射」，金属是「不透 + 反射方向 + 各向异性拉丝高光」，两者物理模型互斥，所以这不是换色而是整套材质模型重写：`core/ui/glass/` 六个文件下线、`core/ui/metal/` 十一个文件接上。光路从球冠法线改成「平板 + 倒角」（平面区恒定朝前保住本色，边沿 0–7px 外翻成镜面斜面，最外 2.2px 一道刃光，贴边压暗 42% 做接触阴影），环境加一盏条形柔光箱给金属方向感，浮岛走屏幕空间反射真实映出下方滚动的页面，页面底是极暗房间 + 两团随重力漂移的柔光
+- test(theme): 新增 `MetalThemeTest`（5 例）；`IslandContrastTest` 跟着金属浮岛重算对比度（选中珠压到 `chromeOverride = 0.55` + 深墨字，未选中字提亮）——两处都是真机上抓到「字被珠盖住 / 暗金属上看不清」之后定下的硬指标
+- docs(spec): 新增 `docs/specs/2026-10-29-metal-glass-theme.md`——水银镜面的光路模型、合成链路公式，以及三个真机确认过的坑：AGSL 里写中文注释会让 `RuntimeShader` **静默**构造失败（元件直接走降档分支，看起来像没生效）、拉丝频率必须按像素算（`sin(q.y * 420.0)` 在高分屏混叠成布纹）、选中珠太亮会吃掉文字
+- feat(ui): 新增 `RippleLoader`（四层同心圆共用 2s 周期、相位差 0.1 的重叠涟漪）与 `GradientCheckMark`（勾是逐段画上去的，描边按底亮度反解），替换六处 `CircularProgressIndicator`——都是「用户会盯着等好几秒」的位置（教务解析、全屏阻塞遮罩、成绩首屏、二维码生成、备份导出、快速导入完成）；系统转圈匀速无节拍，几秒后读作卡住
+- test(ui): 新增 `GradientCheckMarkTest`（5 例）钉住两次真机事故：未选中态的「白色 24%」半透明底压在纸色页面上与底色几乎同色（截图里整枚标记等于不存在），以及白勾压在提亮后的强调色上只有约 2.2:1（远看是一枚空圆）
+- chore(build): debug 构建加 `applicationIdSuffix = ".debug"`——debug 与正式版签名不同、同 applicationId 装不上也覆盖不了，加后缀后两包并排（`com.zhijian.schedule.debug` / `com.zhijian.schedule`），调试不再要在「装 debug」和「保住正式版数据」之间二选一
+- refactor(schedule): 撤掉课表顶栏的齿轮入口，设置只从「我的」进——两个入口意味着两处都要维护「切到我的 tab 再 push」的跳转，而这条跳转正是根页入场重播的触发点（先切 tab 再导航，目的地会被当成一次重新进入）
 - feat(jw): 抓取后提示核对课表信息（学期为空 / 换了学校或校区）——`TimetableInfoAudit` 纯逻辑 + `ImportPreview.infoHint` 透到预览弹层；课表信息仍不跟随抓取改写，只提醒不动手
 - test(jw): 新增 `TimetableInfoAuditTest`（6 例）与 `ImportPreviewInfoHintTest`（3 例）
 - feat(jw): 单列广西工程职业学院（`gxgc`）——智慧校园门户 `zhxy.gxgcedu.com` 的主机识别 + 校外端口拦截提示，解析复用 URP；校方 2022 年通知里的 `http://edu.gxgcedu.com/` 已 NXDOMAIN，条目写进 `SchoolCatalog` 内置表以免被 `tools/gen_school_catalog.py` 重新生成时覆盖
@@ -373,11 +384,13 @@ Android 侧 `versionName` 与 SemVer 对齐，`versionCode` 单调递增且与�
 | 1.0.11 | 12 | v1.0.11 |
 | 1.0.12 | 13 | v1.0.12 |
 | 1.0.13 | 14 | v1.0.13 |
-| 1.0.14 | 15 | v1.0.14（当前 versionName / versionCode，见 `app/build.gradle.kts`） |
+| 1.0.14 | 15 | v1.0.14 |
+| 1.0.15 | 16 | v1.0.15（当前 versionName / versionCode，见 `app/build.gradle.kts`） |
 
 发版流程见 [CONTRIBUTING.md](CONTRIBUTING.md#7-发版)。
 
-[Unreleased]: https://github.com/Suife-yuanxing/zhijian-schedule/compare/v1.0.14...HEAD
+[Unreleased]: https://github.com/Suife-yuanxing/zhijian-schedule/compare/v1.0.15...HEAD
+[1.0.15]: https://github.com/Suife-yuanxing/zhijian-schedule/compare/v1.0.14...v1.0.15
 [1.0.14]: https://github.com/Suife-yuanxing/zhijian-schedule/compare/v1.0.13...v1.0.14
 [1.0.13]: https://github.com/Suife-yuanxing/zhijian-schedule/compare/v1.0.12...v1.0.13
 [1.0.12]: https://github.com/Suife-yuanxing/zhijian-schedule/compare/v1.0.11...v1.0.12
