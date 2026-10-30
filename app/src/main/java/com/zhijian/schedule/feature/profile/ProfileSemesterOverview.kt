@@ -37,12 +37,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhijian.schedule.core.data.db.TimetableEntity
 import com.zhijian.schedule.core.theme.LocalCourseColors
+import com.zhijian.schedule.core.theme.LocalCoursePreset
 import com.zhijian.schedule.core.theme.LocalIsDark
 import com.zhijian.schedule.core.ui.CardDepthLadder
 import com.zhijian.schedule.core.ui.cardTextDepth
 import com.zhijian.schedule.core.ui.cardTilt
 import com.zhijian.schedule.core.ui.cardTiltGlare
 import com.zhijian.schedule.core.ui.inkVolume
+import com.zhijian.schedule.core.ui.metal.CardTone
+import com.zhijian.schedule.core.ui.metal.metalCard
 import com.zhijian.schedule.core.ui.pressScale
 import com.zhijian.schedule.core.ui.rememberCardTiltState
 import com.zhijian.schedule.core.ui.rememberFocusCardTiltStyle
@@ -92,6 +95,7 @@ internal fun SemesterOverviewCard(
         }
     val stats = "${timetable.startDate} 开学 · $courseCount 门课程"
     val dark = LocalIsDark.current
+    val metal = LocalCoursePreset.current.metal
     // 字形明暗面：上缘受光、下缘背光。替代旧版的文字投影——一样表达"离卡面多高"，
     // 但画在笔画之内，不会糊出第二份轮廓（见 CardDepth 的 kdoc）
     val heroInk = CardDepthLadder.Hero.inkVolume(colors.accent, dark).toBrush()
@@ -115,8 +119,14 @@ internal fun SemesterOverviewCard(
             .fillMaxWidth()
             .cardTilt(state = tilt, shape = shape, style = tiltStyle, enabled = motionAllowed)
             .clip(shape)
-            .background(heroBrush)
-            .cardTiltGlare(
+            // 金属主题：整页最该反光的焦点卡（RAISED）；其余主题走原来的 heroBrush 渐变，一字不变
+            .let { base ->
+                if (metal != null) {
+                    base.metalCard(shape = shape, color = colors.surface, tone = CardTone.RAISED)
+                } else {
+                    base.background(heroBrush)
+                }
+            }.cardTiltGlare(
                 state = tilt,
                 shape = shape,
                 style = tiltStyle,

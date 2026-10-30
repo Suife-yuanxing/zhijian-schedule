@@ -44,11 +44,14 @@ import com.zhijian.schedule.core.ui.LocalClock
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.RevealHost
 import com.zhijian.schedule.core.ui.RevealState
-import com.zhijian.schedule.core.ui.glass.glassBackdropSource
-import com.zhijian.schedule.core.ui.glass.rememberGlassBackdrop
-import com.zhijian.schedule.core.ui.glass.rememberGlassClock
-import com.zhijian.schedule.core.ui.glass.rememberGlassTilt
 import com.zhijian.schedule.core.ui.island.rememberIslandCollapseState
+import com.zhijian.schedule.core.ui.metal.LocalMetalClock
+import com.zhijian.schedule.core.ui.metal.LocalMetalGyro
+import com.zhijian.schedule.core.ui.metal.MetalAmbientBackdrop
+import com.zhijian.schedule.core.ui.metal.metalBackdropSource
+import com.zhijian.schedule.core.ui.metal.rememberMetalBackdrop
+import com.zhijian.schedule.core.ui.metal.rememberMetalClock
+import com.zhijian.schedule.core.ui.metal.rememberMetalGyro
 import com.zhijian.schedule.core.ui.rememberAppClock
 import com.zhijian.schedule.core.ui.rememberRevealState
 import com.zhijian.schedule.feature.profile.ProfileEntryExitOverlay
@@ -149,117 +152,137 @@ private fun AppScaffold(
     val showBottomBar = tabs.any { tab -> tab.rootRoute == currentDestination?.route }
     // 玻璃主题：把根内容录制成可折射背景图层（绘制指令级复用，零截屏；其余主题返回 null 零开销）。
     // 时钟由这里统一持有：录制层与浮岛共用同一拍，折射背景才不会落后于页面
-    val glassActive = LocalCoursePreset.current.glass != null
-    val glassClock = if (glassActive) rememberGlassClock() else null
-    // 倾角信号：驱动玻璃表面的镜面高光随重力方向滑动（仅玻璃主题下注册传感器）
-    val glassTilt = if (glassActive) rememberGlassTilt() else null
-    val backdrop = rememberGlassBackdrop(enabled = glassActive)
+    val preset = LocalCoursePreset.current
+    val metalActive = preset.metal != null
+    // ---- 水银镜面：金属时钟（逐帧，不量化）+ 陀螺仪 + 屏幕空间反射背景 ----
+    // 金属与玻璃共用「录制内容图层 + RenderEffect 采样」这条技术路线，但光学相反：
+    // 玻璃沿法线向心采样（折射），金属沿反射方向采样（镜面反射）。
+    val metalClock = if (metalActive) rememberMetalClock() else null
+    val metalGyro = if (metalActive) rememberMetalGyro() else null
+    val metalBackdrop = rememberMetalBackdrop(enabled = metalActive)
 
-    Scaffold { padding ->
-        // 外层已按系统栏 inset 偏移内容，声明为已消费，
-        // 避免二级页 Scaffold/TopAppBar 再次叠加状态栏高度把标题压低
-        Box(
-            Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .consumeWindowInsets(padding)
-                .onGloballyPositioned { entryTransitions.updateContentBounds(it.boundsInWindow()) },
-        ) {
-            AppNavHost(
-                navController = navController,
-                state = navState,
-                currentDestination = currentDestination,
-                modifier =
-                    Modifier
-                        .glassBackdropSource(
-                            backdrop = backdrop,
-                            clock = glassClock,
-                            enabled = showBottomBar,
-                            baseColor = colors.bg,
-                        ).onGloballyPositioned { backdrop?.onContentPositioned(it.boundsInWindow().topLeft) },
-            )
-
-            // 点实时胶囊进「今日」：计数变化时切一次 tab（等首帧后再导航，确保 NavHost 已就绪）
-            LaunchedEffect(openTodayCount) {
-                if (openTodayCount > 0) {
-                    withFrameNanos { }
-                    navController.navigateToTab(Routes.TODAY_TAB)
-                }
-            }
-
-            // 点同步失败通知直达「教务导入」：切到我的 tab 再推入导入页（WebView 自动走 SSO 恢复/登录）
-            LaunchedEffect(openJwImportCount) {
-                if (openJwImportCount > 0) {
-                    withFrameNanos { }
-                    navController.navigateToTab(Routes.PROFILE_TAB)
-                    navController.navigate(Routes.PROFILE_JW_IMPORT) { launchSingleTop = true }
-                }
-            }
-
-            // 浮岛悬浮于内容之上：仅根页显示，进入二级页时滑出/返回时滑入（与页面 push/pop 同一弹簧）。
-            // 不参与内容布局（页面按各自的 IslandContentPadding 让位），避免转场期间内容随其变形。
-            AnimatedVisibility(
-                visible = showBottomBar,
-                modifier = Modifier.align(Alignment.BottomCenter),
-                enter =
-                    slideInVertically(animationSpec = Motion.SlideSpring, initialOffsetY = { it }) +
-                        fadeIn(tween(durationMillis = Motion.DUR_MEDIUM, easing = Motion.EaseOut)),
-                exit =
-                    slideOutVertically(animationSpec = Motion.SlideSpring, targetOffsetY = { it }) +
-                        fadeOut(tween(durationMillis = Motion.DUR_FAST)),
+    // 金属时钟与倾角下发给全 App 的所有金属元件：一处持有、处处共用同一拍，
+    // 避免每个按钮各自起一条 60fps 循环（那会是上百条协程）。非金属主题此处为 null，零成本。
+    CompositionLocalProvider(
+        LocalMetalClock provides metalClock,
+        LocalMetalGyro provides metalGyro,
+    ) {
+        Scaffold { padding ->
+            // 外层已按系统栏 inset 偏移内容，声明为已消费，
+            // 避免二级页 Scaffold/TopAppBar 再次叠加状态栏高度把标题压低
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .consumeWindowInsets(padding)
+                    .onGloballyPositioned { entryTransitions.updateContentBounds(it.boundsInWindow()) },
             ) {
-                FloatingIslandBar(
-                    selectedIndex =
-                        tabs.indexOfFirst { tab ->
-                            currentDestination?.hierarchy?.any { it.route == tab.route } == true
-                        },
-                    itemCount = tabs.size,
-                    clock = glassClock,
-                    tilt = glassTilt,
-                    backdrop = backdrop,
-                    collapse = islandCollapse,
-                ) {
-                    tabs.forEach { tab ->
-                        val selected = currentDestination?.hierarchy?.any { it.route == tab.route } == true
-                        var bounceTrigger by remember { mutableIntStateOf(0) }
-                        IslandTabItem(
-                            tab = tab,
-                            selected = selected,
-                            bounceTrigger = bounceTrigger,
-                            collapse = islandCollapse,
-                            onClick = {
-                                // 当前 tab：复点弹跳一次，并把页面滚回顶部（iOS 26 的同款习惯）。
-                                // 其他 tab：切换（切页本身也触发弹跳），回顶交给新页自己首帧归位。
-                                bounceTrigger++
-                                if (tab.rootRoute != currentDestination?.route) {
-                                    if (tab.rootRoute == Routes.PROFILE_TAB) {
-                                        navState.playProfileEntranceOnce()
-                                    }
-
-                                    // 换 tab 一定把浮岛恢复正常态：收起只跟随「当前这一页」的滚动，
-                                    // 换了页就不该继续矮着。翻周不算换页（那是 pager 内部），
-                                    // 所以那条路径由 WeekGrid 的 islandActive 单独把关。
-                                    islandCollapse.expand()
-                                    navController.navigateToTab(tab.route)
-                                } else {
-                                    navState.requestScrollToTop()
-                                    islandCollapse.expand()
-                                }
+                // 全屏环境：金属主题的「房间」——极暗底 + 两团随重力漂移的柔光。
+                // 铺在所有内容之下，给金属的反射方向一个可映的空间；其余主题不渲染。
+                if (metalActive) {
+                    MetalAmbientBackdrop(
+                        clock = metalClock,
+                        gyro = metalGyro,
+                        modifier = Modifier.matchParentSize(),
+                    )
+                }
+                AppNavHost(
+                    navController = navController,
+                    state = navState,
+                    currentDestination = currentDestination,
+                    modifier =
+                        Modifier
+                            .metalBackdropSource(
+                                backdrop = metalBackdrop,
+                                clock = metalClock,
+                                enabled = showBottomBar,
+                                baseColor = colors.bg,
+                            ).onGloballyPositioned {
+                                metalBackdrop?.onContentPositioned(it.boundsInWindow().topLeft)
                             },
-                        )
+                )
+
+                // 点实时胶囊进「今日」：计数变化时切一次 tab（等首帧后再导航，确保 NavHost 已就绪）
+                LaunchedEffect(openTodayCount) {
+                    if (openTodayCount > 0) {
+                        withFrameNanos { }
+                        navController.navigateToTab(Routes.TODAY_TAB)
                     }
                 }
-            }
 
-            // 返回回收浮层：盖在页面与底栏之上，把快照直接收进点按的入口卡
-            if (entryTransitions.exitKey != null) {
-                // 回收期间吞掉返回键，避免落到「我的」页的上一级
-                BackHandler { }
+                // 点同步失败通知直达「教务导入」：切到我的 tab 再推入导入页（WebView 自动走 SSO 恢复/登录）
+                LaunchedEffect(openJwImportCount) {
+                    if (openJwImportCount > 0) {
+                        withFrameNanos { }
+                        navController.navigateToTab(Routes.PROFILE_TAB)
+                        navController.navigate(Routes.PROFILE_JW_IMPORT) { launchSingleTop = true }
+                    }
+                }
+
+                // 浮岛悬浮于内容之上：仅根页显示，进入二级页时滑出/返回时滑入（与页面 push/pop 同一弹簧）。
+                // 不参与内容布局（页面按各自的 IslandContentPadding 让位），避免转场期间内容随其变形。
+                AnimatedVisibility(
+                    visible = showBottomBar,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    enter =
+                        slideInVertically(animationSpec = Motion.SlideSpring, initialOffsetY = { it }) +
+                            fadeIn(tween(durationMillis = Motion.DUR_MEDIUM, easing = Motion.EaseOut)),
+                    exit =
+                        slideOutVertically(animationSpec = Motion.SlideSpring, targetOffsetY = { it }) +
+                            fadeOut(tween(durationMillis = Motion.DUR_FAST)),
+                ) {
+                    FloatingIslandBar(
+                        selectedIndex =
+                            tabs.indexOfFirst { tab ->
+                                currentDestination?.hierarchy?.any { it.route == tab.route } == true
+                            },
+                        itemCount = tabs.size,
+                        metalClock = metalClock,
+                        metalBackdrop = metalBackdrop,
+                        collapse = islandCollapse,
+                    ) {
+                        tabs.forEach { tab ->
+                            val selected = currentDestination?.hierarchy?.any { it.route == tab.route } == true
+                            var bounceTrigger by remember { mutableIntStateOf(0) }
+                            IslandTabItem(
+                                tab = tab,
+                                selected = selected,
+                                bounceTrigger = bounceTrigger,
+                                collapse = islandCollapse,
+                                onClick = {
+                                    // 当前 tab：复点弹跳一次，并把页面滚回顶部（iOS 26 的同款习惯）。
+                                    // 其他 tab：切换（切页本身也触发弹跳），回顶交给新页自己首帧归位。
+                                    bounceTrigger++
+                                    if (tab.rootRoute != currentDestination?.route) {
+                                        if (tab.rootRoute == Routes.PROFILE_TAB) {
+                                            navState.playProfileEntranceOnce()
+                                        }
+
+                                        // 换 tab 一定把浮岛恢复正常态：收起只跟随「当前这一页」的滚动，
+                                        // 换了页就不该继续矮着。翻周不算换页（那是 pager 内部），
+                                        // 所以那条路径由 WeekGrid 的 islandActive 单独把关。
+                                        islandCollapse.expand()
+                                        navController.navigateToTab(tab.route)
+                                    } else {
+                                        navState.requestScrollToTop()
+                                        islandCollapse.expand()
+                                    }
+                                },
+                            )
+                        }
+                    }
+                }
+
+                // 返回回收浮层：盖在页面与底栏之上，把快照直接收进点按的入口卡
+                if (entryTransitions.exitKey != null) {
+                    // 回收期间吞掉返回键，避免落到「我的」页的上一级
+                    BackHandler { }
+                }
+                ProfileEntryExitOverlay(
+                    transitions = entryTransitions,
+                    captureLayer = entryLayer,
+                )
             }
-            ProfileEntryExitOverlay(
-                transitions = entryTransitions,
-                captureLayer = entryLayer,
-            )
         }
     }
 }

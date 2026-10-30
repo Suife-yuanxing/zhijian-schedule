@@ -41,12 +41,17 @@ import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.cardTilt
 import com.zhijian.schedule.core.ui.cardTiltGlare
 import com.zhijian.schedule.core.ui.cardTiltParallax
+import com.zhijian.schedule.core.ui.metal.CardTone
+import com.zhijian.schedule.core.ui.metal.metalCard
 import com.zhijian.schedule.core.ui.rememberCardTiltState
 import com.zhijian.schedule.core.ui.rememberFocusCardTiltStyle
 import com.zhijian.schedule.core.ui.rememberMotionAllowed
 import com.zhijian.schedule.core.util.TimeUtils
 import java.time.Duration
 import java.time.LocalDateTime
+
+/** 关掉动画时「正在上课」色点的固定不透明度：比呼吸最低值亮，色点仍然一眼可辨 */
+private const val LIVE_DOT_STATIC_ALPHA = 0.85f
 
 @Composable
 internal fun CurrentClassCard(
@@ -79,6 +84,8 @@ internal fun CurrentClassCard(
     val tilt = rememberCardTiltState()
     val tiltStyle = rememberFocusCardTiltStyle()
     val motionAllowed = rememberMotionAllowed()
+    // 金属主题判定：焦点卡要用金属板而不是 tone.container 铺底
+    val preset = LocalCoursePreset.current
     val sectionText =
         when {
             item.course.startSection <= 0 -> null
@@ -110,18 +117,25 @@ internal fun CurrentClassCard(
         if (swept.value) progressAnim.snapTo(remaining)
     }
 
-    // 「正在上课」色点呼吸脉冲：在动的才叫进行中
-    val live = rememberInfiniteTransition(label = "liveClass")
-    val dotPulse by live.animateFloat(
-        initialValue = 0.4f,
-        targetValue = 1f,
-        animationSpec =
-            infiniteRepeatable(
-                animation = tween(durationMillis = 1100),
-                repeatMode = RepeatMode.Reverse,
-            ),
-        label = "liveDot",
-    )
+    // 「正在上课」色点呼吸脉冲：在动的才叫进行中。
+    // reduce-motion 下停在 0.85（比最低值亮，色点依然可辨），不删色点——
+    // 「正在上课」是当前状态的事实，"在闪"只是它的强调方式。
+    val dotPulse =
+        if (motionAllowed) {
+            val live = rememberInfiniteTransition(label = "liveClass")
+            live.animateFloat(
+                initialValue = 0.4f,
+                targetValue = 1f,
+                animationSpec =
+                    infiniteRepeatable(
+                        animation = tween(durationMillis = 1100),
+                        repeatMode = RepeatMode.Reverse,
+                    ),
+                label = "liveDot",
+            )
+        } else {
+            remember { mutableStateOf(LIVE_DOT_STATIC_ALPHA) }
+        }
 
     Column(
         Modifier
@@ -129,7 +143,14 @@ internal fun CurrentClassCard(
             // 倾动/抬升在最外层图层：clip 之后的背景与流光都跟着卡面一起转
             .cardTilt(state = tilt, shape = shape, style = tiltStyle, enabled = motionAllowed)
             .clip(shape)
-            .background(tone.container, shape)
+            // 金属主题：焦点卡是一块抛光到会反光的彩色金属片（RAISED）；其余主题保持 tone.container 铺底
+            .let { base ->
+                if (preset.metal != null) {
+                    base.metalCard(shape = shape, color = tone.container, tone = CardTone.RAISED)
+                } else {
+                    base.background(tone.container, shape)
+                }
+            }
             // 流光必须压在背景之后、文字之前：只提亮卡面，不洗淡课名与倒计时。
             // 高光/暗面取本课的同色相色调：白光会把绿色卡面洗成白斑，黑罩会把绿色压成脏橄榄
             .cardTiltGlare(
@@ -149,7 +170,7 @@ internal fun CurrentClassCard(
                 Modifier
                     .size(10.dp)
                     .clip(RoundedCornerShape(3.dp))
-                    .background(tone.ink.copy(alpha = dotPulse)),
+                    .background(tone.ink.copy(alpha = dotPulse.value)),
             )
             Spacer(Modifier.width(8.dp))
             Text(
@@ -264,8 +285,13 @@ internal fun NextClassCard(
     Row(
         Modifier
             .fillMaxWidth()
-            .background(tone.container, shape)
-            .border(1.dp, tone.line, shape)
+            .let { base ->
+                if (preset.metal != null) {
+                    base.metalCard(shape = shape, color = tone.container, tone = CardTone.SURFACE)
+                } else {
+                    base.background(tone.container, shape)
+                }
+            }.border(1.dp, tone.line.copy(alpha = if (preset.metal != null) 0.45f else 1f), shape)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

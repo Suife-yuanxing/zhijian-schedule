@@ -251,64 +251,92 @@ object ThemePresets {
             toneBias = CourseToneBias(lightL = 0.930f, lightChroma = 3.50f, darkL = 0.300f, darkChroma = 1.30f),
         )
 
-    /** 6. 液态玻璃：纯净底色 + 底部清水玻璃浮岛（零模糊，流动实时渲染） */
-    val glass =
+    /**
+     * 6. 水银镜面 · Mercury：暗室 + 抛光金属，**取代液态玻璃成为材质主题**。
+     *
+     * 主张「哑光衬镜面」：页面是一间关了大半灯的暗室，控件是被抛光到能映出这间房的金属板。
+     * 玻璃的辨识特征是「透 + 边缘折射」，金属的辨识特征是「不透 + 反射方向 + 各向异性拉丝高光」，
+     * 两者的物理模型互斥——所以这不是换色，是把材质模型整个换掉：
+     * - 元件、卡片、按钮：全不透明哑光面 + 倒角镜面圈 + 触摸凹陷光斑 + 氧化膜虹彩；
+     * - 浮岛：屏幕空间反射，真实映出下方滚动的页面（与玻璃的折射同一条技术路线，光学相反）；
+     * - 页面底：极暗房间 + 两团随重力漂移的柔光，给金属的反射方向一个「房间」可映。
+     *
+     * 禁区：不用半透明毛玻璃、不做浅色糖果风、不在金属面上用低对比灰字（暗室 + 镜面会把灰洗没）。
+     */
+    val chrome =
         ThemePreset(
-            id = ThemeIds.GLASS,
-            name = "液态玻璃",
+            id = ThemeIds.CHROME,
+            name = "水银镜面",
             light =
                 CourseColors(
-                    bg = Color(0xFFF6F7F9),
-                    surface = Color(0xFFFFFFFF),
-                    surfaceVariant = Color(0xFFEFF1F5),
-                    text = Color(0xFF17191F),
-                    textMuted = Color(0xFF6E7480),
-                    border = Color(0xFFE4E7EC),
-                    accent = Color(0xFF2F7BFF),
+                    bg = Color(0xFFE9ECF1),
+                    surface = Color(0xFFF4F6F9),
+                    surfaceVariant = Color(0xFFDFE3EA),
+                    text = Color(0xFF11141A),
+                    textMuted = Color(0xFF5B626E),
+                    border = Color(0xFFC9CFD9),
+                    accent = Color(0xFF1F6FE0),
                     onAccent = Color(0xFFFFFFFF),
                 ),
             dark =
                 CourseColors(
-                    bg = Color(0xFF0E0F13),
-                    surface = Color(0xFF17191F),
-                    surfaceVariant = Color(0xFF1F222A),
-                    text = Color(0xFFE9EBF0),
-                    textMuted = Color(0xFF9AA0AE),
-                    border = Color(0xFF2A2D36),
+                    bg = Color(0xFF07080B),
+                    surface = Color(0xFF0E1015),
+                    surfaceVariant = Color(0xFF171A21),
+                    text = Color(0xFFE8EBF1),
+                    textMuted = Color(0xFF98A0AE),
+                    border = Color(0xFF232733),
                     accent = Color(0xFF5AC8FA),
-                    onAccent = Color(0xFF04263A),
+                    onAccent = Color(0xFF03151F),
                 ),
             coursePalette =
                 listOf(
-                    Color(0xFF57C7FF),
-                    Color(0xFF39D2C0),
-                    Color(0xFF8F7BF7),
-                    Color(0xFFF178B6),
-                    Color(0xFF7CE3A9),
-                    Color(0xFF9D8CFF),
-                    Color(0xFF4FA8E8),
-                    Color(0xFFC084FC),
+                    Color(0xFF3E7BFA),
+                    Color(0xFF17BEC4),
+                    Color(0xFF9C6BF0),
+                    Color(0xFFE0648C),
+                    Color(0xFF4FD08A),
+                    Color(0xFF6E8AFF),
+                    Color(0xFFC9A227),
+                    Color(0xFF8A94A6),
                 ),
-            blockStyle = BlockStyle(fillAlphaLight = 0.16f, fillAlphaDark = 0.26f, barWidthDp = 3f),
+            blockStyle = BlockStyle(fillAlphaLight = 0.18f, fillAlphaDark = 0.30f, barWidthDp = 3f),
             typography = TypePreset(serifTitle = false),
-            radius = RadiusPreset(blockDp = 16f, cardDp = 20f, sheetDp = 26f),
-            glass =
-                GlassSpec(
-                    tintLight = Color(0xFFC9D6E8),
-                    tintDark = Color(0xFF9FB0C6),
-                    bodyAlphaLight = 0.16f,
-                    bodyAlphaDark = 0.20f,
-                    chipAlphaLight = 0.90f,
-                    chipAlphaDark = 0.88f,
-                    specular = 0.78f,
-                    flow = 0.55f,
-                    lens = 0.12f,
-                    mirror = 0.50f,
-                    tiltSpec = 1.0f,
+            radius = RadiusPreset(blockDp = 14f, cardDp = 20f, sheetDp = 26f),
+            // 金属面是暗的，课块要「像被抛光的彩色金属片」：明度让下来、彩度放上去
+            // 亮色：比纸略降明度换彩度（金属片必须有颜色）；暗色：抬到 0.44 才够"被抛光的彩色金属"，
+            // 0.33 那档在暗室里读作灰铁片（真机截图确认）。
+            // 暗色下 uFace 是哑光本体、几乎不吃环境，明度让到 0.46 才"亮得起来"；
+            // 彩度 2.0：金属片必须有颜色，纯灰读作"铁皮"而不是"上色的金属"（真机对比过）
+            toneBias = CourseToneBias(lightL = 0.930f, lightChroma = 2.4f, darkL = 0.46f, darkChroma = 2.0f),
+            metal =
+                MetalSpec(
+                    tintLight = Color(0xFFC6CDD8),
+                    tintDark = Color(0xFFB3BFD0),
+                    chrome = 0.62f,
+                    faceLight = Color(0xFFE2E6EC),
+                    faceDark = Color(0xFF12151B),
+                    specular = 1.15f,
+                    brushed = 0.55f,
+                    brushAngle = 0f,
+                    iridescence = 0.30f,
+                    filmNm = 320f,
+                    environ = 1.0f,
+                    mirror = 0.85f,
+                    reflectGain = 1.25f,
+                    grain = 0.035f,
+                    floorLight = Color(0xFFEDF0F4),
+                    floorDark = Color(0xFF05060A),
+                    coolLight = Color(0xFF6FA8FF),
+                    coolDark = Color(0xFF2B4C9E),
+                    warmLight = Color(0xFFFFB27A),
+                    warmDark = Color(0xFFB35A24),
+                    ambientBright = 0.52f,
+                    shadowAlpha = 0.55f,
                 ),
         )
 
-    val all: List<ThemePreset> = listOf(paper, dynamic, minimal, amoled, candy, glass)
+    val all: List<ThemePreset> = listOf(paper, dynamic, minimal, amoled, candy, chrome)
 
     fun byId(id: String?): ThemePreset = all.firstOrNull { it.id == id } ?: paper
 }

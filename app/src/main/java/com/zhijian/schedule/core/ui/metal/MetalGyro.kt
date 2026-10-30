@@ -1,4 +1,4 @@
-package com.zhijian.schedule.core.ui.glass
+package com.zhijian.schedule.core.ui.metal
 
 import android.content.Context
 import android.hardware.Sensor
@@ -17,14 +17,18 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 
 /**
- * 倾角信号（竖持参考系下归一化到 [-1,1]）：
- * x = 左右倾（右倾为正）；y = 前后倾（屏朝天天平放为 +1，竖持 ≈ 0，屏朝地为 -1）。
- * 重力方向低通滤噪（保留缓缓滑动的倾向），只在 RESUMED 注册监听、离屏即摘。
- * 仅玻璃主题下由 AppRoot 持有；绘制期读取（不触发组合重组），其余主题零开销。
+ * 倾角信号（归一化 [-1,1]）：x = 左右倾（右倾为正），y = 前后倾（屏朝上为 +1）。
+ *
+ * 对金属来说这个量比玻璃更关键：玻璃的折射方向由**几何形状**决定（永远朝内），
+ * 而金属的反射方向由**观察者与光源的相对角度**决定——手机一转，整块金属上的高光会长距离滑过表面。
+ * 所以这里用 GAME 级采样 + 较轻的低通（0.86/0.14，比玻璃的 0.82/0.18 更钝），
+ * 让高光滑动是「缓缓地滑」而不是「抖」。
+ *
+ * 只在 RESUMED 注册监听，离屏即摘，其余主题完全不创建。
  */
 @Composable
-fun rememberGlassTilt(): State<Offset> {
-    val tilt = remember { mutableStateOf(Offset.Zero) }
+fun rememberMetalGyro(): State<Offset> {
+    val gyro = remember { mutableStateOf(Offset.Zero) }
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, context) {
@@ -38,9 +42,9 @@ fun rememberGlassTilt(): State<Offset> {
         val listener =
             object : SensorEventListener {
                 override fun onSensorChanged(event: SensorEvent) {
-                    gx = gx * 0.82f + event.values[0] * 0.18f
-                    gz = gz * 0.82f + event.values[2] * 0.18f
-                    tilt.value =
+                    gx = gx * 0.86f + event.values[0] * 0.14f
+                    gz = gz * 0.86f + event.values[2] * 0.14f
+                    gyro.value =
                         Offset(
                             (gx / SensorManager.GRAVITY_EARTH).coerceIn(-1f, 1f),
                             (gz / SensorManager.GRAVITY_EARTH).coerceIn(-1f, 1f),
@@ -81,5 +85,5 @@ fun rememberGlassTilt(): State<Offset> {
             unregister()
         }
     }
-    return tilt
+    return gyro
 }

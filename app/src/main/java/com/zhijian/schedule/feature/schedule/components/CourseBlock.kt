@@ -31,6 +31,10 @@ import com.zhijian.schedule.core.theme.ThemePreset
 import com.zhijian.schedule.core.theme.courseTone
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.cascadeIn
+import com.zhijian.schedule.core.ui.metal.LocalMetalClock
+import com.zhijian.schedule.core.ui.metal.metalPointer
+import com.zhijian.schedule.core.ui.metal.metalSurface
+import com.zhijian.schedule.core.ui.metal.rememberMetalTouchState
 import com.zhijian.schedule.core.ui.rememberTapHaptic
 import com.zhijian.schedule.core.util.WeekMask
 
@@ -72,6 +76,12 @@ fun CourseBlock(
             courseTone(Color(course.color), isDark, preset.toneBias)
         }
     val shape = RoundedCornerShape(preset.radius.blockDp.dp)
+    // 金属主题：课块是一枚"彩色阳极氧化铝片"——哑光底面 + 倒角镜面圈 + 按压凹陷光斑。
+    // 底面用 tone.container（主题派生的同色面），抛光程度按铁片尺度取低值，
+    // 于是它读作"被上色的金属"，而不是"一块贴了渐变色的塑料"。
+    val metal = preset.metal
+    val metalClock = LocalMetalClock.current
+    val metalTouch = rememberMetalTouchState()
     val span = (course.endSection - course.startSection + 1).coerceAtLeast(1)
     val pressSource = remember { MutableInteractionSource() }
     val pressed by pressSource.collectIsPressedAsState()
@@ -108,10 +118,29 @@ fun CourseBlock(
                     scaleY = scale
                     this.shape = shape
                     clip = true
-                }.background(lerp(tone.container, tone.line, 0.45f * ring))
-                .border(1.dp, tone.line, shape)
-                .let {
-                    if (ring > 0.01f) it.border(2.dp, tone.ink.copy(alpha = ring * 0.85f), shape) else it
+                }.let { base ->
+                    if (metal != null && metalClock != null) {
+                        base
+                            // chrome 压到 0.22~0.34：课块是"被上色的阳极氧化铝"，底色必须读得出来；
+                            // 抛光留给倒角圈与选中态，否则环境光会把课程色相洗成一片灰。
+                            .metalSurface(
+                                shape = shape,
+                                touch = metalTouch,
+                                clock = metalClock,
+                                chromeOverride = 0.22f + 0.22f * ring,
+                                faceOverride = lerp(tone.container, tone.line, 0.45f * ring),
+                            ).metalPointer(metalTouch)
+                            .let {
+                                if (ring > 0.01f) it.border(1.5.dp, tone.ink.copy(alpha = ring * 0.65f), shape) else it
+                            }
+                    } else {
+                        base
+                            .background(lerp(tone.container, tone.line, 0.45f * ring))
+                            .border(1.dp, tone.line, shape)
+                            .let {
+                                if (ring > 0.01f) it.border(2.dp, tone.ink.copy(alpha = ring * 0.85f), shape) else it
+                            }
+                    }
                 }.clickable(
                     interactionSource = pressSource,
                     indication = LocalIndication.current,

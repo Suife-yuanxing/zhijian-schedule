@@ -22,6 +22,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -40,6 +41,7 @@ import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.ui.TapButton
 import com.zhijian.schedule.core.ui.TapOutlinedButton
 import com.zhijian.schedule.core.ui.TapTextButton
+import com.zhijian.schedule.core.ui.metal.MetalFields
 import com.zhijian.schedule.core.ui.selectedPop
 import com.zhijian.schedule.core.util.TimeUtils
 import com.zhijian.schedule.core.util.WeekMask
@@ -79,6 +81,7 @@ internal fun DraftEditSheet(
             )
             Spacer(Modifier.height(12.dp))
             OutlinedTextField(
+                colors = MetalFields.textFieldColors() ?: OutlinedTextFieldDefaults.colors(),
                 value = name,
                 onValueChange = { name = it },
                 label = { Text("课程名称") },
@@ -88,6 +91,7 @@ internal fun DraftEditSheet(
             Spacer(Modifier.height(10.dp))
             Row {
                 OutlinedTextField(
+                    colors = MetalFields.textFieldColors() ?: OutlinedTextFieldDefaults.colors(),
                     value = room,
                     onValueChange = { room = it },
                     label = { Text("上课教室") },
@@ -96,6 +100,7 @@ internal fun DraftEditSheet(
                 )
                 Spacer(Modifier.width(10.dp))
                 OutlinedTextField(
+                    colors = MetalFields.textFieldColors() ?: OutlinedTextFieldDefaults.colors(),
                     value = teacher,
                     onValueChange = { teacher = it },
                     label = { Text("授课教师") },

@@ -26,6 +26,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -48,6 +49,7 @@ import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.ui.SecondaryTopBar
 import com.zhijian.schedule.core.ui.TapIconButton
 import com.zhijian.schedule.core.ui.TapTextButton
+import com.zhijian.schedule.core.ui.metal.MetalFields
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -328,6 +330,7 @@ private fun ExamEditorDialog(
         text = {
             Column {
                 OutlinedTextField(
+                    colors = MetalFields.textFieldColors() ?: OutlinedTextFieldDefaults.colors(),
                     value = name,
                     onValueChange = { if (it.length <= 30) name = it },
                     label = { Text("课程名称") },
@@ -336,6 +339,7 @@ private fun ExamEditorDialog(
                 )
                 Row(Modifier.padding(top = 8.dp)) {
                     OutlinedTextField(
+                        colors = MetalFields.textFieldColors() ?: OutlinedTextFieldDefaults.colors(),
                         value = date,
                         onValueChange = { date = it },
                         label = { Text("日期 2026-11-02") },
@@ -345,6 +349,7 @@ private fun ExamEditorDialog(
                     )
                     Spacer(Modifier.width(8.dp))
                     OutlinedTextField(
+                        colors = MetalFields.textFieldColors() ?: OutlinedTextFieldDefaults.colors(),
                         value = time,
                         onValueChange = { time = it },
                         label = { Text("时间 14:00") },
@@ -354,6 +359,7 @@ private fun ExamEditorDialog(
                     )
                 }
                 OutlinedTextField(
+                    colors = MetalFields.textFieldColors() ?: OutlinedTextFieldDefaults.colors(),
                     value = room,
                     onValueChange = { if (it.length <= 30) room = it },
                     label = { Text("考场") },
@@ -361,6 +367,7 @@ private fun ExamEditorDialog(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
+                    colors = MetalFields.textFieldColors() ?: OutlinedTextFieldDefaults.colors(),
                     value = seat,
                     onValueChange = { if (it.length <= 10) seat = it },
                     label = { Text("座位号") },
@@ -369,6 +376,7 @@ private fun ExamEditorDialog(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
+                    colors = MetalFields.textFieldColors() ?: OutlinedTextFieldDefaults.colors(),
                     value = note,
                     onValueChange = { if (it.length <= 50) note = it },
                     label = { Text("备注（如：闭卷）") },

@@ -22,6 +22,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -42,6 +43,7 @@ import com.zhijian.schedule.core.ui.JellySwitch
 import com.zhijian.schedule.core.ui.SecondaryTopBar
 import com.zhijian.schedule.core.ui.TapIconButton
 import com.zhijian.schedule.core.ui.TapTextButton
+import com.zhijian.schedule.core.ui.metal.MetalFields
 
 /**
  * 课程脚本管理页：脚本列表（内置/本地/远程）+ 仓库地址 + 检查更新 / 导入 .js。
@@ -128,6 +130,7 @@ internal fun ScriptManageScreen(
             Spacer(Modifier.height(6.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
+                    colors = MetalFields.textFieldColors() ?: OutlinedTextFieldDefaults.colors(),
                     value = indexDraft,
                     onValueChange = { indexDraft = it },
                     placeholder = { Text("https://…/index.json", fontSize = 12.sp) },

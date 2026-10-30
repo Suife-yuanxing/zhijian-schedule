@@ -7,6 +7,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -18,6 +19,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.sp
 import com.zhijian.schedule.core.ui.TapTextButton
+import com.zhijian.schedule.core.ui.metal.MetalFields
 
 /** 「我的」页的两个弹窗：自定义提醒分钟数、隐私政策摘要 */
 
@@ -35,6 +37,7 @@ internal fun CustomReminderDialog(
         title = { Text("自定义课前提醒") },
         text = {
             OutlinedTextField(
+                colors = MetalFields.textFieldColors() ?: OutlinedTextFieldDefaults.colors(),
                 value = text,
                 onValueChange = { input ->
                     if (input.length <= 3 && input.all(Char::isDigit)) text = input

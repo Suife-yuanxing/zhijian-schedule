@@ -34,7 +34,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhijian.schedule.core.theme.LocalCourseColors
+import com.zhijian.schedule.core.theme.LocalCoursePreset
 import com.zhijian.schedule.core.ui.buttonFeedback
+import com.zhijian.schedule.core.ui.metal.CardTone
+import com.zhijian.schedule.core.ui.metal.metalCard
 
 /*
  * 「我的」页的入口卡控件：大卡（双列主入口）、分组列表卡与行、行间分隔线。
@@ -104,8 +107,22 @@ internal fun GroupedEntryCard(content: @Composable ColumnScope.() -> Unit) {
         Modifier
             .fillMaxWidth()
             .clip(shape)
-            .background(colors.surface)
-            .border(1.dp, colors.border, shape),
+            // 金属主题：分组列表是一块哑光金属板，行间 hairline 正好读作板上的分割线
+            .metalCard(shape = shape, color = colors.surface, tone = CardTone.SURFACE)
+            .border(
+                1.dp,
+                colors.border.copy(
+                    alpha =
+                        if (LocalCoursePreset.current.metal !=
+                            null
+                        ) {
+                            0.45f
+                        } else {
+                            1f
+                        },
+                ),
+                shape,
+            ),
         content = content,
     )
 }
@@ -147,7 +164,7 @@ internal fun GroupedEntryRow(
             Modifier
                 .size(36.dp)
                 .clip(RoundedCornerShape(11.dp))
-                .background(colors.surfaceVariant),
+                .metalCard(RoundedCornerShape(11.dp), colors.surfaceVariant, CardTone.INSET),
             contentAlignment = Alignment.Center,
         ) {
             Icon(

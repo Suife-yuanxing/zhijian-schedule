@@ -22,9 +22,10 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.zhijian.schedule.core.ui.glass.glassDroplet
 import com.zhijian.schedule.core.ui.island.IslandPalette
 import com.zhijian.schedule.core.ui.island.IslandTokens
+import com.zhijian.schedule.core.ui.metal.metalSurface
+import com.zhijian.schedule.core.ui.metal.rememberMetalTouchState
 import kotlin.math.roundToInt
 
 /**
@@ -39,7 +40,7 @@ import kotlin.math.roundToInt
  * 方向同样由 [travelFrom]/[travelTo] 给出（`to - from` 的符号），不读 `slide.velocity`：
  * 停稳瞬间速度归零、符号会丢，而一次行程的方向从头到尾不变。
  *
- * 玻璃主题下胶囊是一颗水滴（[IslandIndicatorSkin.Glass]）；其余主题用「浅投影 + 自绘胶囊」
+ * 金属主题下胶囊是一枚隆起的水银珠（[IslandIndicatorSkin.Metal]）；其余主题用「浅投影 + 自绘胶囊」
  * 把「选中」从纯色块推进到层次（[IslandIndicatorSkin.Paper]）。
  */
 @Composable
@@ -82,24 +83,40 @@ internal fun IslandIndicator(
 
 @Immutable
 internal sealed interface IslandIndicatorSkin {
-    /** [glassDroplet] 是 @Composable 的 Modifier 工厂（要读组合期的时钟），所以这里跟着标 */
+    /** 材质 Modifier 是 @Composable 的工厂（要读组合期的时钟），所以这里跟着标 */
     @Composable
     fun modifier(): Modifier
 
-    /** 玻璃档：胶囊是一颗水滴（折射 + 高光），本身就不再描边 */
-    data class Glass(
+    /**
+     * 金属档：选中胶囊是一枚**隆起的水银珠**。
+     *
+     * 与玻璃液滴的区别不是配色，而是物理：液滴是「透明的、内部有流动厚带」；
+     * 水银珠是「不透的、表面在反射环境」。所以这里用高抛光金属（chromeOverride 0.98），
+     * 靠着色器里的球冠法线扫出环境明暗，再加上一圈暗边把珠子从浮岛表面「拔起来」。
+     */
+    data class Metal(
         val tint: Color,
-        val alpha: Float,
         val clock: State<Float>?,
     ) : IslandIndicatorSkin {
         @Composable
-        override fun modifier(): Modifier =
-            Modifier.glassDroplet(
-                shape = IslandShape,
-                tint = tint,
-                alpha = alpha,
-                clock = clock,
-            )
+        override fun modifier(): Modifier {
+            val touch = rememberMetalTouchState()
+            return Modifier
+                .shadow(
+                    elevation = 6.dp,
+                    shape = IslandShape,
+                    ambientColor = Color.Black.copy(alpha = 0.22f),
+                    spotColor = Color.Black.copy(alpha = 0.42f),
+                ).metalSurface(
+                    shape = IslandShape,
+                    touch = touch,
+                    clock = clock,
+                    // 选中珠的抛光刻意**低于**浮岛本体：球面高光会把压在上面的文字吃掉
+                    // （真机抓到过）。0.55 仍读作"隆起的水银珠"，但中心留得住深色文字。
+                    chromeOverride = 0.55f,
+                    faceOverride = tint,
+                )
+        }
     }
 
     /** 纸面档：浅投影 + 自绘渐变胶囊（顶受光、底收柔） */

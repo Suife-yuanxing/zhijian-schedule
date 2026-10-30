@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -35,6 +36,7 @@ import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.SecondaryTopBar
 import com.zhijian.schedule.core.ui.TapTextButton
+import com.zhijian.schedule.core.ui.metal.MetalFields
 import com.zhijian.schedule.feature.importer.qr.QrScanContent
 import com.zhijian.schedule.feature.importer.qr.QrShareContent
 
@@ -181,6 +183,7 @@ fun ImporterScreen(
             title = { Text("粘贴课表文本") },
             text = {
                 OutlinedTextField(
+                    colors = MetalFields.textFieldColors() ?: OutlinedTextFieldDefaults.colors(),
                     value = text,
                     onValueChange = { text = it },
                     placeholder = { Text("支持：分享口令 / JSON / HTML 表格 / CSV 文本") },

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -20,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhijian.schedule.core.data.db.SectionTimeEntity
 import com.zhijian.schedule.core.ui.TapTextButton
+import com.zhijian.schedule.core.ui.metal.MetalFields
 
 /** 设置页的两个编辑弹窗：课表信息、单个小节的上课时间 */
 
@@ -43,6 +45,7 @@ internal fun TimetableEditDialog(
         text = {
             Column {
                 OutlinedTextField(
+                    colors = MetalFields.textFieldColors() ?: OutlinedTextFieldDefaults.colors(),
                     value = name,
                     onValueChange = { name = it },
                     label = { Text("课表名称") },
@@ -50,6 +53,7 @@ internal fun TimetableEditDialog(
                 )
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
+                    colors = MetalFields.textFieldColors() ?: OutlinedTextFieldDefaults.colors(),
                     value = semester,
                     onValueChange = { semester = it },
                     label = { Text("学期（如 2026 秋季）") },
@@ -57,6 +61,7 @@ internal fun TimetableEditDialog(
                 )
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
+                    colors = MetalFields.textFieldColors() ?: OutlinedTextFieldDefaults.colors(),
                     value = startDate,
                     onValueChange = { startDate = it },
                     label = { Text("第 1 周周一（yyyy-MM-dd）") },
@@ -101,6 +106,7 @@ internal fun SectionEditDialog(
         text = {
             Column {
                 OutlinedTextField(
+                    colors = MetalFields.textFieldColors() ?: OutlinedTextFieldDefaults.colors(),
                     value = start,
                     onValueChange = { start = it },
                     label = { Text("开始（HH:mm）") },
@@ -108,6 +114,7 @@ internal fun SectionEditDialog(
                 )
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
+                    colors = MetalFields.textFieldColors() ?: OutlinedTextFieldDefaults.colors(),
                     value = end,
                     onValueChange = { end = it },
                     label = { Text("结束（HH:mm）") },

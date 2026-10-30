@@ -18,6 +18,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -37,6 +38,7 @@ import com.zhijian.schedule.core.jw.SchoolCatalog
 import com.zhijian.schedule.core.jw.SchoolProfile
 import com.zhijian.schedule.core.jw.ensureLoaded
 import com.zhijian.schedule.core.theme.LocalCourseColors
+import com.zhijian.schedule.core.ui.metal.MetalFields
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -104,6 +106,7 @@ internal fun SchoolPickerDialog(
             )
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(
+                colors = MetalFields.textFieldColors() ?: OutlinedTextFieldDefaults.colors(),
                 value = query,
                 onValueChange = { query = it },
                 label = { Text("搜索学校 / 拼音 / 域名", fontSize = 12.sp) },

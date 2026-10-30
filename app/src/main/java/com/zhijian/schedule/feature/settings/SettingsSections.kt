@@ -1,7 +1,6 @@
 package com.zhijian.schedule.feature.settings
 
 import androidx.compose.foundation.LocalIndication
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -28,6 +27,8 @@ import com.zhijian.schedule.core.data.db.TimetableEntity
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.ui.TapTextButton
 import com.zhijian.schedule.core.ui.buttonFeedback
+import com.zhijian.schedule.core.ui.metal.CardTone
+import com.zhijian.schedule.core.ui.metal.metalCard
 
 /*
  * 设置页的「本地数据」分组：课表信息、作息时间、备份与恢复。
@@ -40,12 +41,14 @@ import com.zhijian.schedule.core.ui.buttonFeedback
 @Composable
 internal fun SettingsCard(content: @Composable () -> Unit) {
     val colors = LocalCourseColors.current
+    val shape = RoundedCornerShape(14.dp)
     Column(
         Modifier
             .fillMaxWidth()
             .padding(top = 12.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(colors.surface, RoundedCornerShape(14.dp))
+            .clip(shape)
+            // 金属主题：设置分组是一块哑光金属板（SURFACE 档），倒角圈把它从暗底上切出来
+            .metalCard(shape = shape, color = colors.surface, tone = CardTone.SURFACE)
             .padding(16.dp),
     ) {
         content()

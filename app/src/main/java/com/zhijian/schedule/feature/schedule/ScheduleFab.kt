@@ -1,10 +1,13 @@
 package com.zhijian.schedule.feature.schedule
 import androidx.compose.animation.core.Animatable
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.FloatingActionButton
@@ -17,14 +20,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import com.zhijian.schedule.core.theme.LocalCourseColors
+import com.zhijian.schedule.core.theme.LocalCoursePreset
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.buttonFeedback
+import com.zhijian.schedule.core.ui.metal.LocalMetalClock
+import com.zhijian.schedule.core.ui.metal.metalPointer
+import com.zhijian.schedule.core.ui.metal.metalSurface
+import com.zhijian.schedule.core.ui.metal.rememberMetalTouchState
 import com.zhijian.schedule.navigation.IslandContentPadding
 
 /**
@@ -37,6 +47,9 @@ internal fun ScheduleFab(
     onAddCourseFromFab: (Rect) -> Unit,
 ) {
     val colors = LocalCourseColors.current
+    val metal = LocalCoursePreset.current.metal
+    val metalClock = LocalMetalClock.current
+    val metalTouch = rememberMetalTouchState()
     val fabSource = remember { MutableInteractionSource() }
     // 加号在 Compose 根坐标系里的位置：编辑页从这个圆里长出来
     var fabBounds by remember { mutableStateOf(Rect.Zero) }
@@ -54,26 +67,63 @@ internal fun ScheduleFab(
         }
     }
     Box(Modifier.fillMaxSize()) {
-        FloatingActionButton(
-            onClick = { onAddCourseFromFab(fabBounds) },
-            interactionSource = fabSource,
-            modifier =
+        if (metal != null) {
+            // 金属主题：加号是一枚悬在页面上的水银键帽——球冠高光 + 按压凹陷 + 拉丝
+            Box(
                 Modifier
                     .align(Alignment.BottomEnd)
                     .padding(end = 20.dp, bottom = IslandContentPadding)
-                    .size(48.dp)
+                    .size(56.dp)
                     .onGloballyPositioned { fabBounds = it.boundsInRoot() }
-                    .buttonFeedback(fabSource, pressedScale = 0.9f)
                     .graphicsLayer {
                         val s = fabScale.value
                         scaleX = s
                         scaleY = s
                         alpha = s.coerceIn(0f, 1f)
-                    },
-            containerColor = colors.accent,
-            contentColor = colors.onAccent,
-        ) {
-            Icon(Icons.Filled.Add, contentDescription = "添加课程")
+                    }.shadow(
+                        elevation = 12.dp,
+                        shape = CircleShape,
+                        ambientColor = Color.Black.copy(alpha = 0.30f),
+                        spotColor = Color.Black.copy(alpha = 0.50f),
+                    ).metalSurface(
+                        shape = RoundedCornerShape(percent = 50),
+                        touch = metalTouch,
+                        clock = metalClock,
+                        chromeOverride = 0.95f,
+                        faceOverride = colors.accent,
+                    ).metalPointer(metalTouch)
+                    .buttonFeedback(fabSource, pressedScale = 0.92f)
+                    .clickable(
+                        interactionSource = fabSource,
+                        indication = null,
+                        onClick = { onAddCourseFromFab(fabBounds) },
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = "添加课程", tint = colors.onAccent)
+            }
+        } else {
+            FloatingActionButton(
+                onClick = { onAddCourseFromFab(fabBounds) },
+                interactionSource = fabSource,
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 20.dp, bottom = IslandContentPadding)
+                        .size(48.dp)
+                        .onGloballyPositioned { fabBounds = it.boundsInRoot() }
+                        .buttonFeedback(fabSource, pressedScale = 0.9f)
+                        .graphicsLayer {
+                            val s = fabScale.value
+                            scaleX = s
+                            scaleY = s
+                            alpha = s.coerceIn(0f, 1f)
+                        },
+                containerColor = colors.accent,
+                contentColor = colors.onAccent,
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = "添加课程")
+            }
         }
     }
 }

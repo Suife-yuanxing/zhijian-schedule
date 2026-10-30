@@ -48,27 +48,33 @@ data class CardTiltStyle(
 
 @Composable
 fun rememberCardTiltStyle(): CardTiltStyle {
-    val glass = LocalCoursePreset.current.glass != null
+    // 金属主题：卡面是抛光金属板，反光更强、抬得更高、倾角更狠（金属比纸更"硬"）
+    val metal = LocalCoursePreset.current.metal != null
     val dark = LocalIsDark.current
-    return remember(glass, dark) {
+    return remember(metal, dark) {
+        if (metal) {
+            return@remember CardTiltStyle(
+                maxTiltDegrees = 16f,
+                glareAlpha = if (dark) 0.58f else 0.76f,
+                liftScale = 0.038f,
+                liftElevation = 34.dp,
+                glareShade = if (dark) 0.14f else 0.22f,
+                perspectiveScale = 1.38f,
+            )
+        }
         CardTiltStyle(
             // 业界网页卡片的默认倾角：beUI 12°、vanilla-tilt 15°、react-parallax-tilt 20°。
             // 那些是几百像素的小卡；本项目动的是整宽约 320dp 的焦点卡，同角度畸变更大，
             // 取 13°（玻璃 14°）——落在业界区间中下段，但比最初那版 8~9° 明显"活"得多。
-            maxTiltDegrees = if (glass) 14f else 13f,
+            maxTiltDegrees = 13f,
             // 反光强度：不必顶到 1.0。实测 1.0 时近指腹处被推到 (248,251,245)，
             // 等于把课程色洗成白纸——"被照亮"应该看得见底色，而不是把底色擦掉。
             glareAlpha =
-                when {
-                    glass && dark -> 0.52f
-                    glass -> 0.70f
-                    dark -> 0.45f
-                    else -> 0.62f
-                },
+                if (dark) 0.45f else 0.62f,
             // 抬升对齐 Apple FOCUS-01（聚焦项放大 1.05~1.1 + 投影抬升）。那个量级是给
             // 10 英尺外的大屏卡片；手机上压到 2.8~3.4%，是"被指腹抬起来"里偏夸张的一档。
-            liftScale = if (glass) 0.034f else 0.028f,
-            liftElevation = if (glass) 30.dp else 24.dp,
+            liftScale = 0.028f,
+            liftElevation = 24.dp,
             // 暗面强度：同色相的深调比纯黑压得"轻"，所以从这里补回来。
             // 明暗落差是「光浮起来」的关键（拾色器实测约 30 级）。
             glareShade = if (dark) 0.10f else 0.18f,

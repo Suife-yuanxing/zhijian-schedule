@@ -38,6 +38,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -63,6 +64,7 @@ import com.zhijian.schedule.core.theme.LocalCoursePreset
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.SecondaryTopBar
 import com.zhijian.schedule.core.ui.buttonFeedback
+import com.zhijian.schedule.core.ui.metal.MetalFields
 import com.zhijian.schedule.core.ui.pressScale
 import com.zhijian.schedule.core.ui.selectedPop
 import com.zhijian.schedule.core.util.TimeUtils
@@ -123,6 +125,7 @@ fun CourseEditorScreen(
                 .padding(horizontal = 20.dp),
         ) {
             OutlinedTextField(
+                colors = MetalFields.textFieldColors() ?: OutlinedTextFieldDefaults.colors(),
                 value = ui.name,
                 onValueChange = { viewModel.setField(name = it) },
                 label = { Text("课程名称") },
@@ -132,6 +135,7 @@ fun CourseEditorScreen(
             Spacer(Modifier.height(12.dp))
             Row {
                 OutlinedTextField(
+                    colors = MetalFields.textFieldColors() ?: OutlinedTextFieldDefaults.colors(),
                     value = ui.room,
                     onValueChange = { viewModel.setField(room = it) },
                     label = { Text("上课教室") },
@@ -140,6 +144,7 @@ fun CourseEditorScreen(
                 )
                 Spacer(Modifier.width(12.dp))
                 OutlinedTextField(
+                    colors = MetalFields.textFieldColors() ?: OutlinedTextFieldDefaults.colors(),
                     value = ui.teacher,
                     onValueChange = { viewModel.setField(teacher = it) },
                     label = { Text("授课教师") },
@@ -287,6 +292,7 @@ fun CourseEditorScreen(
 
             Spacer(Modifier.height(20.dp))
             OutlinedTextField(
+                colors = MetalFields.textFieldColors() ?: OutlinedTextFieldDefaults.colors(),
                 value = ui.note,
                 onValueChange = { viewModel.setField(note = it) },
                 label = { Text("备注") },

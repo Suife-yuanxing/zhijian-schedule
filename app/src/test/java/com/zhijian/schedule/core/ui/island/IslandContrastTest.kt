@@ -24,7 +24,7 @@ class IslandContrastTest {
             ThemePresets.minimal,
             ThemePresets.amoled,
             ThemePresets.candy,
-            ThemePresets.glass,
+            ThemePresets.chrome,
         )
 
     @Test
@@ -32,7 +32,7 @@ class IslandContrastTest {
         for (preset in allPresets) {
             for (isDark in listOf(false, true)) {
                 val colors = if (isDark) preset.dark else preset.light
-                val palette = IslandTokens.solve(colors, preset.glass, isDark)
+                val palette = IslandTokens.solve(colors, isDark, preset.metal)
                 val ratio = Contrast.ratio(palette.muted, palette.under)
                 assertTrue(
                     "${preset.name} 未选中标签对比度 $ratio 低于 4.5",
@@ -47,7 +47,7 @@ class IslandContrastTest {
         for (preset in allPresets) {
             for (isDark in listOf(false, true)) {
                 val colors = if (isDark) preset.dark else preset.light
-                val palette = IslandTokens.solve(colors, preset.glass, isDark)
+                val palette = IslandTokens.solve(colors, isDark, preset.metal)
                 val composed = Contrast.composite(palette.chip, palette.under, palette.chipAlpha)
                 val ratio = Contrast.ratio(palette.selected, composed)
                 assertTrue(
@@ -64,7 +64,7 @@ class IslandContrastTest {
         for (preset in allPresets) {
             for (isDark in listOf(false, true)) {
                 val colors = if (isDark) preset.dark else preset.light
-                val palette = IslandTokens.solve(colors, preset.glass, isDark)
+                val palette = IslandTokens.solve(colors, isDark, preset.metal)
                 val ratio = Contrast.ratio(palette.muted, palette.under)
                 assertTrue(
                     "${preset.name} 收敛态图标对比度 $ratio 低于 3.0",
@@ -84,17 +84,17 @@ class IslandContrastTest {
     }
 
     @Test
-    fun `非玻璃主题必须描边兜住胶囊边界`() {
+    fun `非金属主题必须描边兜住胶囊边界`() {
         // 纸本暖白的淡胶囊与浮岛底只有 1.14:1，边界会消失；描边是位移可读的唯一保证。
-        // 玻璃档本体有折射彩边，再描边会读成「框」——所以那里应当是 0。
+        // 金属档的珠子本身有球冠明暗与暗边，再描边会读成「框」——所以那里应当是 0。
         for (preset in allPresets) {
             for (isDark in listOf(false, true)) {
                 val colors = if (isDark) preset.dark else preset.light
-                val palette = IslandTokens.solve(colors, preset.glass, isDark)
-                if (preset.glass == null) {
-                    assertTrue("${preset.name} 非玻璃主题缺胶囊描边", palette.chipEdgeAlpha > 0f)
+                val palette = IslandTokens.solve(colors, isDark, preset.metal)
+                if (preset.metal == null) {
+                    assertTrue("${preset.name} 非金属主题缺胶囊描边", palette.chipEdgeAlpha > 0f)
                 } else {
-                    assertTrue("${preset.name} 玻璃主题不该描边", palette.chipEdgeAlpha == 0f)
+                    assertTrue("${preset.name} 金属主题不该描边", palette.chipEdgeAlpha == 0f)
                 }
             }
         }

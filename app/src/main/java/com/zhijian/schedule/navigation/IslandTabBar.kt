@@ -42,12 +42,14 @@ import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.theme.LocalCoursePreset
 import com.zhijian.schedule.core.theme.LocalIsDark
 import com.zhijian.schedule.core.ui.Motion
-import com.zhijian.schedule.core.ui.glass.GlassBackdropState
-import com.zhijian.schedule.core.ui.glass.glassBackdropSurface
-import com.zhijian.schedule.core.ui.glass.glassSurface
 import com.zhijian.schedule.core.ui.island.IslandCollapseState
 import com.zhijian.schedule.core.ui.island.IslandTokens
 import com.zhijian.schedule.core.ui.island.rememberIslandPalette
+import com.zhijian.schedule.core.ui.metal.MetalBackdropState
+import com.zhijian.schedule.core.ui.metal.metalMirrorSurface
+import com.zhijian.schedule.core.ui.metal.metalPointer
+import com.zhijian.schedule.core.ui.metal.metalSurface
+import com.zhijian.schedule.core.ui.metal.rememberMetalTouchState
 import com.zhijian.schedule.core.ui.rememberAnimationsDisabled
 
 internal data class TabItem(
@@ -98,18 +100,17 @@ internal fun FloatingIslandBar(
     selectedIndex: Int,
     itemCount: Int,
     modifier: Modifier = Modifier,
-    clock: State<Float>? = null,
-    tilt: State<Offset>? = null,
-    backdrop: GlassBackdropState? = null,
+    metalClock: State<Float>? = null,
+    metalBackdrop: MetalBackdropState? = null,
     collapse: IslandCollapseState? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
     val colors = LocalCourseColors.current
-    val glass = LocalCoursePreset.current.glass
+    val metal = LocalCoursePreset.current.metal
     val isDark = LocalIsDark.current
     val island = rememberIslandPalette()
-    // 流动时钟由 AppRoot 按主题提供（与背景录制层共用同一拍）；其余主题为 null，零开销
-    val glassClock = if (glass != null) clock else null
+    // 金属浮岛的实时交互态：整条胶囊就是一枚被指腹按住的抛光金属片
+    val metalTouch = rememberMetalTouchState()
     // 胶囊本体的窗口位置：折射采样原点必须用它（外框含内边距，直接用会有数十像素错位）
     var pillOriginInWindow by remember { mutableStateOf(Offset.Zero) }
     // 收敛进度：不可收敛的场景（大屏导轨、未接入状态）恒为 0，所有插值退化为原尺寸。
@@ -135,9 +136,7 @@ internal fun FloatingIslandBar(
         val travelFrom = remember { mutableFloatStateOf(selectedIndex.toFloat()) }
         val travelTo = remember { mutableFloatStateOf(selectedIndex.toFloat()) }
         rememberJellyTravel(selectedIndex, slide, travelFrom, travelTo, animationsOff)
-        val bodyAlpha = glass?.let { if (isDark) it.bodyAlphaDark else it.bodyAlphaLight } ?: 0f
-        val glassTint = glass?.let { if (isDark) it.tintDark else it.tintLight } ?: Color.Transparent
-        val chipAlpha = if (glass != null) island.chipAlpha else IslandTokens.CHIP_ALPHA
+        val chipAlpha = IslandTokens.CHIP_ALPHA
         Box(
             Modifier
                 .fillMaxWidth()
@@ -145,35 +144,34 @@ internal fun FloatingIslandBar(
                 .onGloballyPositioned { pillOriginInWindow = it.boundsInWindow().topLeft }
                 // 投影调轻：黑影透进半透明玻璃会把水体压成灰雾；玻璃模式主体近清水，靠投影与边缘高光勾勒浮岛轮廓
                 .shadow(
-                    elevation = if (glass != null) 8.dp else 4.dp,
+                    elevation = if (metal != null) 14.dp else 4.dp,
                     shape = IslandShape,
-                    ambientColor = Color.Black.copy(alpha = if (glass != null) 0.14f else 0.08f),
-                    spotColor = Color.Black.copy(alpha = if (glass != null) 0.34f else 0.20f),
+                    ambientColor = Color.Black.copy(alpha = if (metal != null) 0.30f else 0.08f),
+                    spotColor = Color.Black.copy(alpha = if (metal != null) metal.shadowAlpha else 0.20f),
                 ).then(
                     when {
-                        glass == null ->
+                        metal != null && metalBackdrop != null ->
+                            Modifier
+                                .metalMirrorSurface(
+                                    shape = IslandShape,
+                                    touch = metalTouch,
+                                    clock = metalClock,
+                                    backdrop = metalBackdrop,
+                                    originInLayer = { pillOriginInWindow - metalBackdrop.contentOriginInWindow },
+                                ).metalPointer(metalTouch)
+                        metal != null ->
+                            Modifier
+                                .metalSurface(
+                                    shape = IslandShape,
+                                    touch = metalTouch,
+                                    clock = metalClock,
+                                    chromeOverride = 0.62f,
+                                ).metalPointer(metalTouch)
+                        else ->
                             Modifier
                                 .clip(IslandShape)
                                 .background(colors.surface)
                                 .border(1.dp, colors.border, IslandShape)
-                        backdrop != null ->
-                            Modifier.glassBackdropSurface(
-                                shape = IslandShape,
-                                tint = glassTint,
-                                bodyAlpha = bodyAlpha,
-                                clock = glassClock,
-                                tilt = tilt,
-                                backdrop = backdrop,
-                                originInLayer = { pillOriginInWindow - backdrop.contentOriginInWindow },
-                            )
-                        else ->
-                            Modifier.glassSurface(
-                                shape = IslandShape,
-                                tint = glassTint,
-                                bodyAlpha = bodyAlpha,
-                                clock = glassClock,
-                                tilt = tilt,
-                            )
                     },
                 ),
         ) {
@@ -183,10 +181,9 @@ internal fun FloatingIslandBar(
                 travelTo = travelTo,
                 itemWidth = itemWidth,
                 skin =
-                    if (glass != null) {
-                        IslandIndicatorSkin.Glass(tint = island.chip, alpha = chipAlpha, clock = glassClock)
-                    } else {
-                        IslandIndicatorSkin.Paper(island)
+                    when {
+                        metal != null -> IslandIndicatorSkin.Metal(tint = island.chip, clock = metalClock)
+                        else -> IslandIndicatorSkin.Paper(island)
                     },
             )
             Row(

@@ -4,10 +4,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import com.zhijian.schedule.core.theme.CourseColors
-import com.zhijian.schedule.core.theme.GlassSpec
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.theme.LocalCoursePreset
 import com.zhijian.schedule.core.theme.LocalIsDark
+import com.zhijian.schedule.core.theme.MetalSpec
 
 /**
  * 浮岛专用配色 Token。
@@ -44,6 +44,9 @@ object IslandTokens {
      * 的描边解决，而不是靠填充加压。
      */
     const val CHIP_ALPHA = 0.13f
+
+    /** 金属档选中胶囊的不透明度：金属珠是不透的（不透明度只影响与片底的融合边缘） */
+    const val METAL_CHIP_ALPHA = 1f
 
     /** 非玻璃主题的胶囊描边浓度：够定义边界、又不会读成「框住了一块色」 */
     const val CHIP_EDGE_ALPHA = 0.42f
@@ -95,22 +98,57 @@ object IslandTokens {
      */
     fun solve(
         colors: CourseColors,
-        glass: GlassSpec?,
         isDark: Boolean,
+        metal: MetalSpec? = null,
     ): IslandPalette {
-        val under = if (glass != null) colors.bg else colors.surface
-        val muted = Contrast.mixUntil(colors.textMuted, colors.text, under, MIN_TEXT_CONTRAST)
-        val chipAlpha = glass?.let { if (isDark) it.chipAlphaDark else it.chipAlphaLight } ?: 0.13f
-        // 玻璃档：选中文字压在饱和液滴上（白字），液滴必须压深才够；
-        // 非玻璃档：胶囊只有 13% 淡彩，文字用 text，本来就 10:1 以上，这里同样跑一遍兜底。
-        val chip = Contrast.adjustUntil(colors.accent, under, colors.onAccent, chipAlpha, MIN_TEXT_CONTRAST)
+        // 金属档的底不是 surface 也不是 bg，而是**着色器算出来的金属面**：
+        // 暗色下实测落在 #1A1E26 附近（球冠中心更亮、边缘更暗）。取 surface 会算偏松，
+        // 未选中的 tab 文字在真机上直接读不出来（截图确认过）。
+        val under =
+            when {
+                metal != null -> if (isDark) Color(0xFF22262F) else Color(0xFFC3CAD5)
+                else -> colors.surface
+            }
+        // muted 求解：金属面上的未选中文字必须提到 4.5:1 以上。
+        // 混到 text 只是起点——暗金属面吸光，实测还要再亮一档才「一眼看得见」，
+        // 所以金属档额外朝 text 多混 12%（超过 AA 门槛后，可读性优先于"低调"）。
+        val mutedBase = Contrast.mixUntil(colors.textMuted, colors.text, under, MIN_TEXT_CONTRAST)
+        val muted =
+            if (metal !=
+                null
+            ) {
+                Contrast.mixUntil(mutedBase, colors.text, under, MIN_TEXT_CONTRAST * 1.15f)
+            } else {
+                mutedBase
+            }
+        val chipAlpha =
+            metal?.let { METAL_CHIP_ALPHA } ?: CHIP_ALPHA
+        // 金属档：选中胶囊是一枚**亮面水银珠**（着色器整体亮度高，实测浅色下接近 #D8DDE6）。
+        // 浅色文字压上去等于消失——这条在真机上抓到过（选中 tab 文字被亮球吃掉）。
+        // 所以文字改为深色：与亮金属形成 8:1 以上的对比，同时读作"刻在金属上的字"。
+        val selected =
+            when {
+                // 深墨而非纯黑：纯黑在金属面上会有轻微的"贴上去"感；#05070B 足够黑又保留一点金属亲和
+                metal != null -> Color(0xFF05070B)
+                else -> colors.text
+            }
+        val chip =
+            when {
+                // 金属档的"珠色"不取 accent（那是页面的语义色），取一个近钢的冷灰做 F0 底，
+                // 靠着色器的球冠明暗读出体积；accent 留给页面里的强调元素，不抢导航件。
+                // 珠色取中明度钢灰：太亮会把深色文字吃掉，太暗则与浮岛本体的暗金属融成一片。
+                // 真机取样：暗色 #6E7889、亮色 #97A3B6 时，深色文字对比 ≈ 7:1，珠子轮廓仍清晰。
+                // 珠色亮度必须撑住深色文字：实测 4.17 → 需要再亮一档才过 4.5
+                metal != null -> if (isDark) Color(0xFF9AA5B8) else Color(0xFFA8B4C6)
+                else -> Contrast.adjustUntil(colors.accent, under, colors.onAccent, chipAlpha, MIN_TEXT_CONTRAST)
+            }
         return IslandPalette(
             muted = muted,
-            selected = if (glass != null) colors.onAccent else colors.text,
+            selected = selected,
             chip = chip,
             chipAlpha = chipAlpha,
             under = under,
-            chipEdgeAlpha = if (glass != null) 0f else CHIP_EDGE_ALPHA,
+            chipEdgeAlpha = if (metal != null) 0f else CHIP_EDGE_ALPHA,
         )
     }
 }
@@ -119,7 +157,7 @@ object IslandTokens {
 @Composable
 fun rememberIslandPalette(): IslandPalette {
     val colors = LocalCourseColors.current
-    val glass = LocalCoursePreset.current.glass
+    val metal = LocalCoursePreset.current.metal
     val isDark = LocalIsDark.current
-    return remember(colors, glass, isDark) { IslandTokens.solve(colors, glass, isDark) }
+    return remember(colors, metal, isDark) { IslandTokens.solve(colors, isDark, metal) }
 }
