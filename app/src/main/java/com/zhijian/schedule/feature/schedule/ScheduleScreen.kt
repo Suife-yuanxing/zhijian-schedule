@@ -36,7 +36,6 @@ fun ScheduleScreen(
     /** 加号单独一条：带上按钮自身的 root 坐标，供「从加号圆形扩散进编辑页」用 */
     onAddCourseFromFab: (fabBoundsInRoot: Rect) -> Unit = { onAddCourse(null, null) },
     onEditCourse: (Long) -> Unit = {},
-    onOpenSettings: () -> Unit = {},
     onOpenImport: () -> Unit = {},
     islandCollapse: IslandCollapseState? = null,
     scrollToTopTick: Int = 0,
@@ -109,7 +108,6 @@ fun ScheduleScreen(
                 weekPickerShown = true
                 weekPickerOpen = true
             },
-            onOpenSettings = onOpenSettings,
         )
         val emptyState = ui.timetable != null && ui.courses.isEmpty()
         // 网格区是密集数据面：只把 fontScale 压到 1.5 倍上限（dp 不受影响），

@@ -194,10 +194,6 @@ internal fun AppNavHost(
                             state.fabOrigin = null
                             navController.navigate(Routes.scheduleEditor(courseId = id))
                         },
-                        onOpenSettings = {
-                            state.playProfileEntranceOnce()
-                            navController.navigateToTab(Routes.PROFILE_TAB)
-                        },
                         onOpenImport = { navController.navigate(Routes.SCHEDULE_IMPORTER) },
                     )
                 }

@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -33,7 +32,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.ui.Motion
-import com.zhijian.schedule.core.ui.TapIconButton
 import com.zhijian.schedule.core.ui.buttonFeedback
 
 @Composable
@@ -41,7 +39,6 @@ internal fun ScheduleTopBar(
     ui: ScheduleUiState,
     pickerOpen: Boolean,
     onOpenWeekPicker: () -> Unit,
-    onOpenSettings: () -> Unit,
 ) {
     val colors = LocalCourseColors.current
     val titleSource = remember { MutableInteractionSource() }
@@ -55,7 +52,9 @@ internal fun ScheduleTopBar(
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(start = 8.dp, end = 4.dp, top = 10.dp, bottom = 6.dp),
+            // end 与 start 同为 8dp：右侧那颗齿轮撤掉之后，标题的左右留白才对得上
+            .padding(horizontal = 8.dp)
+            .padding(top = 10.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // 标题即开关：点按「日期区间」展开周选择
@@ -126,9 +125,6 @@ internal fun ScheduleTopBar(
                     )
                 }
             }
-        }
-        TapIconButton(onClick = onOpenSettings) {
-            Icon(Icons.Filled.Settings, contentDescription = "设置", tint = colors.textMuted)
         }
     }
 }
