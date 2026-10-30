@@ -21,7 +21,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -45,6 +44,7 @@ import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import com.zhijian.schedule.core.theme.LocalCourseColors
+import com.zhijian.schedule.core.ui.RippleLoader
 import com.zhijian.schedule.core.ui.TapTextButton
 import com.zhijian.schedule.core.ui.buttonFeedback
 import kotlinx.coroutines.Dispatchers
@@ -111,7 +111,13 @@ fun QrShareContent(
         Spacer(Modifier.weight(1f))
         when {
             state == null -> {
-                CircularProgressIndicator(color = colors.accent)
+                // 生成分享码要把整份课表编码进二维码，课上得多时有明显停顿。
+                // 涟漪 + 一行说明，比一个转圈更能说明「在算，而不是在等网络」。
+                RippleLoader(
+                    modifier = Modifier.size(88.dp),
+                    color = colors.accent,
+                    rings = 4,
+                )
                 Spacer(Modifier.height(12.dp))
                 Text("正在生成分享码…", color = colors.textMuted, fontSize = 13.sp)
             }

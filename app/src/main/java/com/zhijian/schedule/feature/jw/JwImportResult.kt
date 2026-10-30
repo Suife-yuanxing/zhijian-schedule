@@ -20,7 +20,12 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -28,7 +33,9 @@ import androidx.compose.ui.unit.sp
 import com.zhijian.schedule.core.model.ImportChangeKind
 import com.zhijian.schedule.core.model.ImportPreview
 import com.zhijian.schedule.core.theme.LocalCourseColors
+import com.zhijian.schedule.core.ui.AnimatedGradientCheckMark
 import com.zhijian.schedule.core.ui.TapTextButton
+import com.zhijian.schedule.core.ui.accentGradient
 import com.zhijian.schedule.core.ui.buttonFeedback
 
 /*
@@ -125,12 +132,34 @@ internal fun JwPreviewSheet(
     }
 }
 
-/** 导入完成提示：确认即返回上一页 */
+/**
+ * 导入完成提示：确认即返回上一页。
+ *
+ * 标题左侧那枚勾是**唯一**在弹窗里出现的装饰：抓取课表是整条流程的终点，
+ * 用户此刻最想知道的是「成了没有」，一枚落笔的勾比"导入完成"四个字更早被读到。
+ * 勾用主题强调色派生（[accentGradient]），因此八套预设下都不会跳出一块外来色。
+ */
 @Composable
 internal fun JwImportDoneDialog(onDismiss: () -> Unit) {
+    val colors = LocalCourseColors.current
+    // 弹窗出现即视为「已勾上」：这里不需要先 false 再 true，
+    // 因为 AlertDialog 每次打开都是新组合，animateFloatAsState 的初值仍取目标值 0f 起点。
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { shown = true }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("导入完成") },
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                AnimatedGradientCheckMark(
+                    checked = shown,
+                    markSize = 22.dp,
+                    gradientColors = remember(colors.accent) { accentGradient(colors.accent) },
+                    idleRingColor = colors.accent,
+                )
+                Spacer(Modifier.width(8.dp))
+                Text("导入完成")
+            }
+        },
         text = { Text("课表已更新，可在周视图查看。") },
         confirmButton = { TapTextButton(onClick = onDismiss) { Text("好的") } },
     )

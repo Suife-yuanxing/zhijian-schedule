@@ -44,6 +44,7 @@ import com.zhijian.schedule.core.jw.GradeRecord
 import com.zhijian.schedule.core.jw.GradeStats
 import com.zhijian.schedule.core.jw.GradeTrend
 import com.zhijian.schedule.core.theme.LocalCourseColors
+import com.zhijian.schedule.core.ui.RippleLoader
 import com.zhijian.schedule.core.ui.SecondaryTopBar
 import com.zhijian.schedule.core.ui.TapIconButton
 import com.zhijian.schedule.core.ui.TapTextButton
@@ -104,8 +105,9 @@ fun GradesScreen(
 
         when {
             state.records.isEmpty() && state.loading -> {
+                // 首屏要等十几秒，涟漪有节拍；顶栏那个 18dp 小转圈太小，涟漪会糊成一片，保留原样
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = colors.accent)
+                    RippleLoader(Modifier.size(88.dp), colors.accent, rings = 4)
                 }
             }
 

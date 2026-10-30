@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
@@ -37,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import com.zhijian.schedule.core.jw.AdapterSteps
 import com.zhijian.schedule.core.theme.CourseColors
 import com.zhijian.schedule.core.ui.Motion
+import com.zhijian.schedule.core.ui.RippleLoader
 import com.zhijian.schedule.core.ui.TapButton
 import com.zhijian.schedule.core.ui.TapTextButton
 import com.zhijian.schedule.core.ui.island.Contrast
@@ -285,7 +285,15 @@ internal fun LoadingOverlay(
                 .background(colors.bg.copy(alpha = 0.55f)),
             contentAlignment = Alignment.Center,
         ) {
-            CircularProgressIndicator(color = colors.accent)
+            // 涟漪加载态：四层同心圆共用 2s 周期、每层相位差 0.1，读成一片向外扩散的水波。
+            // 选它替代 CircularProgressIndicator 的理由：这是全屏阻塞遮罩，用户会盯着看数秒，
+            // 而系统转圈是匀速旋转、无节拍变化；涟漪有明确的扩散节奏，等待感更短。
+            // reduce-motion 由 RippleLoader 内部处理，关闭动画时自动退化为静止同心圆环。
+            RippleLoader(
+                modifier = Modifier.size(96.dp),
+                color = colors.accent,
+                rings = 4,
+            )
         }
     }
 }

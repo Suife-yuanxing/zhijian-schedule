@@ -5,5 +5,10 @@
 
     <application
         android:usesCleartextTraffic="true"
-        tools:targetApi="36" />
+        tools:targetApi="36">
+        <activity
+            android:name=".debug.MotionPreviewActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+    </application>
 </manifest>

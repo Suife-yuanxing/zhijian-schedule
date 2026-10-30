@@ -16,9 +16,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -38,6 +38,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import com.zhijian.schedule.core.data.db.SectionTimeEntity
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.ui.Motion
+import com.zhijian.schedule.core.ui.RippleLoader
 import com.zhijian.schedule.core.ui.SecondaryTopBar
 import com.zhijian.schedule.core.ui.StaggerIn
 
@@ -203,7 +204,13 @@ fun SettingsScreen(
                     .background(colors.bg.copy(alpha = 0.4f)),
                 contentAlignment = Alignment.Center,
             ) {
-                CircularProgressIndicator(color = colors.accent)
+                // 备份导出 / 恢复是「握着手机等」的动作，可能持续数秒到十几秒。
+                // 同上：涟漪有节拍，系统转圈没有。
+                RippleLoader(
+                    modifier = Modifier.size(80.dp),
+                    color = colors.accent,
+                    rings = 4,
+                )
             }
         }
     }
