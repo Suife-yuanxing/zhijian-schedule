@@ -22,6 +22,11 @@
 - fix(jw): 教务导入页白屏——WebView 在量到尺寸之前就提交了第一次导航，Chromium 把视口高度锁成 0，此后任何重排都不再更新；依赖 100vh / 百分比高度的页面（广西工程门户、百度首页同样复现）整页塌成 0 高。新增 `loadWhenSized`（等布局量到尺寸再 loadUrl，同一 WebView 只保留最后一个待加载请求）+ `VIEWPORT_HEIGHT_REPAIR_JS` 兜底（仅在 100vh 量出来接近 0 时给 html 一个像素高度，量得正常则一个字节都不改）；`shouldLoadWhenSized` 抽成纯函数进单测
 - test(jw): 新增 `JwWebViewViewportTest`（6 例）——尺寸未量到必须等、兜底脚本只在视口真的坏掉时动手、写回高度带 `!important`、只碰 html/body 不碰内容节点
 - test(net): 新增 `ExpiredCertToleranceTest`（16 例）——三闸门逐个钉住：主机名单精确匹配、只认过期不认其它错误、30 天窗口边界、SAN 通配符只跨一层、WebView 与 OkHttp 两条入口判据一致
+- fix(ui): 切根页不再「从右上方打开、刷新一遍」——三个根页原先各自一套入场闸门，今日与「我的」的语义是「本进程第一次进入时放行一次」，而「第一次进入」恰好就是第一次切过去，于是**每次冷启动后的第一次切 tab 必然播一次整套分段入场**（叠在右滑入的位移上，读作整页展开刷新），之后正常，表现成「偶发」。现在收成一个闸门（`RootEntrancePolicy` 纯逻辑 + `RootEntranceGate` 状态，一处持有三页共读），语义只有「冷启动首帧放行一次」，并用 `rememberSaveable` 持有以免 Activity 重建后重播
+- fix(schedule): 切页不再覆盖用户手选的周次——旧实现把「定位到当前周」的副作用挂在课表元数据上，页面每次重新进入组合（切 tab、从编辑页返回、重建）都重跑一次，翻到第 10 周再切回来就变回第 9 周。新增 `WeekAnchorPolicy`：只有锚点（课表 id / 开学日期 / 总周数）变化才重新定位，锚点状态存在 ViewModel
+- perf(schedule): 「现在」呼吸灯从逐帧无限动画改为定频采样（`PulseMath` + `rememberBreathingAlpha`，20Hz）——课表页静置 10 秒的实测产帧从 606 帧降到 192 帧；旧写法让这一页只要含「现在线」就恒定 ~61fps 重绘，切页时与整屏滑动抢同一条渲染管线
+- test(ui): 新增 `RootEntrancePolicyTest`（7 例）、`WeekAnchorPolicyTest`（9 例）、`PulseMathTest`（8 例）——钉住「关闸后三页全否」「二级页永不播」「同锚点不重定位」「采样台阶 < 5% 且 20Hz」
+- docs(spec): 新增 `docs/specs/2026-10-30-根页切换规范.md`——把根页切换的话题固化成硬约定（切 tab 只做位移 / 入场只播一次 / 定位只认锚点），含根因认定、真机实测对照、验证命令、单测清单、反模式条目与**已知遗留**（纵向滚动位置仍会回到顶部，本次三条路线均未通过真机复验，已全部撤回不留半成品）
 
 ### Changed
 

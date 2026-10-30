@@ -59,6 +59,7 @@
 - [2026-10-24-exam-academic-center-design.md](specs/2026-10-24-exam-academic-center-design.md) — 学业中心一期设计：已拍板的决策表（数据来源、合并口径、提醒档位）、Room v2→v3 迁移与 UI 层级。
 - [2026-10-25-jw-script-engine-design.md](specs/2026-10-25-jw-script-engine-design.md) — 教务脚本引擎设计：页面上下文注入模型、最小契约（manifest + `fetchSchedule` 信封）、分发三件套与安全模型。
 - [2026-10-27-multi-vendor-live-notification-design.md](specs/2026-10-27-multi-vendor-live-notification-design.md) — 多厂商实时通知适配设计：把既有流体云胶囊抽象成 `LiveContent` + `LiveSurfaceRenderer`，一次内容投影驱动原生提升 / 小米超级岛 / 未来各厂商；含 7 条问题清单（含一条勘误）、逐厂商接入契约与实施验收记录。
+- [2026-10-30-根页切换规范.md](specs/2026-10-30-根页切换规范.md) — **根页面切换的硬约定**：切 tab 只做位移、入场只在冷启动首帧播一次（一处闸门三页共读、跨 Activity 重建保存）、页内定位副作用只认锚点变化；含「每次冷启动后的第一次切 tab 必现」的根因认定、真机实测对照、单测清单与反模式条目。
 
 ## testing/ — 测试夹具
 

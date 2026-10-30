@@ -109,6 +109,10 @@ subst Z: /D          # 用完解除映射
 3. **注释与文档用中文**，公开 API 写 KDoc。
 4. **Room schema 变更必须提交导出**：KSP 已配 `room.schemaLocation = app/schemas`，改表后 `app/schemas/com.zhijian.schedule.core.data.db.AppDatabase/` 下会多出新版本 JSON，连同迁移代码一起提交（历史提交 `chore(db): 提交 Room v3 导出 schema` 就是这条约定）。
 5. **不要把 `docs/` 与新代码混在一个提交里**，文档改动单独成提交（`docs(plan):` / `docs(spec):` / `docs(mock-jw):`）。
+6. **根页面切换按规范来**：切 tab 只做位移，入场只在冷启动首帧播一次（一处闸门三页共读），
+   页内定位副作用只认锚点变化。完整规矩、反模式清单与验证命令见
+   [docs/specs/2026-10-30-根页切换规范.md](docs/specs/2026-10-30-根页切换规范.md)；
+   改动 `navigation/` 或三个根页的入场 / 定位逻辑前先读它。
 
 ## 5. 分支与提交信息
 
