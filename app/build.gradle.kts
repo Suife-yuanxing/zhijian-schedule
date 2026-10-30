@@ -46,6 +46,12 @@ android {
     }
 
     buildTypes {
+        // debug 与正式版签名不同、同 applicationId 无法共存；加后缀让两者能并排安装，
+        // 既不动设备上正式版的数据，也让 debug 包能独立调试。
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
