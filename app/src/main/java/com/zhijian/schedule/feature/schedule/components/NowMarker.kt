@@ -1,10 +1,4 @@
 package com.zhijian.schedule.feature.schedule.components
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,6 +22,8 @@ import androidx.compose.ui.unit.sp
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.theme.LocalIsDark
 import com.zhijian.schedule.core.theme.courseTone
+import com.zhijian.schedule.core.ui.rememberAnimationsDisabled
+import com.zhijian.schedule.core.ui.rememberBreathingAlpha
 import com.zhijian.schedule.core.util.TimeUtils
 import com.zhijian.schedule.feature.schedule.ScheduleUiState
 import java.time.LocalDateTime
@@ -57,23 +53,16 @@ internal fun NowMarker(
 
     // 用 accent 自己派生的「深色调」：accent 原色对底色只有 2.9:1，不能直接写字
     val accentTone = courseTone(colors.accent, LocalIsDark.current)
-    // 呼吸灯：曲线与节奏保持原样（1.8s 线性往返），但值**只在绘制期读**。
-    // 原来 pulse 被读进 Modifier.background(...) 里，等于每帧重组一次 NowMarker + 重建两个
-    // Modifier；改成 drawBehind 里读 State 之后，每帧只失效绘制，组合不再参与。
-    // （顺带一个实测事实：这条呼吸灯让课表页**静置**就恒在 ~62fps 重绘，12s 画 741 帧。
-    //  这是本页最贵的固定开销；要彻底归零只能去掉呼吸效果，属于设计取舍，没动。）
-    val breath = rememberInfiniteTransition(label = "nowMarker")
-    val pulse =
-        breath.animateFloat(
-            initialValue = 0.55f,
-            targetValue = 1f,
-            animationSpec =
-                infiniteRepeatable(
-                    animation = tween(durationMillis = 1800, easing = LinearEasing),
-                    repeatMode = RepeatMode.Reverse,
-                ),
-            label = "nowMarkerPulse",
-        )
+    // 呼吸灯：值**只在绘制期读**（drawBehind），每次采样只失效绘制，组合不参与。
+    //
+    // 节拍换成了定频采样（见 rememberBreathingAlpha / PulseMath）：曲线与 1800ms 一个来回
+    // 都不变，但不再是「无限动画逐帧推」。旧写法让课表页**静置**就恒在 ~62fps 重绘
+    // （真机 10 秒 621 帧），而那正是切页时和整屏滑动抢渲染管线的那份开销。
+    //
+    // reduce-motion：系统关掉动画时直接给一个固定值（略高于静息的最低值），
+    // 而不是把整条时间线也删掉——「现在几点」是事实，只是不再闪。
+    val animationsDisabled = rememberAnimationsDisabled()
+    val pulse: State<Float> = rememberBreathingAlpha(animationsDisabled)
     val lineAlphaBase = if (slot.inClass) 0.72f else 0.4f
 
     // 时间轴里的时间胶囊：宽度吃满时间轴，高度随网格一起放大（字体放大后 16dp 装不下 9sp 翻倍的字）
