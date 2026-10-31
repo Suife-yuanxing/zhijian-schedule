@@ -32,6 +32,13 @@ android {
         versionName = "1.0.15"
 
         resourceConfigurations += listOf("zh", "en")
+
+        // 自建镜像前缀（路线 A：Cloudflare R2 + 自定义域名或 Worker）。
+        // 形如 "https://dl.example.com/apk/" 或 "https://dl.example.com/"；留空表示不启用自建源。
+        // 可用 -PcfMirrorPrefix=https://... 或 ORG_GRADLE_PROJECT_cfMirrorPrefix 环境变量在构建期覆盖，
+        // 不用改代码就能切域名/灰度。
+        val cfMirrorPrefix = (project.findProperty("cfMirrorPrefix") as String?).orEmpty()
+        buildConfigField("String", "UPDATE_CF_MIRROR_PREFIX", "\"${cfMirrorPrefix}\"")
     }
 
     signingConfigs {

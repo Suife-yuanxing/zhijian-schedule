@@ -1,5 +1,6 @@
 package com.zhijian.schedule.core.model
 
+import com.zhijian.schedule.core.jw.JwMeta
 import com.zhijian.schedule.core.jw.SectionTimeDraft
 import kotlinx.serialization.Serializable
 
@@ -68,8 +69,13 @@ data class ImportPreview(
      */
     val sectionTimes: List<SectionTimeDraft> = emptyList(),
     /**
-     * 课表信息需要核对的提示。课表信息**不跟随**抓取改写（写坏了周次映射全错），
-     * 但换了学校或学期后旧值会安静地留着，所以抓完提示用户去看一眼。
+     * 来源自带的学期元数据（学期名 / 第 1 周周一 / 总周数）。非空时确认导入会连
+     * 课表信息一起改写——周次映射从此与学校校历一致；null 表示来源没给，本地值不动。
+     */
+    val meta: JwMeta? = null,
+    /**
+     * 课表信息需要核对的提示。元数据随抓取同步后这条只在来源没给元数据时出现
+     * （换了学校或学期后旧值会安静地留着，提示用户去看一眼）。
      */
     val infoHint: String? = null,
 ) {

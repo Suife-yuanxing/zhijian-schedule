@@ -77,7 +77,8 @@ class ImporterViewModel
         var state by mutableStateOf<ImportUiState>(ImportUiState.Idle)
             private set
 
-        var applyConflicts by mutableStateOf(false)
+        /** 手动导入默认连手动编辑过的课程一起覆盖（导入 = 换课表）；开关可关回「跳过冲突」 */
+        var applyConflicts by mutableStateOf(true)
             private set
 
         var ocrReview by mutableStateOf<OcrReviewState?>(null)

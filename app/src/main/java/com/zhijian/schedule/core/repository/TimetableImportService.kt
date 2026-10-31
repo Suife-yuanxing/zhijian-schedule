@@ -6,6 +6,7 @@ import com.zhijian.schedule.core.data.db.CourseEntity
 import com.zhijian.schedule.core.data.db.ImportSnapshotEntity
 import com.zhijian.schedule.core.data.db.SectionTimeEntity
 import com.zhijian.schedule.core.data.prefs.SettingsStore
+import com.zhijian.schedule.core.jw.JwMeta
 import com.zhijian.schedule.core.jw.SectionTimeDraft
 import com.zhijian.schedule.core.model.CourseDraft
 import com.zhijian.schedule.core.model.ImportChange
@@ -13,6 +14,7 @@ import com.zhijian.schedule.core.model.ImportChangeKind
 import com.zhijian.schedule.core.model.ImportPreview
 import com.zhijian.schedule.core.model.ImportSource
 import com.zhijian.schedule.core.util.AdjacentCourseMerge
+import com.zhijian.schedule.core.util.WeekMask
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
 
@@ -35,13 +37,16 @@ internal class TimetableImportService(
 
     /**
      * 与本地数据 Diff，生成预览（方案 4.6 统一流程 / 4.10 Diff）。
-     * @param syncMode true 表示教务自动同步：会检测「取消」的课程并标记 manual 冲突
+     * @param syncMode true 表示教务自动同步（取消保守、护栏兜底）；false 表示手动导入：
+     *   整表替换——未被新数据认领的本地课在预览里全部标「取消」，确认后直接覆盖
+     * @param meta 来源自带的学期元数据；非空时确认导入会连课表信息一起同步
      */
     suspend fun buildPreview(
         drafts: List<CourseDraft>,
         source: ImportSource,
         syncMode: Boolean = false,
         sectionTimes: List<SectionTimeDraft> = emptyList(),
+        meta: JwMeta? = null,
     ): ImportPreview {
         val tableId = currentTableId() ?: return ImportPreview(source, emptyList())
         val totalWeeks = db.timetableDao().getById(tableId)?.totalWeeks ?: 20
@@ -58,16 +63,15 @@ internal class TimetableImportService(
             changes += diffOf(normalized, matched)
         }
 
-        if (syncMode && !firstJwSync) {
-            existing.filter { !matchedIds.contains(it.id) && !it.manuallyEdited }.forEach { old ->
-                changes +=
-                    ImportChange(
-                        kind = ImportChangeKind.REMOVED,
-                        name = old.name,
-                        detail = courseSummary(old.toDraft()),
-                        existingId = old.id,
-                    )
-            }
+        ImportReplace.removalCandidates(existing, matchedIds, syncMode, firstJwSync).forEach { old ->
+            changes +=
+                ImportChange(
+                    kind = ImportChangeKind.REMOVED,
+                    name = old.name,
+                    // 手动替换里手动编辑过的课也会被覆盖，在预览里说清楚，别让用户事后才发现
+                    detail = courseSummary(old.toDraft()) + if (old.manuallyEdited) "（手动编辑过）" else "",
+                    existingId = old.id,
+                )
         }
         val warning =
             if (syncMode && source == ImportSource.JW) {
@@ -80,8 +84,29 @@ internal class TimetableImportService(
             } else {
                 null
             }
-        val infoHint = if (source == ImportSource.JW) auditInfo(tableId) else null
-        return ImportPreview(source, changes, warning, sectionTimes, infoHint)
+        val infoHint =
+            when {
+                source != ImportSource.JW -> null
+                meta != null -> metaHint(tableId, meta)
+                else -> auditInfo(tableId)
+            }
+        return ImportPreview(source, changes, warning, sectionTimes, meta, infoHint)
+    }
+
+    /** 元数据同步提示：只列真正会变的字段，与教务声明一致的本地值不占用户注意力 */
+    private suspend fun metaHint(
+        tableId: Long,
+        meta: JwMeta,
+    ): String? {
+        val table = db.timetableDao().getById(tableId) ?: return null
+        val planned = TimetableMetaPlan.apply(table, meta)
+        if (planned == table) return null
+        val parts = mutableListOf<String>()
+        if (planned.semester != table.semester) parts += "学期「${planned.semester}」"
+        if (planned.startDate != table.startDate) parts += "第 1 周 ${planned.startDate}"
+        if (planned.totalWeeks != table.totalWeeks) parts += "总周数 ${planned.totalWeeks}"
+        if (parts.isEmpty()) return null
+        return "课表信息将随抓取同步：" + parts.joinToString("，")
     }
 
     /**
@@ -186,10 +211,30 @@ internal class TimetableImportService(
         }
         // 作息跟着课表一起变：来源写了时间就以来源为准（不硬编码）
         applySectionTimes(preview)
+        // 课表信息同理：教务声明了学期 / 开学日期 / 总周数就一起同步
+        applyMeta(preview.meta)
         // 手动导入不会清理旧记录：把新旧数据里残留的连堂课再归并一次
         mergeAdjacentCourses(tableId)
         val drafts = preview.changes.mapNotNull { it.draft }
         if (drafts.isNotEmpty()) saveSnapshot(preview.source, drafts)
+    }
+
+    /** 学期元数据落库；总周数变了就把本表课程掩码重排到新长度，边界周才不会读错 */
+    private suspend fun applyMeta(meta: JwMeta?) {
+        if (meta == null) return
+        val tableId = currentTableId() ?: return
+        val table = db.timetableDao().getById(tableId) ?: return
+        val planned = TimetableMetaPlan.apply(table, meta)
+        if (planned == table) return
+        db.timetableDao().update(planned)
+        if (planned.totalWeeks != table.totalWeeks) {
+            db.courseDao().getByTable(tableId).forEach { course ->
+                val normalized = WeekMask.normalize(course.weekMask, planned.totalWeeks)
+                if (normalized != course.weekMask) {
+                    db.courseDao().update(course.copy(weekMask = normalized))
+                }
+            }
+        }
     }
 
     /**

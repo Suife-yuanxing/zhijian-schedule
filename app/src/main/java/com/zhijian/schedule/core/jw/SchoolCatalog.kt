@@ -70,17 +70,16 @@ object SchoolCatalog {
                 entryUrl = "https://jw.dgpt.edu.cn/jsxsd/",
             ),
             // 广西工程职业学院：校方 2022 年通知里的 http://edu.gxgcedu.com/ 已 NXDOMAIN，
-            // 现行入口是智慧校园统一认证；登录后从门户进教务，后端挂在同域 /academic/ 下
-            // （校外可达时直连 :8088，路径正是 URP 的强特征）。入口是门户而非课表页，
-            // 抓取未实测，所以 verified = false。
+            // 现行入口是智慧校园统一认证门户。2026 年 10 月用真实账号实测：教务是 CIP 平台
+            // 自带模块（/timetable/ 路由，同域同源），旧的 /academic/（URP 路径）已 404；
+            // GuangXiGcAdapter 原生说 CIP 协议，登录后即可抓课表与作息，verified = true。
             SchoolProfile(
                 id = "gxgc:zhxy.gxgcedu.com",
                 name = "广西工程职业学院",
                 hosts = setOf("zhxy.gxgcedu.com"),
-                basePath = "/academic/",
-                adapterId = UrpAdapter.id,
+                basePath = "/",
+                adapterId = GuangXiGcAdapter.id,
                 pinyin = "gxgc/guangxigongchengzhiyexueyuan",
-                verified = false,
                 entryUrl = "https://zhxy.gxgcedu.com/login",
             ),
         )

@@ -1,0 +1,16 @@
+# 部署：npx wrangler deploy（在 cloudflare/worker 目录执行）
+# 前提：R2 桶 zhijian-apk 已建好，且已绑定自定义域名 dl.example.com（必须，别用 r2.dev）
+name = "zhijian-update-mirror"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+# Worker 挂在自己的二级域名上，与 R2 自定义域名分开，避免自指
+routes = [{ pattern = "gh.example.com/*", zone_name = "example.com" }]
+
+[vars]
+R2_PUBLIC_BASE = "https://dl.example.com"
+
+# 只在需要 Worker 兜底直传时用；纯 302 路线可以不绑定桶
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "zhijian-apk"

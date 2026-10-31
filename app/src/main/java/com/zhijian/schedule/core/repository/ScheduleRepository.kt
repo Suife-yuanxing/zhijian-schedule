@@ -9,6 +9,7 @@ import com.zhijian.schedule.core.data.db.TimeModeEntity
 import com.zhijian.schedule.core.data.db.TimetableEntity
 import com.zhijian.schedule.core.data.prefs.AppSettings
 import com.zhijian.schedule.core.data.prefs.SettingsStore
+import com.zhijian.schedule.core.jw.JwMeta
 import com.zhijian.schedule.core.jw.SectionTimeDraft
 import com.zhijian.schedule.core.jw.SectionTimes
 import com.zhijian.schedule.core.model.CourseDraft
@@ -277,7 +278,8 @@ class ScheduleRepository
             source: ImportSource,
             syncMode: Boolean = false,
             sectionTimes: List<SectionTimeDraft> = emptyList(),
-        ): ImportPreview = importer.buildPreview(drafts, source, syncMode, sectionTimes)
+            meta: JwMeta? = null,
+        ): ImportPreview = importer.buildPreview(drafts, source, syncMode, sectionTimes, meta)
 
         /** 应用导入结果；实现见 [TimetableImportService.applyImport]。 */
         suspend fun applyImport(

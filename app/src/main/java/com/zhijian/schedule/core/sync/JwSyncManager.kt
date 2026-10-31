@@ -96,6 +96,7 @@ class JwSyncManager
                             ImportSource.JW,
                             syncMode = syncMode,
                             sectionTimes = fetched.sectionTimes,
+                            meta = fetched.meta,
                         )
                     // 记下这次成功同步的时间与主机：下次抓取若换了学校，预览会提示核对课表信息
                     settingsStore.setSyncMark(System.currentTimeMillis(), TimetableInfoAudit.hostOf(url))

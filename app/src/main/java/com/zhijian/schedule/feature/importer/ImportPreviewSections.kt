@@ -74,7 +74,7 @@ internal fun PreviewContent(
         LazyColumn(Modifier.weight(1f)) {
             itemsIndexed(changes) { idx, change ->
                 StaggerIn(index = idx) {
-                    ChangeRow(change)
+                    ChangeRow(change, overwriteConflicts = applyConflicts)
                 }
             }
         }
@@ -88,7 +88,7 @@ internal fun PreviewContent(
                 Column(Modifier.weight(1f)) {
                     Text("覆盖手动编辑的课程", color = colors.text, fontSize = 14.sp)
                     Text(
-                        "默认跳过你手动改过的课程（冲突项）",
+                        "关闭后跳过你手动改过的课程（冲突项）",
                         color = colors.textMuted,
                         fontSize = 11.sp,
                     )
@@ -115,7 +115,10 @@ internal fun PreviewContent(
 }
 
 @Composable
-internal fun ChangeRow(change: ImportChange) {
+internal fun ChangeRow(
+    change: ImportChange,
+    overwriteConflicts: Boolean = false,
+) {
     val colors = LocalCourseColors.current
     val (label, badgeColor) =
         when (change.kind) {
@@ -150,7 +153,11 @@ internal fun ChangeRow(change: ImportChange) {
             }
             if (change.conflict) {
                 Text(
-                    "你手动编辑过，默认保留本地版本",
+                    if (overwriteConflicts) {
+                        "你手动编辑过，确认后将覆盖为新数据"
+                    } else {
+                        "你手动编辑过，将保留本地版本"
+                    },
                     fontSize = 11.sp,
                     color = Color(0xFFEF4444),
                 )

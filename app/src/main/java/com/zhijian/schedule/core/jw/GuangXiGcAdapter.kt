@@ -1,36 +1,54 @@
 package com.zhijian.schedule.core.jw
 
+import com.zhijian.schedule.core.model.CourseDraft
+import com.zhijian.schedule.core.util.WeekMask
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.net.InetSocketAddress
-import java.net.Socket
+import okhttp3.RequestBody.Companion.toRequestBody
 
 /**
- * 广西工程职业学院（`zhxy.gxgcedu.com`）的校级适配器。
+ * 广西工程职业学院（`zhxy.gxgcedu.com` 智慧校园）的校级适配器。
  *
- * ## 为什么单列一所学校
+ * ## 为什么是原生 CIP 协议，而不是把抓取交给 URP
  * 校方 2022 年通知里的入口 `http://edu.gxgcedu.com/` 已经不解析（NXDOMAIN）；
- * 现行入口是智慧校园统一认证门户 `https://zhxy.gxgcedu.com/login`，登录后从门户进教务。
- * 这与目录里任何一家厂商的「登录页 = 教务首页」形态都不同：**门户主机本身不是教务**，
- * 玄机在同域的 `/academic/` 前缀上——那正是 [UrpAdapter] 的强特征路径，教务后端
- * 还常挂在校内 `8088` 端口（校外实测 TCP 被过滤）。
+ * 现行入口是智慧校园统一认证门户 `https://zhxy.gxgcedu.com/login`。2026 年 10 月实测：
+ * 门户主机上的 `/academic/`（URP 特征路径）已经 **404**——教务是 CIP 平台自带的模块，
+ * 与门户同域同源，路由形如 `/timetable/timetableView/studentTimetable`，
+ * 再按 URP 抓只会得到 404。所以本适配器直接说 CIP 的协议：
  *
- * 所以本适配器不重写解析：课表仍交给 [UrpAdapter]（`/academic/` + `showTimetable.do`）。
- * 它只补通用路径补不了的两件事：
- * 1. 门户首页 / 登录页 / `/academic/` 能识别成本校，而不是「未识别教务系统」；
- * 2. 抓取前探一次 `/academic/`：若 302 指向同主机的非标准端口、且那个端口连不上，
- *    说明要连校园网 / WebVPN，直接把这句话告诉用户，而不是抛一个「URP 未返回课表」
- *    让人以为学校不支持本校。
- * 已进课表页（`showTimetable.do`）时 [match] 打分归零，让 URP 的路径指纹接管，
- * 避免把带学期参数的地址改回门户根。
+ * 1. `GET /timetable/timetableView/studentTimetable`——带着 WebView 登录后的会话即可；
+ *    页面 `<meta name="_csrf">` 是后续 POST 的令牌，脚本里的 `defaultSemesterId` 是当前学期；
+ * 2. `POST /timetable/timetableRule/getTimetableRule`——各时段节数（本校 2026 秋实测
+ *    上午 4 / 下午 4 / 晚上 4），决定槽位到全天节次的偏移；
+ * 3. `POST /timetable/timetableView/getStudentTimetable`，`{semesterId, weekNo:"1,2,…"}`
+ *    （CSRF 强制，缺头直接 403）——`data.studentTimetableList[时段]["星期_节段"]` 下是课程
+ *    条目，每条自带 `weekNos`（全学期周次列表），**一次请求就能建出全学期课表**。
+ *
+ * ## 槽位语义（照抄前端 `timetable.ctrls.js` 的解析）
+ * key = `<星期几>_<节段>`，节段两位数字是「时段内 1 起的小节序号」；
+ * 全天节次 = 时段偏移 + 时段内序号。偏移按 `getTimetableRule` 的节数逐时段累加
+ * （早读/上午从第 1 节起，中午/下午/晚上依次接在前序时段之后）。
+ * `1_34` 在本校即周一上午第 3-4 节；`pm/1_12` 即全天第 5-6 节。
+ *
+ * ## 作息时间
+ * 教务里没有配置钟点（`getTimetableRuleTime` 返回空），官网文件也只写「每节课 45 分钟」。
+ * 实测按 8:00 / 14:30 / 19:00 三段排课，写成 [SECTION_TIMES] 随导入带回——
+ * 教务哪天配了钟点，就优先用教务返回的（见 [sectionTimesOf]）。
  *
  * ## 不做的事
- * 门户统一认证有图形验证码与微信 / 企业微信 / 钉钉扫码，[ssoEntry] 一律返回 null：
- * 静默重放登录只会打乱账号风控，宁可让用户在网页里点一次。
+ * 门户统一认证是 RSA 加密登录，有图形验证码与微信 / 企业微信 / 钉钉扫码，风险控制
+ * 由校方把持，[ssoEntry] 一律返回 null：宁可让用户在 WebView 里点一次登录。
  */
 object GuangXiGcAdapter : JwAdapter {
     override val id = "gxgc"
@@ -38,151 +56,370 @@ object GuangXiGcAdapter : JwAdapter {
 
     override val steps =
         AdapterSteps(
-            timetablePage = "教务门户 → 我的课表",
-            note = "校外直连会跳到校内非标准端口，打不开时请先连校园网或 WebVPN 再登录",
+            timetablePage = "门户登录 → 教务系统门户（出现课表入口即可）",
+            note = "登录智慧校园门户后直接点抓取；学期、周次与作息自动识别",
         )
 
-    /** 门户与教务同域；识别只看路径，不猜端口 */
+    /** 门户与教务同域同源；识别只看主机，任何路径都归本校 */
     const val HOST = "zhxy.gxgcedu.com"
+
+    /** 实测当前学期的课表页路由；抓取从这里拿会话令牌与学期 */
+    private const val TIMETABLE_PAGE = "timetable/timetableView/studentTimetable"
+    private const val TIMETABLE_API = "timetable/timetableView/getStudentTimetable"
+    private const val RULE_API = "timetable/timetableRule/getTimetableRule"
+    private const val RULE_TIME_API = "timetable/timetableRule/getTimetableRuleTime"
+    private const val WEEK_LIST_API = "school/core/calendar/getWeekList"
+    private const val SEMESTER_API = "school/common/getSchoolBaseInfo"
 
     private const val UA =
         "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36"
+    private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
 
-    /** 这两个路径已经是 URP 的领地，交给它自己的指纹与基路径规范化 */
-    private val URP_MARKS = listOf("showtimetable", "xkaction")
+    private const val MIN_DAY = 1
+    private const val MAX_DAY = 7
 
-    private const val DEFAULT_HTTP_PORT = 80
-    private const val DEFAULT_HTTPS_PORT = 443
+    /** weekNo 一次带全；学校学期短于请求值时由后端自己过滤 */
+    private const val MIN_TOTAL_WEEKS = 18
 
-    /** 端口探测的等待上限：比抓取超时短得多，探测不能拖慢正常抓取 */
-    private const val CONNECT_TIMEOUT_MS = 2500
+    /** 登录页的招牌文案（inline script 里的 document.title）；见到即视为未登录 */
+    private const val LOGIN_MARK = "系统登录"
+
+    private val CSRF_META = Regex("""<meta\s+name="_csrf"\s+content="([^"]+)"""")
+    private val SEMESTER_ID = Regex("""defaultSemesterId\s*=\s*"([^"]+)"""")
+
+    /** `1_34` / `2_12`：星期几_时段内节段（两位数字，各自是 1 起的小节序号） */
+    private val SLOT_KEY = Regex("""^(\d+)_([1-9])([1-9])$""")
 
     /**
-     * 端口连不上时的提示：把真实端口写进文案，学校换端口时不会说谎。
-     * 后半句同时覆盖「校内但该端口被禁」的情况，避免用户在校内被劝去连校园网。
+     * 本校作息（2026 年 10 月实测确认；教务未配钟点）：
+     * 每节 45 分钟，上午 8:00 起、下午 14:30 起、晚上 19:00 起，各四节。
      */
-    fun offCampusHint(port: Int): String =
-        "教务端口 " + port + " 连不上：校外请连校园网或学校 WebVPN 后再试；" +
-            "已在校内则确认网络未禁用该端口"
+    internal val SECTION_TIMES: List<SectionTimeDraft> =
+        listOf(
+            "08:00" to "08:45",
+            "08:55" to "09:40",
+            "10:00" to "10:45",
+            "10:55" to "11:40",
+            "14:30" to "15:15",
+            "15:25" to "16:10",
+            "16:20" to "17:05",
+            "17:15" to "18:00",
+            "19:00" to "19:45",
+            "19:55" to "20:40",
+            "20:50" to "21:35",
+            "21:45" to "22:30",
+        ).mapIndexed { index, (start, end) -> SectionTimeDraft(index + 1, start, end) }
 
     override fun match(url: String): Int {
         val parsed = parseUrl(url) ?: return JwMatchScore.NONE
         if (!parsed.host.equals(HOST, ignoreCase = true)) return JwMatchScore.NONE
-        val path = parsed.encodedPath.lowercase()
-        if (URP_MARKS.any { path.contains(it) }) return JwMatchScore.NONE
         return JwMatchScore.EXACT
     }
 
-    /**
-     * 先探教务前缀，再交给 [UrpAdapter] 真正抓取。
-     *
-     * 门户把 `/academic/` 302 到同一主机的非标准端口（实测 :8088）时，那个端口出校即被过滤。
-     * 但这跳转**不稳定**：同一秒内的 6 次请求里 5 次 302 到 HTTPS 登录页、1 次到 :8088，
-     * 说明门户前后端的配置不一致。所以这里只做尽力而为的探测——撞不上就照常走 URP，
-     * 由 URP 报它自己的错，绝不为了「可能有帮助的提示」把正常抓取拦下来。
-     */
     override suspend fun fetchSchedule(
         client: OkHttpClient,
         baseUrl: String,
         totalWeeks: Int,
-    ): JwFetchResult {
-        val blocked = withContext(Dispatchers.IO) { blockedPort(client, baseUrl) }
-        if (blocked != null) throw JwException.NetworkFailed(offCampusHint(blocked))
-        return UrpAdapter.fetchSchedule(client, baseUrl, totalWeeks)
-    }
+    ): JwFetchResult =
+        withContext(Dispatchers.IO) {
+            val root = portalRoot(baseUrl)
+            val referer = root + "sys/portal"
 
-    /**
-     * 从 30x 的 Location 里读「校外被拦」的证据：同主机的非标准端口。
-     *
-     * 纯字符串判断，便于单测：不联网、不开 WebView。
-     * 相对地址（`/login`）、缺省端口（80 / 443）、别的学校的主机都不算证据——
-     * 那些都是正常跳转，报「请连校园网」只会误导。
-     */
-    fun offCampusPort(
-        location: String?,
-        host: String,
-    ): Int? {
-        val target = location?.trim().orEmpty()
-        if (!target.startsWith("http", ignoreCase = true)) return null
-        val authority =
-            target
-                .substringAfter("://")
-                .substringBefore('/')
-                .substringBefore('?')
-                .substringBefore('#')
-        // 无冒号 = 无端口；有冒号时最后一段必须是数字端口，主机段必须与本校门户一致
-        val samePortal =
-            authority.contains(':') &&
-                authority.substringBeforeLast(':').equals(host.trim(), ignoreCase = true)
-        val port = authority.substringAfterLast(':').toIntOrNull()
-        return port?.takeIf { samePortal && it != DEFAULT_HTTP_PORT && it != DEFAULT_HTTPS_PORT }
-    }
+            // ① 课表页：会话令牌 + 当前学期
+            val page = get(client, root + TIMETABLE_PAGE, referer)
+            if (page.contains(LOGIN_MARK)) throw JwException.NeedsLogin()
+            val (csrf, semesterId) =
+                parseTimetablePage(page)
+                    ?: throw JwException.ParseFailed(
+                        "页面上没有学期信息，请先在网页中登录并进入「教务系统门户」",
+                    )
 
-    /**
-     * 「校外被拦」的判定必须两步：先看到跳到校内端口，**再**确认那个端口确实连不上。
-     *
-     * 只看跳转是不够的：门户前面是负载均衡，实测 6 次请求里有 5 次 302 到
-     * HTTPS 登录页、1 次直接 302 到 :8088——两个后端配置不一致。
-     * 所以这条提示是**尽力而为**：撞上那个后端才判得出来，撞不上就照常走 URP，
-     * 由 URP 报它自己的错。宁可漏报，也不能在校内误报把人劝去连校园网。
-     * 而校内用户同样会撞上那个后端，只有真去连一下端口才能区分两种情况。
-     */
-    internal fun blockedPort(
-        client: OkHttpClient,
-        baseUrl: String,
-    ): Int? {
-        val port = offCampusPortOf(client, baseUrl) ?: return null
-        val host = parseUrl(baseUrl)?.host ?: return null
-        return port.takeIf { !isPortReachable(host, it) }
-    }
+            // ② 排课规则：决定槽位偏移；拿不到就按实测值（上午/下午/晚上各 4 节）兜底
+            val hours =
+                try {
+                    val rule = post(client, root + RULE_API, csrf, referer, """{"semesterId":"$semesterId"}""")
+                    bandHoursOf(rule)
+                } catch (e: JwException) {
+                    CipBandHours.DEFAULT
+                } catch (e: java.io.IOException) {
+                    CipBandHours.DEFAULT
+                }
 
-    /** 纯 TCP 连通性；域名解析失败、超时、被过滤都算不可达 */
-    private fun isPortReachable(
-        host: String,
-        port: Int,
-    ): Boolean =
-        runCatching {
-            Socket().use { socket ->
-                socket.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
-                true
+            // ③ 学期元数据：周历给总周数与第 1 周周一，基础信息给学期名；同会话内尽力而为
+            val meta = metaOf(client, root, csrf, referer, semesterId)
+            val maskWeeks = meta?.totalWeeks?.takeIf { it > 0 } ?: maxOf(totalWeeks, MIN_TOTAL_WEEKS)
+
+            // ④ 课表数据：周次一次带全，条目自带 weekNos；掩码长度与学校学期一致
+            val weeks = (1..maxOf(maskWeeks, MIN_TOTAL_WEEKS)).joinToString(",")
+            val body =
+                post(
+                    client,
+                    root + TIMETABLE_API,
+                    csrf,
+                    referer,
+                    """{"semesterId":"$semesterId","weekNo":"$weeks"}""",
+                )
+            val drafts = parseTimetable(body, hours, maskWeeks)
+            if (drafts.isEmpty()) {
+                throw JwException.ParseFailed("未解析到课程：请确认该账号本学期有排课")
             }
-        }.getOrDefault(false)
 
-    /** 探测实现；单测用 MockWebServer 直接调它，避免为了一次 GET 把整条抓取链路搭进用例 */
-    internal fun offCampusPortProbe(
+            // ⑤ 作息：教务配了用教务的，没配用本校实测值
+            val times = sectionTimesOf(client, root, csrf, referer, semesterId, hours)
+            JwFetchResult(drafts, times, meta)
+        }
+
+    /** 教务的钟点配置（按校区分组）；为空或认不出来时回落到本校实测作息 */
+    internal fun sectionTimesOf(
         client: OkHttpClient,
-        baseUrl: String,
-    ): Int? = offCampusPortOf(client, baseUrl)
+        root: String,
+        csrf: String,
+        referer: String,
+        semesterId: String,
+        hours: CipBandHours,
+    ): List<SectionTimeDraft> =
+        try {
+            val body =
+                post(client, root + RULE_TIME_API, csrf, referer, """{"semesterId":"$semesterId"}""")
+            parseRuleTimes(body, hours).ifEmpty { SECTION_TIMES }
+        } catch (e: JwException) {
+            SECTION_TIMES
+        } catch (e: java.io.IOException) {
+            SECTION_TIMES
+        }
 
-    private fun offCampusPortOf(
+    /**
+     * 学期元数据：周历（总周数 + 第 1 周周一）与学期名，两路都失败就返回 null
+     * （本地值原样保留）。任一路成功都算有收获——字段各自独立覆盖。
+     */
+    internal fun metaOf(
         client: OkHttpClient,
-        baseUrl: String,
-    ): Int? =
-        runCatching {
-            val base = portalBase(baseUrl) ?: return@runCatching null
-            // 与「进来的那台门户」比主机，而不是与常量比：WebVPN / 镜像部署会换域名
-            val expectedHost = parseUrl(baseUrl)?.host ?: HOST
-            val probe =
-                Request
-                    .Builder()
-                    .url("${base}academic/")
-                    .header("User-Agent", UA)
-                    .get()
-                    .build()
-            // 逐跳自己看 Location：跟随一跳就看不到了
-            client
-                .newBuilder()
-                .followRedirects(false)
-                .build()
-                .newCall(probe)
-                .execute()
-                .use { response -> offCampusPort(response.header("Location"), expectedHost) }
-        }.getOrNull()
+        root: String,
+        csrf: String,
+        referer: String,
+        semesterId: String,
+    ): JwMeta? {
+        val weeks =
+            try {
+                val body =
+                    post(client, root + WEEK_LIST_API, csrf, referer, """{"semesterId":"$semesterId"}""")
+                parseWeekList(body)
+            } catch (e: JwException) {
+                null
+            } catch (e: java.io.IOException) {
+                null
+            }
+        val semester =
+            try {
+                val body =
+                    post(client, root + SEMESTER_API, csrf, referer, """{"dataTypes":"semester"}""")
+                parseSemesterName(body, semesterId)
+            } catch (e: JwException) {
+                ""
+            } catch (e: java.io.IOException) {
+                ""
+            }
+        if (weeks == null && semester.isBlank()) return null
+        return JwMeta(
+            semester = semester,
+            startDate = weeks?.second.orEmpty(),
+            totalWeeks = weeks?.first ?: 0,
+        )
+    }
 
-    /** 门户根：丢掉 path / query / fragment，探测从这里出发 */
-    private fun portalBase(url: String): String? {
-        val parsed = parseUrl(url) ?: return null
+    /**
+     * 周历 → (总周数, 第 1 周周一)。条目按 weekNo 排序后取首条起点；
+     * 总周数取最大 weekNo 而不是数组长度——缺项的周历不会把后面的周数吃掉。
+     */
+    internal fun parseWeekList(body: String): Pair<Int, String>? {
+        val root = runCatching { Json.parseToJsonElement(body) as? JsonObject }.getOrNull() ?: return null
+        val data = root["data"] as? JsonArray ?: return null
+        val weeks =
+            data.mapNotNull { item ->
+                val obj = item as? JsonObject ?: return@mapNotNull null
+                val no = obj.int("weekNo") ?: return@mapNotNull null
+                val start = obj.str("startDate").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                no to start
+            }
+        if (weeks.isEmpty()) return null
+        val sorted = weeks.sortedBy { it.first }
+        return sorted.last().first to sorted.first().second
+    }
+
+    /** 学期列表 → 当前学期的名字；找不到匹配 id 时返回空串（不猜） */
+    internal fun parseSemesterName(
+        body: String,
+        semesterId: String,
+    ): String {
+        val root = runCatching { Json.parseToJsonElement(body) as? JsonObject }.getOrNull() ?: return ""
+        val data = root["data"] as? JsonObject ?: return ""
+        val list = data["semesterList"] as? JsonArray ?: return ""
+        for (item in list) {
+            val obj = item as? JsonObject ?: continue
+            if (obj.str("semesterId") == semesterId) return obj.str("semesterName").trim()
+        }
+        return ""
+    }
+
+    /** 课表页 → (CSRF 令牌, 当前学期 ID)；两样都齐才算认出来了 */
+    internal fun parseTimetablePage(html: String): Pair<String, String>? {
+        val csrf = CSRF_META.find(html)?.groupValues?.get(1) ?: return null
+        val semester = SEMESTER_ID.find(html)?.groupValues?.get(1) ?: return null
+        if (csrf.isBlank() || semester.isBlank()) return null
+        return csrf to semester
+    }
+
+    /**
+     * 课表 JSON → 课程。`studentTimetableList[时段]["星期_节段"]` 下的每条都自带
+     * `weekNos`（如 "6,7,8"），直接建周次掩码；周次缺了才退回 `startEndWeek`，再退全学期。
+     */
+    internal fun parseTimetable(
+        body: String,
+        hours: CipBandHours,
+        totalWeeks: Int,
+    ): List<CourseDraft> {
+        val root = runCatching { Json.parseToJsonElement(body) as? JsonObject }.getOrNull() ?: return emptyList()
+        if (root.int("code") != 0) return emptyList()
+        val data = root["data"] as? JsonObject ?: return emptyList()
+        val bands = data["studentTimetableList"] as? JsonObject ?: return emptyList()
+
+        val drafts = mutableListOf<CourseDraft>()
+        for ((timeType, slots) in bands) {
+            val slotMap = slots as? JsonObject ?: continue
+            for ((key, entries) in slotMap) {
+                val match = SLOT_KEY.find(key) ?: continue
+                val weekDay = match.groupValues[1].toIntOrNull() ?: continue
+                val s1 = match.groupValues[2].toIntOrNull() ?: continue
+                val s2 = match.groupValues[3].toIntOrNull() ?: continue
+                val array = entries as? JsonArray ?: continue
+                for (element in array) {
+                    draftOf(element, timeType, weekDay, s1, s2, hours, totalWeeks)?.let { drafts += it }
+                }
+            }
+        }
+        // 合并班的同一格可能给出多条相同条目，去重后交给统一的导入 Diff
+        return drafts
+            .distinctBy {
+                listOf(
+                    it.name,
+                    it.teacher,
+                    it.room,
+                    it.dayOfWeek,
+                    it.startSection,
+                    it.endSection,
+                    it.weekMask,
+                )
+            }.sortedWith(compareBy({ it.dayOfWeek }, { it.startSection }))
+    }
+
+    private fun JsonObject.str(key: String): String = (this[key] as? JsonPrimitive)?.contentOrNull.orEmpty()
+
+    private fun JsonObject.int(key: String): Int? {
+        val raw = (this[key] as? JsonPrimitive)?.contentOrNull ?: return null
+        return raw.trim().toIntOrNull()
+    }
+
+    private fun draftOf(
+        element: JsonElement?,
+        timeType: String,
+        keyWeekDay: Int,
+        s1: Int,
+        s2: Int,
+        hours: CipBandHours,
+        totalWeeks: Int,
+    ): CourseDraft? {
+        val obj = element as? JsonObject ?: return null
+        val name = obj.str("courseName").trim()
+        if (name.isEmpty()) return null
+        val weekDay = (obj.int("weekDay") ?: keyWeekDay).coerceIn(MIN_DAY, MAX_DAY)
+        val offset = hours.offsetOf(timeType)
+        val start = offset + s1
+        val end = offset + s2
+        if (start > SectionTimes.MAX_SECTIONS || end < start) return null
+        val startSection = start.coerceIn(1, SectionTimes.MAX_SECTIONS)
+        val endSection = end.coerceIn(startSection, SectionTimes.MAX_SECTIONS)
+        val room = obj.str("classroomNo").ifBlank { obj.str("classroomName") }.trim()
+        return CourseDraft(
+            name = name,
+            teacher = obj.str("mainTeacherName").trim(),
+            room = room,
+            dayOfWeek = weekDay,
+            startSection = startSection,
+            endSection = endSection,
+            weekMask = weekMaskOf(obj, totalWeeks),
+        )
+    }
+
+    /** `weekNos` 是逗号分隔的周次列表（"6,7,8"）；缺了退回 `startEndWeek`，都没有按整学期 */
+    private fun weekMaskOf(
+        obj: JsonObject,
+        totalWeeks: Int,
+    ): String {
+        val weeks = obj.str("weekNos").ifBlank { obj.str("startEndWeek") }
+        val parsed =
+            weeks
+                .split(',')
+                .mapNotNull { it.trim().toIntOrNull() }
+                .filter { it in 1..totalWeeks }
+        return if (parsed.isEmpty()) WeekMask.of(totalWeeks) else WeekMask.fromWeeks(totalWeeks, parsed)
+    }
+
+    /**
+     * 排课规则 → 各时段节数。空缺按 0 计（与前端 `toHourNumber` 一致），
+     * 字段认不出来时整体退回 [CipBandHours.DEFAULT]——偏移错一节，全表全错。
+     */
+    internal fun bandHoursOf(body: String): CipBandHours {
+        val root =
+            runCatching { Json.parseToJsonElement(body) as? JsonObject }.getOrNull() ?: return CipBandHours.DEFAULT
+        val data = root["data"] as? JsonObject ?: return CipBandHours.DEFAULT
+        val morning = data.int("morningHour") ?: return CipBandHours.DEFAULT
+        val am = data.int("amHour") ?: return CipBandHours.DEFAULT
+        val noon = data.int("noonHour") ?: return CipBandHours.DEFAULT
+        val pm = data.int("pmHour") ?: return CipBandHours.DEFAULT
+        val night = data.int("nightHour") ?: return CipBandHours.DEFAULT
+        val evening = data.int("eveningHour") ?: return CipBandHours.DEFAULT
+        return CipBandHours(morning, am, noon, pm, night, evening)
+    }
+
+    /**
+     * 教务钟点配置 → 作息。形状（前端 `getClassTime` 的取法）：
+     * `data[校区ID][时段]["classIndex3"] = ["10:00", "10:45"]`，[0] 是上课、[1] 是下课。
+     * 配置按校区分组，多校区取并集，序号相同以后出现的为准。
+     */
+    internal fun parseRuleTimes(
+        body: String,
+        hours: CipBandHours = CipBandHours.DEFAULT,
+    ): List<SectionTimeDraft> {
+        val root = runCatching { Json.parseToJsonElement(body) as? JsonObject }.getOrNull() ?: return emptyList()
+        val data = root["data"] as? JsonObject ?: return emptyList()
+        val byNo = mutableMapOf<Int, Pair<String, String>>()
+        for (campus in data.values) {
+            val campusObj = campus as? JsonObject ?: continue
+            for ((timeType, slots) in campusObj) {
+                val slotObj = slots as? JsonObject ?: continue
+                val offset = hours.offsetOf(timeType)
+                for ((field, times) in slotObj) {
+                    val no = field.removePrefix("classIndex").toIntOrNull() ?: continue
+                    val array = times as? JsonArray ?: continue
+                    val values = array.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
+                    val start = values.firstOrNull() ?: continue
+                    val end = values.lastOrNull() ?: continue
+                    if (start.isBlank() || end.isBlank()) continue
+                    // 配置按时段内序号存，换算成全天节次
+                    val dayNo = offset + no
+                    if (dayNo in 1..SectionTimes.MAX_SECTIONS) byNo[dayNo] = start to end
+                }
+            }
+        }
+        return byNo
+            .map { (no, times) -> SectionTimeDraft(no, times.first, times.second) }
+            .sortedBy { it.sectionNo }
+    }
+
+    /** 门户根：丢掉 path / query / fragment，抓取从根路径出发 */
+    internal fun portalRoot(url: String): String {
+        val parsed = parseUrl(url) ?: throw JwException.NetworkFailed("教务地址无效")
         return parsed
             .newBuilder()
             .encodedPath("/")
@@ -198,5 +435,79 @@ object GuangXiGcAdapter : JwAdapter {
         val withScheme =
             if (trimmed.startsWith("http", ignoreCase = true)) trimmed else "https://$trimmed"
         return withScheme.toHttpUrlOrNull()
+    }
+
+    private fun get(
+        client: OkHttpClient,
+        url: String,
+        referer: String,
+    ): String {
+        val request =
+            Request
+                .Builder()
+                .url(url)
+                .header("User-Agent", UA)
+                .header("Referer", referer)
+                .get()
+                .build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw httpFailure(response.code)
+            return response.body?.string().orEmpty()
+        }
+    }
+
+    /** CIP 的 POST 一律 JSON 体 + CSRF 头；缺头或会话失效时服务端回 403 */
+    private fun post(
+        client: OkHttpClient,
+        url: String,
+        csrf: String,
+        referer: String,
+        json: String,
+    ): String {
+        val request =
+            Request
+                .Builder()
+                .url(url)
+                .header("User-Agent", UA)
+                .header("Referer", referer)
+                .header("X-Requested-With", "XMLHttpRequest")
+                .header("X-CSRF-TOKEN", csrf)
+                .post(json.toRequestBody(JSON_MEDIA))
+                .build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw httpFailure(response.code)
+            return response.body?.string().orEmpty()
+        }
+    }
+}
+
+/**
+ * CIP 的时段节数（`getTimetableRule`）：一天由 早读/上午/中午/下午/晚上/晚间 六段组成，
+ * 槽位里的序号是「时段内 1 起」，换算全天节次时按前序时段的节数累加偏移——
+ * 与前端 `getTimeTypeStartIndex` 的口径一致。
+ */
+data class CipBandHours(
+    val morning: Int,
+    val am: Int,
+    val noon: Int,
+    val pm: Int,
+    val night: Int,
+    val evening: Int,
+) {
+    /** [timeType] 时段第一小节的全天序号减一（0 起）；认不出的时段按上午之后接续不了，归 0 */
+    fun offsetOf(timeType: String): Int =
+        when (timeType) {
+            "morning" -> 0
+            "am" -> morning
+            "noon" -> morning + am
+            "pm" -> morning + am + noon
+            "night" -> morning + am + noon + pm
+            "evening" -> morning + am + noon + pm + night
+            else -> 0
+        }
+
+    companion object {
+        /** 广西工程职业学院 2026 秋实测：上午 4 / 下午 4 / 晚上 4，其余为 0 */
+        val DEFAULT = CipBandHours(morning = 0, am = 4, noon = 0, pm = 4, night = 4, evening = 0)
     }
 }

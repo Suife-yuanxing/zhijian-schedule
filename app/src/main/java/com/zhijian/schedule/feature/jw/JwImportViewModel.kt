@@ -203,7 +203,8 @@ class JwImportViewModel
         fun applyPreview() {
             val p = preview ?: return
             viewModelScope.launch {
-                repository.applyImport(p, applyConflicts = false)
+                // 教务抓取的预览就是「换课表」的确认：连同手动编辑过的课程一起覆盖
+                repository.applyImport(p, applyConflicts = true)
                 preview = null
                 done = true
             }

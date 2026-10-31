@@ -18,11 +18,12 @@ internal fun isJwLoginPage(pageUrl: String): Boolean {
         u.contains("login", true)
 }
 
-/** 登录后进入主框架 / 课表页（引导条切到「点右下抓取课表」） */
+/** 登录后进入主框架 / 课表页（引导条切到「点右下抓取课表」）；CIP 平台的课表路由带 timetable */
 internal fun isJwLoggedInPage(pageUrl: String): Boolean =
     pageUrl.contains("xsMain", true) ||
         pageUrl.contains("xskb", true) ||
-        pageUrl.contains("index_initMenu", true)
+        pageUrl.contains("index_initMenu", true) ||
+        pageUrl.contains("timetable", true)
 
 /** 停在统一身份认证登录页（sso.jsp 自动跳转而来） */
 internal fun isJwAuthserverPage(pageUrl: String): Boolean = pageUrl.contains("authserver", true)

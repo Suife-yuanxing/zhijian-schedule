@@ -1,5 +1,7 @@
 package com.zhijian.schedule.core.update
 
+import com.zhijian.schedule.BuildConfig
+
 /** 一个下载源；[id] 用于判重与日志，[label] 是给用户看的来源标签 */
 data class UpdateSource(
     val id: String,
@@ -21,16 +23,31 @@ object DownloadSourceSet {
 
     private const val GITHUB_PREFIX = "https://github.com/"
 
+    /** 自建 Cloudflare R2 镜像（路线 A）：前缀语义与 gh-proxy 完全一致，直连地址原样挂在后缀 */
+    const val CF_MIRROR_ID = "cf-r2"
+
+    /**
+     * 自建镜像的上游前缀；为空串时该源整条不进候选链。
+     * 由 `app/build.gradle.kts` 的 `UPDATE_CF_MIRROR_PREFIX` 注入，未配置时保持空 → 行为与改造前一致。
+     */
+    const val CF_MIRROR_PREFIX: String = BuildConfig.UPDATE_CF_MIRROR_PREFIX
+
     /**
      * 镜像常量表。2026-10-16 实测（PC 侧）：gh-proxy.com / ghproxy.net 可用，其余常见加速站
-     * 全部不可达或只回错误页；手机侧此前仅 gh-proxy.com 存活。两个镜像默认关闭，只当直连
-     * 停滞/过慢（源监视器判定）时的退路。用户可自行修改本表。
+     * 全部不可达或只回错误页；手机侧此前仅 gh-proxy.com 存活。
+     * 自建 R2 源（[CF_MIRROR_PREFIX] 非空时）排第一，公共镜像作为退路，全部只在直连
+     * 探测落后或失败时才被选中（[orderByProbe] 按实测延迟排序）。
      */
     val MIRRORS: List<UpdateSource> =
-        listOf(
-            UpdateSource("gh-proxy", "镜像 gh-proxy.com", "https://gh-proxy.com/"),
-            UpdateSource("ghproxy-net", "镜像 ghproxy.net", "https://ghproxy.net/"),
-        )
+        buildList {
+            // 自建源排第一：探测（probeSources）只按延迟排序，同样可达时先试自己的
+            CF_MIRROR_PREFIX
+                .takeIf { it.isNotBlank() }
+                ?.let { add(UpdateSource(CF_MIRROR_ID, "镜像 R2", it.trimEnd('/') + "/")) }
+            // 公共镜像保留为退路（实测国内偶发不可达，仅当直连与自建源都失败才会用到）
+            add(UpdateSource("gh-proxy", "镜像 gh-proxy.com", "https://gh-proxy.com/"))
+            add(UpdateSource("ghproxy-net", "镜像 ghproxy.net", "https://ghproxy.net/"))
+        }
 
     /**
      * 这次下载可以依次尝试的源。来源变了必须清空重下（设计 §3.3），
