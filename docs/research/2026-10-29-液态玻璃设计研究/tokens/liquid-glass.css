@@ -1,0 +1,126 @@
+/* Liquid Glass tokens + utilities  (采样 2026-10-29)
+   用法：@import "tokens/liquid-glass.css";
+   说明：数值为工程建议值，非 Apple 官方公布值。 */
+
+:root {
+  --lg-blur-sm: 20px; --lg-blur-md: 24px; --lg-blur-lg: 30px;
+  --lg-sat-sm: 160%;  --lg-sat-md: 180%;  --lg-sat-lg: 200%;
+
+  --lg-surface-bg: rgba(255, 255, 255, 0.70);
+  --lg-surface-bg-clear: rgba(255, 255, 255, 0.18);
+  --lg-surface-bg-solid: #f2f2f7;
+  --lg-rim-top: rgba(255, 255, 255, 0.62);
+  --lg-rim-bottom: rgba(255, 255, 255, 0.22);
+  --lg-outer-line: rgba(0, 0, 0, 0.10);
+  --lg-dim: rgba(0, 0, 0, 0.35);        /* HIG：clear 在亮背景上加 35% 压暗层 */
+  --lg-text: #1c1c1e;
+  --lg-accent: #0a84ff;
+
+  --lg-radius-chip: 12px; --lg-radius-card: 26px; --lg-radius-sheet: 32px; --lg-radius-capsule: 999px;
+  --lg-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.16);
+  --lg-shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.22);
+
+  --lg-refract-scale: 16;
+  --lg-highlight-radius: 160px;
+  --lg-highlight-alpha: 0.24;
+
+  --lg-press-ms: 100ms;
+  --lg-hover-ms: 120ms;
+  --lg-spring: linear(0, 0.0039 0.9%, 0.0157 1.8%, 0.0625 3.5%, 0.246 6.6%, 0.463 8.7%, 0.877 12.4%, 1.008 14.6%, 1.048 16.5%, 1.022 20.2%, 0.996 24.3%, 0.999 30.2%, 1);
+}
+
+/* 深色外观 */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --lg-surface-bg: rgba(28, 28, 30, 0.52);
+    --lg-surface-bg-solid: #1c1c1e;
+    --lg-rim-top: rgba(255, 255, 255, 0.34);
+    --lg-rim-bottom: rgba(255, 255, 255, 0.10);
+    --lg-outer-line: rgba(255, 255, 255, 0.10);
+    --lg-text: #f5f5f7;
+    --lg-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.40);
+  }
+}
+
+/* 用户偏好：更不透明的玻璃（对应 iOS 26.1 Clear / Tinted 的 Tinted） */
+:root[data-lg-look="tinted"] { --lg-surface-bg: rgba(255, 255, 255, 0.88); }
+@media (prefers-color-scheme: dark) {
+  :root[data-lg-look="tinted"] { --lg-surface-bg: rgba(28, 28, 30, 0.80); }
+}
+
+/* 无障碍：降低透明度 —— 直接退化为不透明表面 */
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --lg-surface-bg: var(--lg-surface-bg-solid);
+    --lg-surface-bg-clear: var(--lg-surface-bg-solid);
+    --lg-rim-top: rgba(255, 255, 255, 0.0);
+    --lg-rim-bottom: rgba(255, 255, 255, 0.0);
+  }
+  .lg-surface, .lg-bar, .lg-btn, .lg-chip {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}
+
+/* 无障碍：增强对比 —— 加实描边 */
+@media (prefers-contrast: more) {
+  .lg-surface, .lg-bar, .lg-btn, .lg-chip { outline: 1px solid currentColor; outline-offset: -1px; }
+}
+
+/* ============ 工具类 ============ */
+
+.lg-surface {
+  position: relative;
+  background: var(--lg-surface-bg);
+  -webkit-backdrop-filter: blur(var(--lg-blur-md)) saturate(var(--lg-sat-md));
+  backdrop-filter: blur(var(--lg-blur-md)) saturate(var(--lg-sat-md));
+  border-radius: var(--lg-radius-card);
+  box-shadow:
+    inset 1px 1px 0 0 var(--lg-rim-top),      /* 左上镜面高光 */
+    inset -1px -1px 1px 0 var(--lg-rim-bottom),
+    0 0 0 1px var(--lg-outer-line),           /* 外描边 */
+    var(--lg-shadow-md);
+  color: var(--lg-text);
+}
+
+.lg-surface--clear { background: var(--lg-surface-bg-clear); }
+.lg-surface--dim   { background-image: linear-gradient(var(--lg-dim), var(--lg-dim)); }
+
+/* 指针跟随高光：JS 只更新 --lg-mx / --lg-my */
+.lg-specular::after {
+  content: "";
+  position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: radial-gradient(circle var(--lg-highlight-radius) at var(--lg-mx, 30%) var(--lg-my, 0%),
+              rgba(255, 255, 255, var(--lg-highlight-alpha)), transparent 70%);
+  opacity: 0; transition: opacity var(--lg-hover-ms) ease-out;
+}
+.lg-specular:hover::after, .lg-specular:focus-visible::after { opacity: 1; }
+
+/* 玻璃按钮 */
+.lg-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: var(--lg-hit, 44px); min-width: var(--lg-hit, 44px);
+  padding: 0 18px; border: 0; cursor: pointer;
+  font: inherit; color: var(--lg-text);
+  background: var(--lg-surface-bg);
+  -webkit-backdrop-filter: blur(var(--lg-blur-sm)) saturate(var(--lg-sat-md));
+  backdrop-filter: blur(var(--lg-blur-sm)) saturate(var(--lg-sat-md));
+  border-radius: var(--lg-radius-capsule);
+  box-shadow: inset 1px 1px 0 0 var(--lg-rim-top), 0 0 0 1px var(--lg-outer-line), var(--lg-shadow-md);
+  transition: transform var(--lg-press-ms) cubic-bezier(0.2, 0, 0, 1), background-color var(--lg-hover-ms) ease-out;
+}
+.lg-btn:hover { background-color: color-mix(in srgb, var(--lg-surface-bg) 88%, white); }
+.lg-btn:active { transform: scale(0.97); }
+
+/* 滚动边缘效果：内容进入工具栏区域时渐隐 */
+.lg-scroll-edge {
+  position: sticky; top: 0; z-index: 2; height: 72px; pointer-events: none;
+  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent);
+          mask-image: linear-gradient(to bottom, #000 55%, transparent);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lg-btn:active { transform: none; }
+  .lg-specular::after { transition: none; }
+}

@@ -1,0 +1,174 @@
+{
+  "$schema": "https://design-tokens.org/schema.json",
+  "$description": "Liquid Glass design tokens. 数值为工程建议值，非 Apple 官方公布值。采样 2026-10-29。",
+  "lg": {
+    "color": {
+      "surface": {
+        "light": {
+          "$value": "rgba(255,255,255,0.70)",
+          "$type": "color"
+        },
+        "dark": {
+          "$value": "rgba(28,28,30,0.52)",
+          "$type": "color"
+        },
+        "clear": {
+          "$value": "rgba(255,255,255,0.18)",
+          "$type": "color"
+        },
+        "tinted": {
+          "$value": "rgba(255,255,255,0.86)",
+          "$type": "color"
+        },
+        "solidFallback": {
+          "$value": "#f2f2f7",
+          "$type": "color"
+        }
+      },
+      "rim": {
+        "top": {
+          "$value": "rgba(255,255,255,0.62)",
+          "$type": "color"
+        },
+        "bottom": {
+          "$value": "rgba(255,255,255,0.22)",
+          "$type": "color"
+        },
+        "outer": {
+          "$value": "rgba(0,0,0,0.10)",
+          "$type": "color"
+        }
+      },
+      "dim": {
+        "$value": "rgba(0,0,0,0.35)",
+        "$description": "clear 变体在亮背景上的压暗层（HIG 给定 35%）"
+      },
+      "text": {
+        "primary": {
+          "$value": "#1c1c1e"
+        },
+        "onGlassDark": {
+          "$value": "#ffffff"
+        }
+      },
+      "accent": {
+        "$value": "#0a84ff"
+      }
+    },
+    "blur": {
+      "sm": {
+        "$value": "20px"
+      },
+      "md": {
+        "$value": "24px"
+      },
+      "lg": {
+        "$value": "30px"
+      }
+    },
+    "saturate": {
+      "sm": {
+        "$value": "160%"
+      },
+      "md": {
+        "$value": "180%"
+      },
+      "lg": {
+        "$value": "200%"
+      }
+    },
+    "refraction": {
+      "scale": {
+        "$value": 16,
+        "$description": "feDisplacementMap scale"
+      },
+      "band": {
+        "$value": "12px",
+        "$description": "边缘折射影响带宽"
+      },
+      "chromaSpread": {
+        "$value": 4,
+        "$description": "RGB 三通道位移差"
+      }
+    },
+    "specular": {
+      "staticAngle": {
+        "$value": "135deg"
+      },
+      "staticAlpha": {
+        "$value": 0.5
+      },
+      "pointerRadius": {
+        "$value": "160px"
+      },
+      "pointerAlpha": {
+        "$value": 0.24
+      }
+    },
+    "radius": {
+      "chip": {
+        "$value": "12px"
+      },
+      "card": {
+        "$value": "26px"
+      },
+      "sheet": {
+        "$value": "32px"
+      },
+      "capsule": {
+        "$value": "999px"
+      }
+    },
+    "shadow": {
+      "sm": {
+        "$value": "0 2px 8px rgba(0,0,0,0.10)"
+      },
+      "md": {
+        "$value": "0 8px 24px rgba(0,0,0,0.16)"
+      },
+      "lg": {
+        "$value": "0 18px 48px rgba(0,0,0,0.22)"
+      }
+    },
+    "space": {
+      "1": {
+        "$value": "4px"
+      },
+      "2": {
+        "$value": "8px"
+      },
+      "3": {
+        "$value": "12px"
+      },
+      "4": {
+        "$value": "16px"
+      },
+      "5": {
+        "$value": "20px"
+      },
+      "6": {
+        "$value": "24px"
+      }
+    },
+    "motion": {
+      "pressMs": {
+        "$value": 100
+      },
+      "hoverMs": {
+        "$value": 120
+      },
+      "springResponse": {
+        "$value": 0.34
+      },
+      "springDamping": {
+        "$value": 0.82
+      },
+      "cssSpring": {
+        "$value": "linear(0, 0.0039 0.9%, 0.0157 1.8%, 0.0625 3.5%, 0.246 6.6%, 0.463 8.7%, 0.877 12.4%, 1.008 14.6%, 1.048 16.5%, 1.022 20.2%, 0.996 24.3%, 0.999 30.2%, 1)"
+      }
+    },
+    "hitTarget": {
+      "$value": "44px"
+    }
+  }
+}
