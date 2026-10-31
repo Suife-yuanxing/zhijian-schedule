@@ -5,7 +5,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,7 +27,6 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -38,6 +36,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -49,7 +49,6 @@ import com.zhijian.schedule.core.ui.TapTextButton
 import com.zhijian.schedule.core.ui.metal.MetalFields
 import com.zhijian.schedule.core.ui.pressScale
 import com.zhijian.schedule.core.util.TimeUtils
-import kotlinx.coroutines.delay
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -271,7 +270,8 @@ private fun WeekPresetsRow(
     }
 }
 
-/** 周数步进器：单击 ±1，长按连发（先 420ms 停顿再 85ms 加速） */
+/** 周数步进器：单击 ±1。计步直连 onClick（与预设档同构）——
+ *  不能用「按下即计步 + LaunchedEffect 连发」：快速点击会在重组把按压效果跑起来前松手，表现为点了没反应 */
 @Composable
 private fun WeekStepper(
     weeks: Int,
@@ -315,29 +315,18 @@ private fun StepButton(
 ) {
     val colors = LocalCourseColors.current
     val source = remember { MutableInteractionSource() }
-    val held by source.collectIsPressedAsState()
-    // 连发唯一驱动是这里的 LaunchedEffect：按下立即一步、停顿后加速；
-    // clickable 的 onClick 故意留空，避免「按下已计步、松手又 +1」的双重触发。
-    LaunchedEffect(held) {
-        if (held && enabled) {
-            onStep()
-            delay(420)
-            while (held && enabled) {
-                onStep()
-                delay(85)
-            }
-        }
-    }
     Box(
         Modifier
             .size(width = 46.dp, height = 38.dp)
+            .pressScale(source, pressedScale = 0.9f)
             .clip(RoundedCornerShape(11.dp))
             .background(if (enabled) colors.accent.copy(alpha = 0.08f) else Color.Transparent)
+            .semantics { contentDescription = label }
             .clickable(
                 interactionSource = source,
                 indication = LocalIndication.current,
                 enabled = enabled,
-                onClick = { /* 计步全部由上方 LaunchedEffect 负责 */ },
+                onClick = onStep,
             ),
         contentAlignment = Alignment.Center,
     ) {
