@@ -40,6 +40,17 @@ keystore.properties
 .zcode/
 .ralph/
 .superpowers/
+.dsh/
+.probe_exec/
+.skill-install/
+dsh-skills-install/
+skills-audit-tmp/
+skills-install-compose-animations/
+gh-work/
+_selftest-root-*/
+
+# --- 本机运行时（pymanager 把 Python 3.14 装进了仓库目录，属机器状态不入库）---
+Python/
 
 # --- 编辑器 / IDE 状态 ---
 .vscode/
