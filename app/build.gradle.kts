@@ -223,5 +223,6 @@ dependencies {
     implementation(libs.mlkit.text.recognition.chinese)
 
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
 }

@@ -25,6 +25,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -32,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -123,6 +125,22 @@ private fun AppScaffold(
     reveal: RevealState,
 ) {
     val navController = rememberNavController()
+    // 切页单飞队列：转场落位窗口内的快速连点合并成「最后一次意图、一次干净转场」。
+    // 没有它，AnimatedContent 的打断路径会产出「三页同框 + 页间缝隙 + 目的地迟到落位」的
+    // 病灶帧（backward 方向读作「画面从左上角打开」，真机 10x 慢放钉死，见
+    // docs/reviews/2026-10-31-切页打断三页同框根因.md）。
+    val tabSwitchScope = rememberCoroutineScope()
+    val tabSwitchContext = LocalContext.current
+    val tabSwitchQueue =
+        remember(tabSwitchScope, tabSwitchContext) {
+            TabSwitchQueue(
+                scope = tabSwitchScope,
+                // 预算随系统「动画时长」缩放折算（10x 慢放下转场真的要 2.2s，固定 260ms 会漏）
+                budgetMs = { animatorScaledBudgetMs(tabSwitchContext) },
+                nowMs = systemMonotonicMs,
+                navigate = { route -> navController.navigateToTab(route) },
+            )
+        }
     val entryTransitions = remember { ProfileEntryTransitions() }
     // 二级页持续录进这个图层，返回时浮层直接重绘它（无位图读回）
     val entryLayer = rememberGraphicsLayer()
@@ -251,12 +269,14 @@ private fun AppScaffold(
                                         // 切 tab 只做位移：入场闸门在宿主里，且只对冷启动首帧放行
                                         // 一次（见 RootEntrancePolicy）。这里**不要**再给任何一页
                                         // 开入场，否则就是「切页刷新、从右上方打开」的来源。
+                                        // 也不直接 navigate：落位窗口内的连点必须经 TabSwitchQueue
+                                        // 合并成一次干净转场，否则触发 AnimatedContent 打断路径。
 
                                         // 换 tab 一定把浮岛恢复正常态：收起只跟随「当前这一页」的滚动，
                                         // 换了页就不该继续矮着。翻周不算换页（那是 pager 内部），
                                         // 所以那条路径由 WeekGrid 的 islandActive 单独把关。
                                         islandCollapse.expand()
-                                        navController.navigateToTab(tab.route)
+                                        tabSwitchQueue.request(tab.route)
                                     } else {
                                         navState.requestScrollToTop()
                                         islandCollapse.expand()
