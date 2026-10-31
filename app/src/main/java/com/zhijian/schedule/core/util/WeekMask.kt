@@ -133,4 +133,23 @@ object WeekMask {
         sb.append("周")
         return sb.toString()
     }
+
+    /**
+     * 掩码转「人话」：等差为 2 的纯单周/纯双周折叠成「x-y 单/双周」，
+     * 其余一律走 [toExpression]（全选→「全周」、空→「—」）。
+     * 供课程编辑器的实时周次预览；不改动 [toExpression] 的既有行为。
+     */
+    fun describe(mask: String): String {
+        val ws = weeks(mask)
+        if (ws.isEmpty()) return "—"
+        if (ws.size == mask.length) return "全周"
+        if (ws.size == 1) return toExpression(mask)
+        val step2 = ws.zipWithNext().all { (a, b) -> b - a == 2 }
+        val odd = ws.first() % 2 == 1
+        return when {
+            step2 && odd -> "${ws.first()}-${ws.last()} 单周"
+            step2 && !odd -> "${ws.first()}-${ws.last()} 双周"
+            else -> toExpression(mask)
+        }
+    }
 }
