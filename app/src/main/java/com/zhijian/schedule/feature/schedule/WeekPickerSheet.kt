@@ -30,6 +30,9 @@ import androidx.compose.ui.unit.dp
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.ui.StaggerIn
 import com.zhijian.schedule.core.ui.TapTextButton
+import com.zhijian.schedule.core.ui.week.WeekCell
+import com.zhijian.schedule.core.ui.week.resolveWeekCellVisual
+import java.time.LocalDate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
@@ -116,12 +119,14 @@ fun WeekPickerSheet(
                     ) {
                         rowWeeks.forEach { week ->
                             WeekCell(
-                                week = week,
-                                startDate = ui.dateOf(week, 1),
-                                endDate = ui.dateOf(week, 7),
-                                selected = week == (pinnedWeek ?: ui.selectedWeek),
-                                isCurrentWeek = week == ui.currentWeek,
-                                past = ui.currentWeek != null && week < ui.currentWeek,
+                                title = "第 $week 周",
+                                subtitle = weekRangeText(ui.dateOf(week, 1), ui.dateOf(week, 7)),
+                                visual =
+                                    resolveWeekCellVisual(
+                                        selected = week == (pinnedWeek ?: ui.selectedWeek),
+                                        current = week == ui.currentWeek,
+                                        past = ui.currentWeek != null && week < ui.currentWeek,
+                                    ),
                                 modifier = Modifier.weight(1f),
                                 onClick = { pick(week) },
                             )
@@ -138,3 +143,14 @@ fun WeekPickerSheet(
         }
     }
 }
+
+/** 「10.12-18」；跨月时补月份「10.30-11.5」 */
+private fun weekRangeText(
+    start: LocalDate,
+    end: LocalDate,
+): String =
+    if (start.monthValue == end.monthValue) {
+        "${start.monthValue}.${start.dayOfMonth}-${end.dayOfMonth}"
+    } else {
+        "${start.monthValue}.${start.dayOfMonth}-${end.monthValue}.${end.dayOfMonth}"
+    }
