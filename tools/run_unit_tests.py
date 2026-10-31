@@ -34,6 +34,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -151,6 +152,42 @@ def resolve_classpath():
     return classpath_from_build_dirs(), "project build dirs (fallback)"
 
 
+def prioritize_own_class_dirs(classpath):
+    """把项目自己最新的编译产物提到 classpath 最前。
+
+    旧 gradle run 留下的 worker argfile 可能只认 intermediates 里的 ASM transform 目录，
+    它只在 gradle 真正跑测试时刷新——陈旧类会压过刚编译的新类（症状：新用例“消失”）。
+    kotlin-classes 的 debug（主类）与 debugUnitTest（测试类）由 compile 任务直接写出，
+    永远是最新编译结果。
+    """
+    front = [entry for entry in UNIT_TEST_CLASS_DIRS if os.path.isdir(entry)]
+    main_classes = os.path.join(ROOT, "app", "build", "tmp", "kotlin-classes", "debug")
+    if os.path.isdir(main_classes):
+        front.append(main_classes)
+    rest = [entry for entry in classpath if entry not in front]
+    return front + rest
+
+
+def write_java_argfile(classpath):
+    """把 -cp 写进 java @argfile 绕开 Windows 32k 命令行上限。
+
+    项目内条目转相对路径（repo 根为工作目录），argfile 内容因此全 ASCII；
+    java 接受正斜杠。返回 argfile 路径。
+    """
+    entries = []
+    for entry in classpath:
+        try:
+            entry = os.path.relpath(entry)
+        except ValueError:
+            pass
+        entries.append(entry.replace("\\", "/"))
+    content = '-cp "' + os.pathsep.join(entries) + '"\n'
+    fd, path = tempfile.mkstemp(prefix="junit-cp-", suffix=".argfile")
+    with os.fdopen(fd, "w", encoding="ascii", errors="strict") as handle:
+        handle.write(content)
+    return path
+
+
 def available_tests():
     found = []
     for directory in UNIT_TEST_CLASS_DIRS:
@@ -181,12 +218,7 @@ def main():
         return 0
 
     classpath, source = resolve_classpath()
-    # Windows CreateProcess 上限 32k：argfile 全量 classpath 拼出的命令过长时，
-    # 退回精简的构建目录 classpath（纯 JVM 单测足够，见 classpath_from_build_dirs）。
-    if classpath and len(os.pathsep.join(classpath)) > 30000:
-        short = classpath_from_build_dirs()
-        if short:
-            classpath, source = short, "project build dirs (fallback: command-line too long)"
+    classpath = prioritize_own_class_dirs(classpath)
     if not classpath:
         print("no classpath could be assembled; run:", file=sys.stderr)
         print("  gradlew.bat :app:compileDebugUnitTestKotlin --offline", file=sys.stderr)
@@ -205,9 +237,17 @@ def main():
         parser.error("name at least one test class, or pass --all / --list")
 
     java = find_java()
-    command = [java, "-Dfile.encoding=UTF-8", "-Dsun.jnu.encoding=UTF-8",
-               "-cp", os.pathsep.join(classpath),
-               "org.junit.runner.JUnitCore"] + tests
+    cp = os.pathsep.join(classpath)
+    command = [java, "-Dfile.encoding=UTF-8", "-Dsun.jnu.encoding=UTF-8"]
+    # Windows CreateProcess 32k 上限：全量 classpath 拼出的命令过长时走 java @argfile。
+    # 项目内条目转相对路径，argfile 内容因此全 ASCII（CJK 绝对路径不进 argfile，免受编码坑）。
+    if len(cp) > 30000:
+        argfile = write_java_argfile(classpath)
+        print("classpath via argfile: %s" % argfile)
+        command.append("@" + argfile)
+    else:
+        command += ["-cp", cp]
+    command += ["org.junit.runner.JUnitCore"] + tests
 
     print("classpath source: %s (%d entries)" % (source, len(classpath)))
     print("running: %s" % " ".join(tests))
