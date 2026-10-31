@@ -47,6 +47,15 @@ object ShuWeiClassicAdapter : JwAdapter {
             "coursetable/std/courseTableForStd!courseTable.action",
         )
 
+    /** 成绩页候选：树维各部署的「课程成绩」入口命名不一，逐个试、通用表头解析 */
+    private val GRADE_PATHS =
+        listOf(
+            "courseGradeForStd.action",
+            "courseGradeForStd!search.action",
+            "gradeQuery/courseGradeForStd.action",
+            "stdExamScore.action",
+        )
+
     override fun match(url: String): Int {
         val parsed = parseUrl(url) ?: return 0
         val path = parsed.encodedPath.lowercase()
@@ -58,6 +67,26 @@ object ShuWeiClassicAdapter : JwAdapter {
             SchoolCatalog.byHost(parsed.host)?.adapterId == id -> JwMatchScore.CATALOG
             else -> JwMatchScore.NONE
         }
+    }
+
+    override val gradeFetchSupported = true
+
+    /**
+     * 全部学期成绩：树维成绩页按部署命名不一（[GRADE_PATHS] 候选逐个试），
+     * HTML 表格交给 [GradeParser.parseGeneric] 通用表头解析；全不中返回空。
+     */
+    override suspend fun fetchGrades(
+        client: OkHttpClient,
+        baseUrl: String,
+    ): List<GradeRecord> {
+        val base = JwUrlGuard.safeHttpUrl(baseUrl)?.let { normalizeBase(it.toString()) } ?: return emptyList()
+        return GradeParser.fetchViaCandidates(
+            client = client,
+            candidates = GRADE_PATHS.map { base + it },
+            referer = "${base}home.action",
+            userAgent = UA,
+            isDeadPage = ::isLoginPage,
+        )
     }
 
     override suspend fun fetchSchedule(

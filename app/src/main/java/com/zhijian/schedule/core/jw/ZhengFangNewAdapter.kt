@@ -115,6 +115,95 @@ object ZhengFangNewAdapter : JwAdapter {
             .toString()
     }
 
+    override val gradeFetchSupported = true
+
+    /**
+     * 全部学期成绩：`POST /jwglxt/kbcj/xs_kccj_query.do?gnmkdm=N305005`。
+     * 先试空 xnm/xqm（多数部署返回全学年），被拒或为空再退到课表页当前选中的
+     * 学年/学期。响应形状各版本有差（平铺 / `XSKC` 嵌套），解析按别名容错取值。
+     */
+    override suspend fun fetchGrades(
+        client: OkHttpClient,
+        baseUrl: String,
+    ): List<GradeRecord> {
+        val base = JwUrlGuard.safeHttpUrl(baseUrl)?.let { normalizeBase(it.toString()) } ?: return emptyList()
+        return withContext(Dispatchers.IO) {
+            val referer = "${base}xtgl/index_initMenu.html"
+            val indexHtml = runCatching { get(client, "${base}$INDEX_PATH", referer) }.getOrNull().orEmpty()
+            if (indexHtml.isNotEmpty() && isSessionDeadPage(indexHtml)) throw JwException.NeedsLogin()
+
+            val selected = parseSelectedTerm(indexHtml)
+            val attempts =
+                (listOfNotNull(selected) + listOf("" to "")).distinct()
+            for ((xnm, xqm) in attempts) {
+                val body =
+                    post(
+                        client,
+                        "${base}kbcj/xs_kccj_query.do?gnmkdm=N305005",
+                        referer,
+                        xnm,
+                        xqm,
+                    )
+                if (isSessionDeadPage(body)) throw JwException.NeedsLogin()
+                val records = parseZhengFangGrades(body)
+                if (records.isNotEmpty()) return@withContext records
+            }
+            emptyList()
+        }
+    }
+
+    /**
+     * 成绩 JSON → 记录。各版本字段名不一（`items[].XSKC` 嵌套或平铺、大小写混用），
+     * 把条目与 XSKC 合并后按别名不区分大小写取值；认不出课程名/成绩的条目跳过。
+     */
+    internal fun parseZhengFangGrades(body: String): List<GradeRecord> {
+        val root = runCatching { Json.parseToJsonElement(body).jsonObject }.getOrNull() ?: return emptyList()
+        val items = root["items"] as? JsonArray ?: return emptyList()
+        return items.mapNotNull { element ->
+            val item = element as? JsonObject ?: return@mapNotNull null
+            val xskc = item["XSKC"] as? JsonObject
+            // XSKC 嵌套字段权威，合并时覆盖外层；JsonObject(Map) 重建以保住类型
+            val flat: JsonObject =
+                if (xskc != null) {
+                    JsonObject(item + xskc)
+                } else {
+                    item
+                }
+            val name = flat.strAlias("kcmc", "kc", "courseName").trim()
+            if (name.isEmpty()) return@mapNotNull null
+            val xn = flat.strAlias("xnmc", "xn", "xnxqdm").trim()
+            val xq = flat.strAlias("xqmc", "xq").trim()
+            GradeRecord(
+                term = listOf(xn, xq).filter { it.isNotBlank() }.joinToString("-"),
+                code = flat.strAlias("kch", "KCH").trim(),
+                name = name,
+                score = flat.strAlias("cj", "xmCj", "zpcj", "bfzcj").trim(),
+                scoreFlag = "",
+                credit = flat.strAlias("xf", "XF").trim().toDoubleOrNull() ?: 0.0,
+                hours = null,
+                gpa = flat.strAlias("jd", "JD").trim().toDoubleOrNull(),
+                retakeTerm = "",
+                examMode = "",
+                examNature = "",
+                attr = "",
+                category = "",
+            )
+        }
+    }
+
+    /** 不区分大小写取第一个非空字段（正方各版本键名大小写混用） */
+    private fun JsonObject.strAlias(
+        vararg keys: String,
+    ): String {
+        val lowered = keys.map { it.lowercase() }.toSet()
+        for ((key, value) in this) {
+            if (key.lowercase() in lowered) {
+                (value as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }?.let { return it }
+            }
+        }
+        return ""
+    }
+
     private fun parseUrl(raw: String): HttpUrl? {
         val trimmed = raw.trim()
         if (trimmed.isEmpty()) return null

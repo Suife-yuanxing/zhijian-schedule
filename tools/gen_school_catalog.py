@@ -9,12 +9,17 @@
 
 只收录「协议候选属于本应用已实现的解析器」且「有教务入口 URL」的条目：
     zf_new       -> zhengfang_new
+    zf           -> zhengfang_old
     eams5        -> eams5
     qz           -> qiangzhi
     kingo_new    -> qingguo
     classic_eams -> shuwei_classic
     shuwei_json  -> shuwei_classic
-    urp / urp_new-> urp
+    urp / urp_new/ umooc -> urp
+    chaoxing     -> chaoxing
+    wisedu       -> jinzhi
+    cf / cf_new  -> chengfang
+    yl           -> lianyi
 
 输出列（制表符分隔，无表头）：
     name  pinyin  url  adapterId  verified
@@ -31,6 +36,7 @@ DEFAULT_OUT = "app/src/main/assets/jw/schools.tsv"
 
 PROTOCOL_TO_ADAPTER = {
     "zf_new": "zhengfang_new",
+    "zf": "zhengfang_old",
     "qz": "qiangzhi",
     "kingo_new": "qingguo",
     "classic_eams": "shuwei_classic",
@@ -38,6 +44,12 @@ PROTOCOL_TO_ADAPTER = {
     "eams5": "eams5",
     "urp": "urp",
     "urp_new": "urp",
+    "umooc": "urp",
+    "chaoxing": "chaoxing",
+    "wisedu": "jinzhi",
+    "cf": "chengfang",
+    "cf_new": "chengfang",
+    "yl": "lianyi",
 }
 
 MIN_COLUMNS = 6

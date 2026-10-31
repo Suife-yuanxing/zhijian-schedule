@@ -3,12 +3,10 @@ package com.zhijian.schedule.core.sync
 import android.content.Context
 import com.zhijian.schedule.core.data.db.GradeDao
 import com.zhijian.schedule.core.data.prefs.SettingsStore
-import com.zhijian.schedule.core.jw.GradeFetcher
 import com.zhijian.schedule.core.jw.JwAdapter
 import com.zhijian.schedule.core.jw.JwAdapterRegistry
 import com.zhijian.schedule.core.jw.JwException
 import com.zhijian.schedule.core.jw.JwFetchResult
-import com.zhijian.schedule.core.jw.QiangZhiAdapter
 import com.zhijian.schedule.core.jw.toEntity
 import com.zhijian.schedule.core.model.ImportPreview
 import com.zhijian.schedule.core.model.ImportSource
@@ -81,7 +79,8 @@ class JwSyncManager
                 if (drafts.isEmpty()) {
                     FetchResult.Failed("未解析到课程数据，请确认已进入课表页面")
                 } else {
-                    if (adapter.id == QiangZhiAdapter.id) syncGradesBestEffort(url)
+                    // 成绩随课表抓取一起刷新（按适配器能力）；失败静默不影响课表
+                    syncGradesBestEffort(adapter, url)
                     // 手动抓取：作息随预览走，用户确认导入时才落库（取消就什么都不改）
                     // 自动同步：没有确认环节，抓到即应与课表一起生效
                     val sectionsUpdated =
@@ -139,10 +138,13 @@ class JwSyncManager
             throw last ?: JwException.NetworkFailed("网络异常")
         }
 
-        /** 抓课表时顺带抓成绩（同一会话）：失败静默，不影响课表结果 */
-        private suspend fun syncGradesBestEffort(url: String) {
+        /** 抓课表时顺带抓成绩（同一会话，适配器各自实现）：失败静默，不影响课表结果 */
+        private suspend fun syncGradesBestEffort(
+            adapter: JwAdapter,
+            url: String,
+        ) {
             try {
-                val records = GradeFetcher.fetch(client, url)
+                val records = adapter.fetchGrades(client, url)
                 if (records.isNotEmpty()) {
                     gradeDao.replaceAll(records.map { it.toEntity() })
                     settingsStore.setGradesFetchedAt(System.currentTimeMillis())

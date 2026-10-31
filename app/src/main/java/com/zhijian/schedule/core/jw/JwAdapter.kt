@@ -38,10 +38,30 @@ interface JwAdapter {
     fun supports(url: String): Boolean = match(url) > 0
 
     /**
-     * 会话过期时可静默重登的 SSO 入口；返回 null 表示该适配器没有可重放的
-     * GET 恢复链（例如正方新版只能由用户在 WebView 重新登录）。
+     * 统一认证登录入口（如强智的 `sso.jsp` → authserver）。
+     *
+     * 两处消费：教务导入 WebView **优先用它作落点**（学校本地登录入口常被
+     * WAF 拦截 / 甩到校内地址，统一认证链路更稳）；会话过期时 [JwSessionRecovery]
+     * 也沿它做静默 GET 重登。返回 null 表示没有这样的入口
+     * （例如 gxgc 门户本身就是统一登录，本地入口即正解）。
      */
     fun ssoEntry(baseUrl: String): String? = null
+
+    /**
+     * 抓取**全部学期**成绩，随课表抓取一起刷新并整体覆盖本地成绩。
+     *
+     * 返回空列表 = 本次没有抓到成绩（未适配 / 页面结构不认识 / 未登录），
+     * 调用方静默跳过，不影响课表结果。[gradeFetchSupported] 供成绩页做能力提示。
+     * 实现一律先过 [JwUrlGuard.safeHttpUrl]——baseUrl 来自用户输入。
+     */
+    suspend fun fetchGrades(
+        client: OkHttpClient,
+        baseUrl: String,
+    ): List<GradeRecord> = emptyList()
+
+    /** 成绩抓取是否已适配（成绩页按钮与提示用；[fetchGrades] 返回空也以它为准提示） */
+    val gradeFetchSupported: Boolean
+        get() = false
 
     /**
      * 抓取课表，连同页面里写着的作息时间一起返回；未登录时抛 [JwException.NeedsLogin]。
@@ -127,10 +147,16 @@ object JwAdapterRegistry {
         listOf(
             QiangZhiAdapter,
             ZhengFangNewAdapter,
+            ZhengFangOldAdapter,
             QingGuoAdapter,
             UrpAdapter,
             ShuWeiClassicAdapter,
+            // 金智与树维同住 /eams/：裸 /eams/ 仍判树维，金智只靠自己的端点指纹赢
+            JinZhiAdapter,
             Eams5Adapter,
+            ChaoXingAdapter,
+            ChengFangAdapter,
+            LianYiAdapter,
             // 校级条目放最后：它靠主机名精确命中，不影响任何厂商的路径指纹
             GuangXiGcAdapter,
         )

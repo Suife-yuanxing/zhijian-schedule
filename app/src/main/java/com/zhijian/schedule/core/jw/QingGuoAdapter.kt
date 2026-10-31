@@ -86,6 +86,32 @@ object QingGuoAdapter : JwAdapter {
             )
         }
 
+    override val gradeFetchSupported = true
+
+    /**
+     * 全部学期成绩：青果的成绩页在 `kscj/` 目录（默认列表页即全学期，
+     * 或当前学期），HTML 表格交给 [GradeParser.parseGeneric] 按表头解析。
+     * 候选未命中（部署差异）返回空，按未抓到静默跳过。
+     */
+    override suspend fun fetchGrades(
+        client: OkHttpClient,
+        baseUrl: String,
+    ): List<GradeRecord> {
+        val base = JwUrlGuard.safeHttpUrl(baseUrl)?.let { normalizeBase(it.toString()) } ?: return emptyList()
+        return GradeParser.fetchViaCandidates(
+            client = client,
+            candidates =
+                listOf(
+                    "${base}kscj/cjcx_list.aspx",
+                    "${base}kscj/cjcx.aspx",
+                    "${base}kscj/cjcx_list_rpt.aspx",
+                ),
+            referer = "${base}xsMain.aspx",
+            userAgent = UA,
+            isDeadPage = ::isLoginPage,
+        )
+    }
+
     /**
      * 青果常见「框架页套课表页」，最多向下钻两层；解析失败时返回原页面，
      * 由调用方统一给出 ParseFailed，不在这里吞掉登录态判断。

@@ -8,6 +8,7 @@ import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import java.util.concurrent.TimeUnit
 
@@ -22,6 +23,12 @@ class GuangXiGcAdapterTest {
     private val client = OkHttpClient.Builder().readTimeout(5, TimeUnit.SECONDS).build()
 
     private val portal = "https://zhxy.gxgcedu.com/login"
+
+    /** 「钟点接口为空」的记忆是 object 级状态：每个用例前清掉，测试顺序才无关 */
+    @Before
+    fun resetEmptyRuleTimeMemo() {
+        GuangXiGcAdapter.clearEmptyRuleTimeMemo()
+    }
 
     @Test
     fun `portal host claims every page`() {
@@ -206,6 +213,125 @@ class GuangXiGcAdapterTest {
         assertEquals("2026-08-31", firstMonday)
     }
 
+    // ---------- 成绩 ----------
+
+    /** 学期列表 → id 到名字的映射（成绩抓取的 term 名与全学期 ID 集） */
+    @Test
+    fun `semester map pairs ids with names`() {
+        val map = CipGradeFetcher.parseSemesterMap(SEMESTER_LIST_JSON)
+        assertEquals(
+            mapOf(
+                "17616125694251788336827988858181" to "2025-2026学年第二学期",
+                "17804696533371735297414361881535" to "2026-2027学年第一学期",
+            ),
+            map,
+        )
+        assertEquals(0, CipGradeFetcher.parseSemesterMap("not json").size)
+        assertEquals(0, CipGradeFetcher.parseSemesterMap(RULE_TIME_EMPTY).size)
+    }
+
+    /**
+     * 成绩 JSON → 记录。scoreList 条目字段照抄页面 v2.js 模板（courseName /
+     * sumScore / examStatus）；sumScore 数字与等级文本原文照收，examStatus 非 0
+     * 映射成文案；CIP 无学分绩点 → 0 / null。
+     */
+    @Test
+    fun `cip scores map to grade records`() {
+        val names = mapOf("17804696533371735297414361881535" to "2026-2027学年第一学期")
+        val records = CipGradeFetcher.parseCipScores(SCORE_JSON, names)
+        assertEquals(3, records.size)
+
+        val math = records[0]
+        assertEquals("2026-2027学年第一学期", math.term)
+        assertEquals("高等数学", math.name)
+        assertEquals("89.5", math.score)
+        assertEquals("", math.scoreFlag)
+        assertEquals(0.0, math.credit, 0.001)
+        assertNull(math.gpa)
+
+        assertEquals("优秀", records[1].score)
+        assertEquals("缺考", records[2].scoreFlag)
+        assertEquals("", records[2].score)
+    }
+
+    @Test
+    fun `broken cip scores parse to nothing`() {
+        assertEquals(0, CipGradeFetcher.parseCipScores("not json", emptyMap()).size)
+        assertEquals(0, CipGradeFetcher.parseCipScores("""{"code":500,"msg":"x"}""", emptyMap()).size)
+        assertEquals(0, CipGradeFetcher.parseCipScores(RULE_TIME_EMPTY, emptyMap()).size)
+    }
+
+    /** 成绩全链路：成绩页(csrf) → 学期名 → 成绩 JSON，三请求一循环 */
+    @Test
+    fun `grade fetch replays the cip score flow`() =
+        runBlocking {
+            val server = MockWebServer()
+            server.start()
+            try {
+                server.enqueue(MockResponse().setBody(SCORE_PAGE_HTML))
+                server.enqueue(MockResponse().setBody(SEMESTER_LIST_JSON))
+                server.enqueue(MockResponse().setBody(SCORE_JSON))
+
+                val records = GuangXiGcAdapter.fetchGrades(client, server.url("/login").toString())
+
+                assertEquals(3, records.size)
+                assertEquals(3, server.requestCount)
+                val pagePath = server.takeRequest().path.orEmpty()
+                assertTrue(pagePath.contains("teachingStudentScoreViewV2"))
+                val baseinfo = server.takeRequest()
+                assertTrue(baseinfo.path.orEmpty().contains("getSchoolBaseInfo"))
+                assertTrue(baseinfo.body.readUtf8().contains("semester"))
+                val scores = server.takeRequest()
+                assertTrue(scores.path.orEmpty().contains("getStudentScoreListV2"))
+                assertTrue(scores.body.readUtf8().contains("17804696533371735297414361881535"))
+                assertTrue(scores.getHeader("X-CSRF-TOKEN") == "score-csrf-token")
+            } finally {
+                server.shutdown()
+            }
+        }
+
+    /** 成绩 POST 403（csrf 轮换）时重取一次成绩页再试 */
+    @Test
+    fun `grade fetch retries with fresh csrf on 403`() =
+        runBlocking {
+            val server = MockWebServer()
+            server.start()
+            try {
+                server.enqueue(MockResponse().setBody(SCORE_PAGE_HTML))
+                server.enqueue(MockResponse().setBody(SEMESTER_LIST_JSON))
+                server.enqueue(MockResponse().setResponseCode(403))
+                server.enqueue(MockResponse().setBody(SCORE_PAGE_HTML))
+                server.enqueue(MockResponse().setBody(SCORE_JSON))
+
+                val records = GuangXiGcAdapter.fetchGrades(client, server.url("/login").toString())
+
+                assertEquals(3, records.size)
+                assertEquals(5, server.requestCount)
+                repeat(5) { server.takeRequest() }
+            } finally {
+                server.shutdown()
+            }
+        }
+
+    /** 成绩页是登录页时抛 NeedsLogin（会话失效交回上层） */
+    @Test
+    fun `grade fetch on login page means needs login`() =
+        runBlocking {
+            val server = MockWebServer()
+            server.start()
+            try {
+                server.enqueue(MockResponse().setBody(LOGIN_PAGE_HTML))
+                try {
+                    GuangXiGcAdapter.fetchGrades(client, server.url("/login").toString())
+                    throw AssertionError("expected NeedsLogin")
+                } catch (ignored: JwException.NeedsLogin) {
+                    // 预期路径
+                }
+            } finally {
+                server.shutdown()
+            }
+        }
+
     @Test
     fun `broken week list parses to nothing`() {
         assertNull(GuangXiGcAdapter.parseWeekList(RULE_TIME_EMPTY))
@@ -283,9 +409,43 @@ class GuangXiGcAdapterTest {
                 try {
                     GuangXiGcAdapter.fetchSchedule(client, server.url("/login").toString(), totalWeeks = 20)
                     throw AssertionError("expected NeedsLogin")
-                } catch (e: JwException.NeedsLogin) {
+                } catch (ignored: JwException.NeedsLogin) {
                     // 预期路径
                 }
+            } finally {
+                server.shutdown()
+            }
+        }
+
+    /**
+     * 钟点接口空过一次就记住（2026-10 实测本校恒空）：同进程第二次抓取
+     * 只发 5 个请求，不再白发 getTimetableRuleTime。
+     */
+    @Test
+    fun `empty rule time is remembered and skipped on next fetch`() =
+        runBlocking {
+            val server = MockWebServer()
+            server.start()
+            try {
+                repeat(2) {
+                    server.enqueue(MockResponse().setBody(PAGE_HTML))
+                    server.enqueue(MockResponse().setBody(RULE_JSON))
+                    server.enqueue(MockResponse().setBody(WEEK_LIST_JSON))
+                    server.enqueue(MockResponse().setBody(SEMESTER_LIST_JSON))
+                    server.enqueue(MockResponse().setBody(TIMETABLE_JSON))
+                    server.enqueue(MockResponse().setBody(RULE_TIME_EMPTY))
+                }
+                val url = server.url("/login").toString()
+                val first = GuangXiGcAdapter.fetchSchedule(client, url, totalWeeks = 20)
+                val second = GuangXiGcAdapter.fetchSchedule(client, url, totalWeeks = 20)
+
+                assertEquals(first.courses, second.courses)
+                assertTrue(second.sectionTimes.contains(GuangXiGcAdapter.SECTION_TIMES.first()))
+                // 第一次 6 个请求（含钟点），第二次 5 个
+                assertEquals(11, server.requestCount)
+                val paths = mutableListOf<String>()
+                repeat(11) { paths += server.takeRequest().path.orEmpty() }
+                assertEquals(1, paths.count { it.contains("getTimetableRuleTime") })
             } finally {
                 server.shutdown()
             }
@@ -413,6 +573,35 @@ class GuangXiGcAdapterTest {
             """.trimIndent()
 
         val WEEK_LIST_EMPTY = """{"code":0,"data":[]}"""
+
+        /** 成绩页 fixture：非登录态 + meta csrf（结构照抄实测 score_view.html） */
+        val SCORE_PAGE_HTML =
+            """
+            <!DOCTYPE html>
+            <html lang="zh-CN">
+            <head>
+                <meta charset="UTF-8"/>
+                <meta name="_csrf" content="score-csrf-token"/>
+                <title>我的成绩</title>
+            </head>
+            <body>
+            <div id="app"></div>
+            </body>
+            </html>
+            """.trimIndent()
+
+        /** 成绩 JSON fixture：条目字段照抄页面 v2.js 模板（courseName/sumScore/examStatus） */
+        val SCORE_JSON =
+            """
+            {"code":0,"data":[
+              {"semesterId":"17804696533371735297414361881535","scoreList":[
+                {"courseName":"高等数学","teacherName":"陆梅蓝","sumScore":89.5,
+                 "displayType":1,"examStatus":0,"scoreDetail":{},"retakes":{},"rebuilds":{}},
+                {"courseName":"大学英语","teacherName":"罗艳色","sumScore":"优秀",
+                 "displayType":2,"examStatus":0,"scoreDetail":{},"retakes":{},"rebuilds":{}},
+                {"courseName":"大学物理","teacherName":"陆章金","sumScore":null,
+                 "displayType":1,"examStatus":1,"scoreDetail":{},"retakes":{},"rebuilds":{}}]}]}
+            """.trimIndent()
 
         val SEMESTER_LIST_JSON =
             """

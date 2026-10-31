@@ -16,6 +16,8 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.util.Collections
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * 广西工程职业学院（`zhxy.gxgcedu.com` 智慧校园）的校级适配器。
@@ -84,6 +86,18 @@ object GuangXiGcAdapter : JwAdapter {
 
     /** 登录页的招牌文案（inline script 里的 document.title）；见到即视为未登录 */
     private const val LOGIN_MARK = "系统登录"
+
+    /**
+     * 「钟点接口已确认返回空」的学期（见 [sectionTimesOf]）。手动抓取与自动同步
+     * 可能并发，多记几条无害，用并发集合兜住。
+     */
+    private val emptyRuleTimeSemesters: MutableSet<String> =
+        Collections.newSetFromMap(ConcurrentHashMap())
+
+    /** 测试用：清空「钟点接口为空」的记忆 */
+    internal fun clearEmptyRuleTimeMemo() {
+        emptyRuleTimeSemesters.clear()
+    }
 
     private val CSRF_META = Regex("""<meta\s+name="_csrf"\s+content="([^"]+)"""")
     private val SEMESTER_ID = Regex("""defaultSemesterId\s*=\s*"([^"]+)"""")
@@ -170,6 +184,14 @@ object GuangXiGcAdapter : JwAdapter {
             JwFetchResult(drafts, times, meta)
         }
 
+    override val gradeFetchSupported = true
+
+    /** CIP 成绩抓取（协议与解析见 [CipGradeFetcher]；随课表抓取一起刷新） */
+    override suspend fun fetchGrades(
+        client: OkHttpClient,
+        baseUrl: String,
+    ): List<GradeRecord> = CipGradeFetcher.fetch(client, baseUrl)
+
     /** 教务的钟点配置（按校区分组）；为空或认不出来时回落到本校实测作息 */
     internal fun sectionTimesOf(
         client: OkHttpClient,
@@ -178,16 +200,27 @@ object GuangXiGcAdapter : JwAdapter {
         referer: String,
         semesterId: String,
         hours: CipBandHours,
-    ): List<SectionTimeDraft> =
-        try {
+    ): List<SectionTimeDraft> {
+        // 2026-10 实测：本校 getTimetableRuleTime 恒回 {"code":0,"data":{}}，每次抓取
+        // 都白发一个请求。空过一次就记住，同进程内同学期直接走实测作息；
+        // 教务哪天真配了钟点，重启一次 App 即可拿到。
+        if (semesterId in emptyRuleTimeSemesters) return SECTION_TIMES
+        return try {
             val body =
                 post(client, root + RULE_TIME_API, csrf, referer, """{"semesterId":"$semesterId"}""")
-            parseRuleTimes(body, hours).ifEmpty { SECTION_TIMES }
-        } catch (e: JwException) {
+            val parsed = parseRuleTimes(body, hours)
+            if (parsed.isEmpty()) {
+                emptyRuleTimeSemesters += semesterId
+                SECTION_TIMES
+            } else {
+                parsed
+            }
+        } catch (ignored: JwException) {
             SECTION_TIMES
-        } catch (e: java.io.IOException) {
+        } catch (ignored: java.io.IOException) {
             SECTION_TIMES
         }
+    }
 
     /**
      * 学期元数据：周历（总周数 + 第 1 周周一）与学期名，两路都失败就返回 null
@@ -311,13 +344,6 @@ object GuangXiGcAdapter : JwAdapter {
                     it.weekMask,
                 )
             }.sortedWith(compareBy({ it.dayOfWeek }, { it.startSection }))
-    }
-
-    private fun JsonObject.str(key: String): String = (this[key] as? JsonPrimitive)?.contentOrNull.orEmpty()
-
-    private fun JsonObject.int(key: String): Int? {
-        val raw = (this[key] as? JsonPrimitive)?.contentOrNull ?: return null
-        return raw.trim().toIntOrNull()
     }
 
     private fun draftOf(
@@ -479,6 +505,14 @@ object GuangXiGcAdapter : JwAdapter {
             return response.body?.string().orEmpty()
         }
     }
+}
+
+/** JSON 取值小工具：object 函数数贴着 detekt 阈值，扩展移到文件顶层 */
+private fun JsonObject.str(key: String): String = (this[key] as? JsonPrimitive)?.contentOrNull.orEmpty()
+
+private fun JsonObject.int(key: String): Int? {
+    val raw = (this[key] as? JsonPrimitive)?.contentOrNull ?: return null
+    return raw.trim().toIntOrNull()
 }
 
 /**

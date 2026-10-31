@@ -45,6 +45,56 @@ class GradeParserTest {
         assertNull(pe.gpa)
     }
 
+    /** 通用表格解析：表头别名定位、列序无关，供青果 / URP / 树维成绩页复用 */
+    @Test
+    fun genericParseReadsAliasedHeaders() {
+        val html =
+            """
+            <html><body>
+            <table id="grid">
+              <tr><th>学年学期</th><th>课程代码</th><th>课程名称</th><th>总评成绩</th><th>学分</th><th>绩点</th></tr>
+              <tr><td>2025-2026-1</td><td>C001</td><td>线性代数</td><td>91</td><td>2.5</td><td>3.9</td></tr>
+              <tr><td>2025-2026-1</td><td>C002</td><td>大学物理</td><td>优秀</td><td>3</td><td></td></tr>
+            </table>
+            </body></html>
+            """.trimIndent()
+        val records = GradeParser.parseGeneric(html)
+        assertEquals(2, records.size)
+        assertEquals("线性代数", records[0].name)
+        assertEquals("91", records[0].score)
+        assertEquals("2025-2026-1", records[0].term)
+        assertEquals("C001", records[0].code)
+        assertEquals(2.5, records[0].credit, 0.001)
+        assertEquals(3.9, records[0].gpa!!, 0.001)
+        assertEquals("优秀", records[1].score)
+        assertNull(records[1].gpa)
+    }
+
+    @Test
+    fun genericParseSkipsNonGradeTablesAndShortRows() {
+        // 页面里可能有导航表（无成绩列）在成绩表之前
+        val html =
+            """
+            <html><body>
+            <table><tr><td>首页</td><td>选课</td></tr></table>
+            <table>
+              <tr><th>课程</th><th>成绩</th></tr>
+              <tr><td>说明：暂无数据</td></tr>
+              <tr><td>高等数学</td><td>88</td></tr>
+            </table>
+            </body></html>
+            """.trimIndent()
+        val records = GradeParser.parseGeneric(html)
+        assertEquals(listOf("高等数学"), records.map { it.name })
+        assertEquals("88", records[0].score)
+    }
+
+    @Test
+    fun genericParseYieldsEmptyWhenNoGradeTable() {
+        assertEquals(0, GradeParser.parseGeneric("<table><tr><td>登录</td></tr></table>").size)
+        assertEquals(0, GradeParser.parseGeneric("not html").size)
+    }
+
     @Test
     fun retakeRowKeepsFlagAndRetakeTerm() {
         val records = GradeParser.parse(sample())

@@ -4,11 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.zhijian.schedule.core.data.db.GradeDao
 import com.zhijian.schedule.core.data.prefs.SettingsStore
-import com.zhijian.schedule.core.jw.GradeFetcher
 import com.zhijian.schedule.core.jw.GradeRecord
 import com.zhijian.schedule.core.jw.JwAdapterRegistry
 import com.zhijian.schedule.core.jw.JwException
-import com.zhijian.schedule.core.jw.QiangZhiAdapter
 import com.zhijian.schedule.core.jw.toEntity
 import com.zhijian.schedule.core.jw.toRecord
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -73,13 +71,14 @@ class GradesViewModel
                     _state.update { it.copy(loading = false, needsLogin = true) }
                     return@launch
                 }
-                if (JwAdapterRegistry.forUrl(url)?.id != QiangZhiAdapter.id) {
+                val adapter = JwAdapterRegistry.forUrl(url)
+                if (adapter?.gradeFetchSupported != true) {
                     _state.update {
                         it.copy(loading = false, error = "当前教务系统暂不支持成绩抓取")
                     }
                     return@launch
                 }
-                runCatching { GradeFetcher.fetch(client, url) }
+                runCatching { adapter.fetchGrades(client, url) }
                     .onSuccess { records ->
                         gradeDao.replaceAll(records.map { it.toEntity() })
                         settingsStore.setGradesFetchedAt(System.currentTimeMillis())

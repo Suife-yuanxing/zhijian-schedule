@@ -67,6 +67,49 @@ object QiangZhiAdapter : JwAdapter {
             }
         }
 
+    override val gradeFetchSupported = true
+
+    /**
+     * 全部学期成绩：`kscj/cjcx_list?kksj=`（kksj 留空 = 全学期），与课表共用
+     * WebView 会话；会话过期同样先走统一认证静默重登。URL 来自用户输入，先过
+     * [JwUrlGuard]。
+     */
+    override suspend fun fetchGrades(
+        client: OkHttpClient,
+        baseUrl: String,
+    ): List<GradeRecord> {
+        val base = JwUrlGuard.safeHttpUrl(baseUrl)?.let { normalizeBase(it.toString()) } ?: return emptyList()
+        return withContext(Dispatchers.IO) {
+            try {
+                fetchGradeRecords(client, base)
+            } catch (e: JwException.NeedsLogin) {
+                if (!JwSessionRecovery.trySilentRecover(client, this@QiangZhiAdapter, baseUrl)) throw e
+                fetchGradeRecords(client, base)
+            }
+        }
+    }
+
+    private suspend fun fetchGradeRecords(
+        client: OkHttpClient,
+        base: String,
+    ): List<GradeRecord> =
+        withContext(Dispatchers.IO) {
+            val request =
+                Request
+                    .Builder()
+                    .url("${base}kscj/cjcx_list?kksj=")
+                    .header("User-Agent", UA)
+                    .header("Referer", "${base}kscj/cjcx_frm")
+                    .get()
+                    .build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) throw JwException.NetworkFailed("HTTP ${response.code}")
+                val html = response.body?.string().orEmpty()
+                if (isLoginPage(html)) throw JwException.NeedsLogin()
+                GradeParser.parse(html)
+            }
+        }
+
     private suspend fun fetchCourses(
         client: OkHttpClient,
         baseUrl: String,

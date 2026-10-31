@@ -117,6 +117,31 @@ object UrpAdapter : JwAdapter {
         runCatching { "${normalizeBase(baseUrl)}common/security/login.jsp" }
             .getOrDefault(baseUrl)
 
+    override val gradeFetchSupported = true
+
+    /**
+     * 全部学期成绩：老 URP 的成绩菜单走 `gradeLn/allAction.do`（`oper=examScore`
+     * 即全部成绩列表），HTML 表格交给 [GradeParser.parseGeneric] 按表头解析。
+     * 部署差异（菜单未开 / 页面改名）返回空，按未抓到静默跳过。
+     */
+    override suspend fun fetchGrades(
+        client: OkHttpClient,
+        baseUrl: String,
+    ): List<GradeRecord> {
+        val base = JwUrlGuard.safeHttpUrl(baseUrl)?.let { normalizeBase(it.toString()) } ?: return emptyList()
+        return GradeParser.fetchViaCandidates(
+            client = client,
+            candidates =
+                listOf(
+                    "${base}gradeLn/allAction.do?oper=examScore",
+                    "${base}gradeLn/allAction.do",
+                ),
+            referer = refererOf(baseUrl),
+            userAgent = UA,
+            isDeadPage = ::isLoginPage,
+        )
+    }
+
     /** 先按 JSON 认，再退回通用表格解析；两者互不干扰 */
     fun parseBody(
         body: String,
