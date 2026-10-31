@@ -13,8 +13,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -96,6 +98,9 @@ fun SettingsScreen(
         topBar = {
             SecondaryTopBar(title = "设置", onBack = onBack)
         },
+        // 真全面屏：insets 不在这里消费——滚动内容铺到手势条底下，
+        // 末尾用 navigationBarsPadding 预留（见下方 Spacer）
+        contentWindowInsets = WindowInsets(0.dp),
         containerColor = colors.bg,
     ) { padding ->
         Column(
@@ -190,7 +195,7 @@ fun SettingsScreen(
                 )
             }
 
-            Spacer(Modifier.height(40.dp))
+            Spacer(Modifier.navigationBarsPadding().height(40.dp))
         }
 
         AnimatedVisibility(

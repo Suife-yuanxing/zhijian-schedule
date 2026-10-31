@@ -1,14 +1,17 @@
 package com.zhijian.schedule.feature.exam
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -47,9 +50,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.zhijian.schedule.core.data.db.ExamEntity
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.ui.SecondaryTopBar
+import com.zhijian.schedule.core.ui.StaggerIn
 import com.zhijian.schedule.core.ui.TapIconButton
 import com.zhijian.schedule.core.ui.TapTextButton
+import com.zhijian.schedule.core.ui.cascadeIn
 import com.zhijian.schedule.core.ui.metal.MetalFields
+import com.zhijian.schedule.core.ui.pressScale
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -131,12 +137,15 @@ fun ExamScreen(
                     val (upcoming, past) = state.exams.partition { it.examTime >= System.currentTimeMillis() }
                     if (upcoming.isNotEmpty()) {
                         Spacer(Modifier.height(14.dp))
-                        GroupLabel("即将到来")
-                        upcoming.forEach { exam ->
+                        StaggerIn(index = 0, stepMs = 40, durationMs = 280) {
+                            GroupLabel("即将到来")
+                        }
+                        upcoming.forEachIndexed { index, exam ->
                             ExamRow(
                                 exam,
                                 now,
                                 past = false,
+                                entranceDelayMs = (60L + index * 24).coerceAtMost(240L),
                                 onClick = {
                                     editing = exam
                                     showEditor = true
@@ -147,13 +156,23 @@ fun ExamScreen(
                     }
                     if (past.isNotEmpty()) {
                         Spacer(Modifier.height(14.dp))
-                        GroupLabel("已结束")
-                        past.forEach { exam ->
-                            ExamRow(exam, now, past = true, onClick = {}, onLongClick = { pendingDelete = exam })
+                        StaggerIn(index = 1, stepMs = 40, durationMs = 280) {
+                            GroupLabel("已结束")
+                        }
+                        past.forEachIndexed { index, exam ->
+                            ExamRow(
+                                exam,
+                                now,
+                                past = true,
+                                entranceDelayMs = (140L + index * 24).coerceAtMost(320L),
+                                onClick = {},
+                                onLongClick = { pendingDelete = exam },
+                            )
                         }
                     }
                 }
-                Spacer(Modifier.height(96.dp))
+                // navigationBarsPadding 把手势条高度补进预留：列表铺到屏幕底，末项不被遮
+                Spacer(Modifier.navigationBarsPadding().height(96.dp))
             }
         }
         FloatingActionButton(
@@ -166,6 +185,8 @@ fun ExamScreen(
             modifier =
                 Modifier
                     .align(Alignment.BottomEnd)
+                    // 浮在手势条正上方
+                    .navigationBarsPadding()
                     .padding(24.dp),
         ) {
             Icon(Icons.Filled.Add, contentDescription = "添加考试")
@@ -244,17 +265,24 @@ private fun ExamRow(
     past: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit = {},
+    entranceDelayMs: Long = -1L,
 ) {
     val colors = LocalCourseColors.current
     val alpha = if (past) 0.5f else 1f
+    val source = remember { MutableInteractionSource() }
     Row(
         Modifier
+            .cascadeIn(entranceDelayMs, startScale = 0.92f, riseDp = 8f)
             .fillMaxWidth()
             .padding(bottom = 8.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(colors.surface)
+            // 已结束的行不可交互，按压反馈一并关掉
+            .pressScale(source, pressedScale = 0.98f, enabled = !past)
             .combinedClickable(
                 enabled = true,
+                interactionSource = source,
+                indication = LocalIndication.current,
                 onClick = { if (!past) onClick() },
                 onLongClick = onLongClick,
             ).padding(horizontal = 14.dp, vertical = 12.dp),

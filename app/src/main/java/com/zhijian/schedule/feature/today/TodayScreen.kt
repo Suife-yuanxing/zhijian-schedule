@@ -4,8 +4,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -95,7 +97,8 @@ fun TodayScreen(
             .verticalScroll(scrollState)
             .padding(horizontal = 20.dp),
     ) {
-        Spacer(Modifier.height(18.dp))
+        // 状态栏起始位移：静止时与原布局一致；滚动时内容从顶部磨砂檐下穿过
+        Spacer(Modifier.statusBarsPadding().height(18.dp))
         TodayHeader(ui)
 
         Spacer(Modifier.height(18.dp))
@@ -184,8 +187,9 @@ fun TodayScreen(
                 }
             }
         }
-        // 恒定留白（同 WeekGrid）：不在组合期读收敛值，避免浮岛每帧动画都让整页重新测量
-        Spacer(Modifier.height(IslandContentPadding))
+        // 恒定留白（同 WeekGrid）：不在组合期读收敛值，避免浮岛每帧动画都让整页重新测量。
+        // navigationBarsPadding 把手势条高度补进让位，内容可以一直铺到屏幕底
+        Spacer(Modifier.navigationBarsPadding().height(IslandContentPadding))
     }
 
     selectedCourse?.let { course ->

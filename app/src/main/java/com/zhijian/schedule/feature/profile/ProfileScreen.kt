@@ -5,11 +5,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -32,6 +36,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -95,6 +100,9 @@ fun ProfileScreen(
 ) {
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val colors = LocalCourseColors.current
+    // 手势条高度：底部渐隐与内容让位都要盖到屏幕最底缘（真全面屏）
+    val navigationBarsHeight =
+        with(LocalDensity.current) { WindowInsets.navigationBars.getBottom(this).toDp() }
     var showPrivacy by remember { mutableStateOf(false) }
     var showUpdate by remember { mutableStateOf(false) }
     var showCustomReminder by remember { mutableStateOf(false) }
@@ -110,10 +118,14 @@ fun ProfileScreen(
     Column(
         Modifier
             .fillMaxSize()
-            // 底部渐隐：内容滚到浮岛下方时柔和沉入底栏，不再露出一截被切掉的文字
+            // 景深磨砂：入口卡展开期间整页 blur + 冲淡，返回时随浮层回清晰。
+            // 放在渐隐之外（更外层），磨砂作用的是渐隐之后的整块纸面
+            .entryBackdrop(entryTransitions)
+            // 底部渐隐：内容滚到浮岛下方时柔和沉入底栏，不再露出一截被切掉的文字。
+            // 真全面屏后内容铺到手势条底下，渐隐要一直盖到屏幕最底缘
             .drawWithContent {
                 drawContent()
-                val h = islandContentPadding(islandCollapse?.animated?.value ?: 0f).toPx()
+                val h = islandContentPadding(islandCollapse?.animated?.value ?: 0f, navigationBarsHeight).toPx()
                 drawRect(
                     brush =
                         Brush.verticalGradient(
@@ -128,7 +140,8 @@ fun ProfileScreen(
             .verticalScroll(scrollState)
             .padding(horizontal = 20.dp),
     ) {
-        Spacer(Modifier.height(20.dp))
+        // 状态栏起始位移：静止时与原布局一致；滚动时内容从顶部磨砂檐下穿过
+        Spacer(Modifier.statusBarsPadding().height(20.dp))
         StaggerIn(index = 0, stepMs = 26, maxIndex = 6, durationMs = 340, skip = skipEntrance) {
             Column {
                 Text(
@@ -312,8 +325,9 @@ fun ProfileScreen(
             )
         }
 
-        // 恒定留白（同 WeekGrid）：收敛进度只在 drawWithContent 里读，组合期不订阅
-        Spacer(Modifier.height(IslandContentPadding))
+        // 恒定留白（同 WeekGrid）：收敛进度只在 drawWithContent 里读，组合期不订阅。
+        // navigationBarsPadding 把手势条高度补进让位，末张卡收在浮岛上方
+        Spacer(Modifier.navigationBarsPadding().height(IslandContentPadding))
     }
 
     if (showUpdate) {

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -24,6 +25,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.zhijian.schedule.core.theme.LocalCourseColors
+import com.zhijian.schedule.core.ui.Motion
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 
 /**
  * 返回回收浮层：盖在页面与底栏之上，把快照沿一条曲线直接收进点按的入口卡。
@@ -52,11 +56,27 @@ fun ProfileEntryExitOverlay(
     // 从「松手那一帧」挪到页面停留期间，返回起手不再因新建浮层掉帧
     LaunchedEffect(serial, key) {
         if (key == null) return@LaunchedEffect
-        progress.animateTo(
-            targetValue = 1f,
-            animationSpec = tween(PROFILE_ENTRY_EXIT_MS, easing = LinearEasing),
-        )
-        transitions.finishExit(serial)
+        coroutineScope {
+            // 背景磨砂随收回同步释放：「我的」页从 frosted 一路回清晰，落进卡片时正好透亮。
+            // EaseOut 比浮层的线性收拢快半拍，别让背景糊到着地那一帧
+            launch {
+                val backdrop = Animatable(transitions.backdrop)
+                val mirror = launch {
+                    snapshotFlow { backdrop.value }.collect { transitions.backdrop = it }
+                }
+                backdrop.animateTo(
+                    targetValue = 0f,
+                    animationSpec = tween(PROFILE_ENTRY_EXIT_MS, easing = Motion.EaseOut),
+                )
+                transitions.backdrop = 0f
+                mirror.cancel()
+            }
+            progress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(PROFILE_ENTRY_EXIT_MS, easing = LinearEasing),
+            )
+            transitions.finishExit(serial)
+        }
     }
 
     Canvas(

@@ -1,5 +1,6 @@
 package com.zhijian.schedule.feature.grades
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -9,16 +10,18 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
@@ -27,14 +30,19 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -44,11 +52,14 @@ import com.zhijian.schedule.core.jw.GradeRecord
 import com.zhijian.schedule.core.jw.GradeStats
 import com.zhijian.schedule.core.jw.GradeTrend
 import com.zhijian.schedule.core.theme.LocalCourseColors
+import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.RippleLoader
 import com.zhijian.schedule.core.ui.SecondaryTopBar
+import com.zhijian.schedule.core.ui.StaggerIn
 import com.zhijian.schedule.core.ui.TapIconButton
 import com.zhijian.schedule.core.ui.TapTextButton
 import com.zhijian.schedule.core.ui.buttonFeedback
+import com.zhijian.schedule.core.ui.cascadeIn
 import com.zhijian.schedule.core.ui.selectedPop
 import java.time.Instant
 import java.time.ZoneId
@@ -66,6 +77,9 @@ fun GradesScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val colors = LocalCourseColors.current
+    // 手势条高度：列表末尾补进 contentPadding，内容铺到手势条底下、末行不被遮
+    val navBottomDp =
+        with(LocalDensity.current) { WindowInsets.navigationBars.getBottom(this).toDp() }
 
     val term = state.selectedTerm?.takeIf { it in state.terms }
     val filtered =
@@ -79,6 +93,14 @@ fun GradesScreen(
         remember(filtered) {
             filtered.groupBy { it.term }.toSortedMap(compareByDescending { it })
         }
+
+    // 结构块级联只在「首次拿到成绩」播一次：刷新、切学期筛选都算已就位的内容，
+    // 重播会读成「每次操作都刷新一遍」（与切页不重播入场同一条规矩）
+    var entrancePlayed by rememberSaveable { mutableStateOf(false) }
+    val playEntrance = state.records.isNotEmpty() && !entrancePlayed
+    LaunchedEffect(playEntrance) {
+        if (playEntrance) entrancePlayed = true
+    }
 
     Column(
         Modifier
@@ -127,38 +149,65 @@ fun GradesScreen(
                             start = 20.dp,
                             end = 20.dp,
                             top = 4.dp,
-                            bottom = 40.dp,
+                            bottom = 40.dp + navBottomDp,
                         ),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     item(key = "summary") {
                         Spacer(Modifier.height(4.dp))
-                        SummaryCard(stats, term, state.fetchedAt, state.error != null || state.needsLogin, latestTerm)
+                        StaggerIn(index = 0, stepMs = 40, durationMs = 300, skip = !playEntrance) {
+                            SummaryCard(stats, term, state.fetchedAt, state.error != null || state.needsLogin, latestTerm)
+                        }
                     }
                     if (trend.size >= 2) {
-                        item(key = "trend") { TermTrendCard(trend) }
+                        item(key = "trend") {
+                            StaggerIn(index = 1, stepMs = 40, durationMs = 300, skip = !playEntrance) {
+                                TermTrendCard(trend)
+                            }
+                        }
                     }
                     item(key = "chips") {
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            TermChip(label = "全部", selected = term == null) {
-                                viewModel.selectTerm(null)
-                            }
-                            state.terms.forEach { t ->
-                                TermChip(label = t, selected = term == t) {
-                                    viewModel.selectTerm(t)
+                        StaggerIn(index = 2, stepMs = 40, durationMs = 300, skip = !playEntrance) {
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                TermChip(label = "全部", selected = term == null) {
+                                    viewModel.selectTerm(null)
+                                }
+                                state.terms.forEach { t ->
+                                    TermChip(label = t, selected = term == t) {
+                                        viewModel.selectTerm(t)
+                                    }
                                 }
                             }
                         }
                     }
+                    // 行级联接在结构块之后：延迟在行首次出现时定格（remember），
+                    // 之后 playEntrance 翻转也不会打断正在播的入场
+                    var runningIndex = 0
                     groups.forEach { (groupTerm, list) ->
+                        val groupStart = runningIndex
+                        runningIndex += list.size
                         item(key = "h_$groupTerm") {
-                            GroupHeader(groupTerm, GradeParser.stats(list))
+                            StaggerIn(index = 3, stepMs = 40, durationMs = 300, skip = !playEntrance) {
+                                GroupHeader(groupTerm, GradeParser.stats(list))
+                            }
                         }
-                        items(
+                        itemsIndexed(
                             list,
-                            key = { "${it.term}|${it.code}|${it.name}|${it.score}|${it.retakeTerm}" },
-                        ) { record ->
-                            GradeRow(record)
+                            key = { _, record ->
+                                "${record.term}|${record.code}|${record.name}|${record.score}|${record.retakeTerm}"
+                            },
+                        ) { index, record ->
+                            GradeRow(
+                                record,
+                                entranceDelayMs =
+                                    remember {
+                                        if (playEntrance) {
+                                            180L + ((groupStart + index) * 18).coerceAtMost(140)
+                                        } else {
+                                            -1L
+                                        }
+                                    },
+                            )
                         }
                     }
                 }
@@ -262,13 +311,7 @@ private fun TermTrendCard(summaries: List<GradeTrend.TermSummary>) {
                         .background(colors.border.copy(alpha = 0.4f)),
                 ) {
                     val fraction = ((s.gpa ?: 0.0) / maxGpa.coerceAtLeast(0.01)).toFloat()
-                    Box(
-                        Modifier
-                            .fillMaxWidth(fraction.coerceIn(0.02f, 1f))
-                            .fillMaxHeight()
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(colors.accent),
-                    )
+                    TrendBar(fraction, colors.accent, Modifier.fillMaxHeight())
                 }
                 Spacer(Modifier.width(8.dp))
                 Text(
@@ -281,6 +324,30 @@ private fun TermTrendCard(summaries: List<GradeTrend.TermSummary>) {
             }
         }
     }
+}
+
+/**
+ * 绩点趋势条：首次出现从 0 弹簧生长到位，数据刷新时从当前宽度滑到新值——
+ * 数字是「长出来的」，不是「画上去的」。
+ */
+@Composable
+private fun TrendBar(
+    fraction: Float,
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
+    val progress = remember { Animatable(0f) }
+    LaunchedEffect(fraction) {
+        if (progress.value != fraction) {
+            progress.animateTo(fraction.coerceIn(0.02f, 1f), Motion.CascadeEnter)
+        }
+    }
+    Box(
+        modifier
+            .fillMaxWidth(progress.value.coerceIn(0.02f, 1f))
+            .clip(RoundedCornerShape(3.dp))
+            .background(color),
+    )
 }
 
 @Composable
@@ -320,12 +387,16 @@ private fun GroupHeader(
 }
 
 @Composable
-private fun GradeRow(record: GradeRecord) {
+private fun GradeRow(
+    record: GradeRecord,
+    entranceDelayMs: Long = -1L,
+) {
     val colors = LocalCourseColors.current
     val failed = GradeParser.isFail(record)
     val pillColor = if (failed) FAIL_COLOR else colors.accent
     Row(
         Modifier
+            .cascadeIn(entranceDelayMs, startScale = 0.92f, riseDp = 8f)
             .fillMaxWidth()
             .background(colors.surface, RoundedCornerShape(12.dp))
             .padding(horizontal = 14.dp, vertical = 10.dp),

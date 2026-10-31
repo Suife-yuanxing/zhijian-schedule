@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -72,6 +73,8 @@ internal fun ScheduleFab(
             Box(
                 Modifier
                     .align(Alignment.BottomEnd)
+                    // 手势条高度先补上，再加浮岛让位：按钮浮在手势条正上方、岛之上
+                    .navigationBarsPadding()
                     .padding(end = 20.dp, bottom = IslandContentPadding)
                     .size(56.dp)
                     .onGloballyPositioned { fabBounds = it.boundsInRoot() }
@@ -109,6 +112,7 @@ internal fun ScheduleFab(
                 modifier =
                     Modifier
                         .align(Alignment.BottomEnd)
+                        .navigationBarsPadding()
                         .padding(end = 20.dp, bottom = IslandContentPadding)
                         .size(48.dp)
                         .onGloballyPositioned { fabBounds = it.boundsInRoot() }

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -108,6 +109,8 @@ internal fun PreviewContent(
             modifier =
                 Modifier
                     .fillMaxWidth()
+                    // 确认按钮浮在手势条正上方
+                    .navigationBarsPadding()
                     .padding(20.dp)
                     .buttonFeedback(confirmSource, pressedScale = 0.97f),
         ) { Text("确认导入") }

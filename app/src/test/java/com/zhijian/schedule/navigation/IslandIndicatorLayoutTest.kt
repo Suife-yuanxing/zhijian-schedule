@@ -1,6 +1,7 @@
 package com.zhijian.schedule.navigation
 
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -158,10 +159,16 @@ class IslandIndicatorLayoutTest {
 
     @Test
     fun `content padding interpolates and clamps the collapse progress`() {
-        assertEquals(IslandContentPadding, islandContentPadding(0f))
-        assertEquals(IslandContentPaddingCollapsed, islandContentPadding(1f))
-        assertEquals((IslandContentPadding + IslandContentPaddingCollapsed) * 0.5f, islandContentPadding(0.5f))
-        assertEquals(IslandContentPadding, islandContentPadding(-0.5f))
-        assertEquals(IslandContentPaddingCollapsed, islandContentPadding(1.5f))
+        // 手势条高度是外部入参（真全面屏后叠加进让位），这里钉 0.dp 只测插值本身
+        assertEquals(IslandContentPadding, islandContentPadding(0f, 0.dp))
+        assertEquals(IslandContentPaddingCollapsed, islandContentPadding(1f, 0.dp))
+        assertEquals(
+            (IslandContentPadding + IslandContentPaddingCollapsed) * 0.5f,
+            islandContentPadding(0.5f, 0.dp),
+        )
+        assertEquals(IslandContentPadding, islandContentPadding(-0.5f, 0.dp))
+        assertEquals(IslandContentPaddingCollapsed, islandContentPadding(1.5f, 0.dp))
+        // 手势条高度恒定叠加，不参与插值
+        assertEquals(IslandContentPadding + 24.dp, islandContentPadding(0f, 24.dp))
     }
 }

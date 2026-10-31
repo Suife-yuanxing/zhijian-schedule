@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -52,6 +53,8 @@ internal fun ScheduleTopBar(
     Row(
         Modifier
             .fillMaxWidth()
+            // 真全面屏：顶栏内容避让状态栏，背景由页面 bg 自然铺到屏幕最顶端
+            .statusBarsPadding()
             // end 与 start 同为 8dp：右侧那颗齿轮撤掉之后，标题的左右留白才对得上
             .padding(horizontal = 8.dp)
             .padding(top = 10.dp, bottom = 6.dp),

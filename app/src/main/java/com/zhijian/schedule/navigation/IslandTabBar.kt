@@ -82,10 +82,13 @@ internal val IslandContentPadding = 96.dp
 /** 收敛态留白：浮岛变矮后内容可以多让出一点，但保留手势条呼吸空间 */
 internal val IslandContentPaddingCollapsed = 78.dp
 
-/** 按收敛进度插值的底部留白 */
-internal fun islandContentPadding(collapse: Float): Dp {
+/** 按收敛进度插值的底部留白；真全面屏后内容铺到手势条底下，让位高度要加上手势条本身 */
+internal fun islandContentPadding(
+    collapse: Float,
+    navigationBars: Dp,
+): Dp {
     val t = collapse.coerceIn(0f, 1f)
-    return IslandContentPadding + (IslandContentPaddingCollapsed - IslandContentPadding) * t
+    return IslandContentPadding + navigationBars + (IslandContentPaddingCollapsed - IslandContentPadding) * t
 }
 
 /**

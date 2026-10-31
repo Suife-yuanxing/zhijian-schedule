@@ -152,6 +152,58 @@ internal fun entryCollapseFrame(
     )
 }
 
+/**
+ * 展开时容器内侧的玻璃流光：一道对角光带随进度扫过容器。
+ * 形状只给「光带在线上的位置」与透明度，画法（渐变端点、colorStops）由绘制侧实现。
+ */
+internal data class EntrySheenFrame(
+    /** 光带中心在渐变线上的位置比例，0 → 1 随展开从卡片一角行进到对角 */
+    val bandCenter: Float,
+    /** 光带半宽（渐变线比例） */
+    val bandHalfWidth: Float,
+    val alpha: Float,
+)
+
+/**
+ * 内侧流光的关键帧：中段见峰、两端完全熄灭——玻璃被「擦亮」一下，落位即干净。
+ * bandCenter 全程单调前移，光带不会倒卷。
+ */
+internal fun entrySheenFrame(progress: Float): EntrySheenFrame {
+    val p = progress.coerceIn(0f, 1f)
+    return EntrySheenFrame(
+        bandCenter = 0.12f + 0.88f * p,
+        bandHalfWidth = 0.16f,
+        alpha =
+            ENTRY_SHEEN_MAX_ALPHA *
+                smoothstep(0.06f, 0.4f, p) *
+                (1f - smoothstep(0.62f, 0.96f, p)),
+    )
+}
+
+/**
+ * 展开容器边缘的周向扫光：一道高光段沿 sweepGradient 行进，叠在既有 border 描边上。
+ */
+internal data class EntryEdgeSweepFrame(
+    /** 高光段中心在周向上的位置比例（0 = sweepGradient 起点，随展开行进一整圈的一半） */
+    val centerStop: Float,
+    /** 高光段的半宽（周向比例） */
+    val halfWidth: Float,
+    val alpha: Float,
+)
+
+/** 边缘扫光的关键帧：与内侧流光同一节奏（中段见峰、端点熄灭），位置全程前进 */
+internal fun entryEdgeSweepFrame(progress: Float): EntryEdgeSweepFrame {
+    val p = progress.coerceIn(0f, 1f)
+    return EntryEdgeSweepFrame(
+        centerStop = p,
+        halfWidth = 0.09f,
+        alpha =
+            ENTRY_SWEEP_MAX_ALPHA *
+                smoothstep(0.05f, 0.32f, p) *
+                (1f - smoothstep(0.55f, 0.9f, p)),
+    )
+}
+
 /** 录制层在画布坐标里的整块矩形；图层尚未出图（宽高为 0）时退回画布尺寸 */
 internal fun entryCaptureBounds(
     layerWidth: Int,

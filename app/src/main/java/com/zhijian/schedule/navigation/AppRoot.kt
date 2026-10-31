@@ -1,5 +1,9 @@
 package com.zhijian.schedule.navigation
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.view.Window
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -8,9 +12,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Person
@@ -34,6 +37,8 @@ import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -42,6 +47,7 @@ import androidx.navigation.compose.rememberNavController
 import com.zhijian.schedule.core.theme.CourseTheme
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.theme.LocalCoursePreset
+import com.zhijian.schedule.core.theme.LocalIsDark
 import com.zhijian.schedule.core.ui.LocalClock
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.RevealHost
@@ -160,6 +166,16 @@ private fun AppScaffold(
         )
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
+    // 状态栏/手势条图标明暗跟随 App 内深色模式：enableEdgeToEdge 只在 onCreate 定过一次，
+    // 应用内切换深色不会重建 Activity，得在这里跟着 LocalIsDark 同步
+    val view = LocalView.current
+    val isDark = LocalIsDark.current
+    LaunchedEffect(view, isDark) {
+        val window = view.context.findWindow() ?: return@LaunchedEffect
+        val controller = WindowInsetsControllerCompat(window, view)
+        controller.isAppearanceLightStatusBars = !isDark
+        controller.isAppearanceLightNavigationBars = !isDark
+    }
     // 浮岛只在三个 tab 根页显示；二级页隐藏（内容也不再为其预留空间）
     val showBottomBar = tabs.any { tab -> tab.rootRoute == currentDestination?.route }
     // 玻璃主题：把根内容录制成可折射背景图层（绘制指令级复用，零截屏；其余主题返回 null 零开销）。
@@ -179,14 +195,13 @@ private fun AppScaffold(
         LocalMetalClock provides metalClock,
         LocalMetalGyro provides metalGyro,
     ) {
-        Scaffold { padding ->
-            // 外层已按系统栏 inset 偏移内容，声明为已消费，
-            // 避免二级页 Scaffold/TopAppBar 再次叠加状态栏高度把标题压低
+        Scaffold { _ ->
+            // 真全面屏：不再用系统栏 padding 裁切内容——NavHost 铺满整屏，
+            // 顶部交给轻纱檐（StatusBarVeil）、底部交给浮岛与各页的底部预留。
+            // 二级页自己的 TopAppBar/Scaffold 会接管 insets，视觉与原来一致。
             Box(
                 Modifier
                     .fillMaxSize()
-                    .padding(padding)
-                    .consumeWindowInsets(padding)
                     .onGloballyPositioned { entryTransitions.updateContentBounds(it.boundsInWindow()) },
             ) {
                 // 全屏环境：金属主题的「房间」——极暗底 + 两团随重力漂移的柔光。
@@ -214,6 +229,10 @@ private fun AppScaffold(
                             },
                 )
 
+                // 状态栏轻纱：内容直接铺到状态栏底下（被裁剪的部分完整可见），
+                // 这里只留一层轻底色保时钟/图标对比度
+                StatusBarVeil()
+
                 // 点实时胶囊进「今日」：计数变化时切一次 tab（等首帧后再导航，确保 NavHost 已就绪）
                 LaunchedEffect(openTodayCount) {
                     if (openTodayCount > 0) {
@@ -232,10 +251,14 @@ private fun AppScaffold(
                 }
 
                 // 浮岛悬浮于内容之上：仅根页显示，进入二级页时滑出/返回时滑入（与页面 push/pop 同一弹簧）。
+                // navigationBarsPadding 让岛浮在手势条正上方，内容从岛的底缘一直延伸到屏幕底。
                 // 不参与内容布局（页面按各自的 IslandContentPadding 让位），避免转场期间内容随其变形。
                 AnimatedVisibility(
                     visible = showBottomBar,
-                    modifier = Modifier.align(Alignment.BottomCenter),
+                    modifier =
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .navigationBarsPadding(),
                     enter =
                         slideInVertically(animationSpec = Motion.SlideSpring, initialOffsetY = { it }) +
                             fadeIn(tween(durationMillis = Motion.DUR_MEDIUM, easing = Motion.EaseOut)),
@@ -300,3 +323,11 @@ private fun AppScaffold(
         }
     }
 }
+
+/** 从 Compose 的 context 一路拆包到能拿到 Window 的 Activity */
+private tailrec fun Context.findWindow(): Window? =
+    when (this) {
+        is Activity -> window
+        is ContextWrapper -> baseContext.findWindow()
+        else -> null
+    }

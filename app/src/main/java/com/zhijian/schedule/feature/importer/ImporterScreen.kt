@@ -14,6 +14,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -84,6 +85,9 @@ fun ImporterScreen(
                 },
             )
         },
+        // 真全面屏：insets 不在这里消费——各流程态自己补手势条让位
+        // （方法列表 / 确认按钮 navigationBarsPadding；扫码取景则铺满到屏幕底）
+        contentWindowInsets = WindowInsets(0.dp),
         containerColor = colors.bg,
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {

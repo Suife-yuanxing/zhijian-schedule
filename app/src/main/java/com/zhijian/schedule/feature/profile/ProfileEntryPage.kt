@@ -13,17 +13,21 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.layer.GraphicsLayer
@@ -34,6 +38,9 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.zhijian.schedule.core.theme.LocalCourseColors
+import com.zhijian.schedule.core.ui.rememberAnimationsDisabled
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlin.math.min
 
 /**
@@ -85,6 +92,7 @@ fun ProfileEntryPage(
     LaunchedEffect(forwarded, ready) {
         if (forwarded) {
             enter.snapTo(1f)
+            transitions.backdrop = 1f
             return@LaunchedEffect
         }
         if (!ready) {
@@ -96,10 +104,20 @@ fun ProfileEntryPage(
             return@LaunchedEffect
         }
         enter.snapTo(0f)
-        enter.animateTo(
-            targetValue = 1f,
-            animationSpec = tween(PROFILE_ENTRY_ENTER_MS, easing = EntryEasing),
-        )
+        transitions.backdrop = 0f
+        // 背景景深跟随展开进度：磨砂与压暗在卡片浮起时同步铺开（镜像到共享状态，
+        // 「我的」页在绘制阶段读，不逐帧重组）
+        coroutineScope {
+            val mirror = launch {
+                snapshotFlow { enter.value }.collect { transitions.backdrop = it }
+            }
+            enter.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(PROFILE_ENTRY_ENTER_MS, easing = EntryEasing),
+            )
+            transitions.backdrop = 1f
+            mirror.cancel()
+        }
         forwarded = true
     }
 
@@ -113,7 +131,9 @@ fun ProfileEntryPage(
             waits++
         }
         if (!captureState.recorded) {
-            // 极端情况下没录到整页：直接返回，宁可少一段回收动画也不放空白纸面
+            // 极端情况下没录到整页：直接返回，宁可少一段回收动画也不放空白纸面。
+            // 没走浮层，景深磨砂必须在这里亲手放掉，否则「我的」页一直是糊的
+            transitions.backdrop = 0f
             dismissed = true
             onPop()
             return@LaunchedEffect
@@ -137,10 +157,19 @@ fun ProfileEntryPage(
                 (PROFILE_ENTRY_ABORT_MS * (1f - enter.value))
                     .toInt()
                     .coerceIn(PROFILE_ENTRY_ABORT_MIN_MS, PROFILE_ENTRY_ABORT_MS)
-            enter.animateTo(
-                targetValue = 0f,
-                animationSpec = tween(remaining, easing = EntryEasing),
-            )
+            coroutineScope {
+                val mirror = launch {
+                    snapshotFlow { enter.value }.collect { transitions.backdrop = it }
+                }
+                enter.animateTo(
+                    targetValue = 0f,
+                    animationSpec = tween(remaining, easing = EntryEasing),
+                )
+                transitions.backdrop = 0f
+                mirror.cancel()
+            }
+            // 反向收回同样把画面送回了卡片：着地回弹照播，衔接才不缺一拍
+            transitions.notifyReceive(entryKey)
         }
         // 收拢结束即交给真实入口卡，撤掉页面内容，避免转场未收尾时残留画面
         dismissed = true
@@ -154,6 +183,8 @@ fun ProfileEntryPage(
     if ((forwarded || ready) && !dismissed) {
         val colors = LocalCourseColors.current
         val density = LocalDensity.current
+        // 玻璃流光是纯装饰：「移除动画」时不画
+        val glassEnabled = !rememberAnimationsDisabled()
         val forwardActive = !forwarded && ready
         Box(
             Modifier
@@ -169,6 +200,7 @@ fun ProfileEntryPage(
                             cardRadius = with(density) { CARD_RADIUS_DP.dp.toPx() },
                             // 收回末段让整页内容融回入口卡，避免收拢到位的一瞬硬切
                             fadeToCard = exiting,
+                            glassEnabled = glassEnabled,
                         )
                     } else {
                         Modifier
@@ -218,6 +250,9 @@ fun ProfileEntryPage(
  * 进入动画只改绘制/图层，不读取进度到组合阶段：内容不会逐帧重组。
  * 图层先在整页坐标里按 cover 缩放对齐裁剪框，再把裁剪框反算回内容坐标，
  * 这样同一个 graphicsLayer 就能同时完成“窗口展开”和“内容等比缩放”。
+ *
+ * 玻璃质感（内侧流光 + 边缘扫光）画在同一层 draw 阶段，几何全部来自
+ * ProfileEntryGeometry 的纯函数，只在展开中段可见、两端熄灭。
  */
 private fun Modifier.profileEntryForward(
     progress: Animatable<Float, *>,
@@ -227,6 +262,7 @@ private fun Modifier.profileEntryForward(
     borderWidth: Float,
     cardRadius: Float,
     fadeToCard: Boolean,
+    glassEnabled: Boolean,
 ): Modifier =
     this
         .drawWithContent {
@@ -234,13 +270,18 @@ private fun Modifier.profileEntryForward(
             val p = progress.value
             if (p < 0.999f) {
                 val container = entryForwardContainer(cardRect, contentSize, p)
+                val radius = entryForwardRadius(cardRect, contentSize, p, cardRadius)
+                if (glassEnabled) {
+                    // 玻璃在描边下面：流光擦过容器内侧，扫光叠在 border 之下不打架
+                    drawEntryGlass(container, radius, p, borderWidth * 1.5f)
+                }
                 // 收回末段边框也要一起化掉，否则内容已消失、卡片位置还留一圈描边
                 val borderAlpha = (1f - p) * cardHandOffAlpha(p, fadeToCard)
                 drawRoundRect(
                     color = borderColor.copy(alpha = borderAlpha),
                     topLeft = container.topLeft,
                     size = container.size,
-                    cornerRadius = CornerRadius(entryForwardRadius(cardRect, contentSize, p, cardRadius)),
+                    cornerRadius = CornerRadius(radius),
                     style = Stroke(borderWidth),
                 )
             }
@@ -262,6 +303,80 @@ private fun Modifier.profileEntryForward(
 private class CaptureState {
     var recorded = false
 }
+
+/**
+ * 展开容器的玻璃质感：内侧流光 + 边缘扫光。
+ * 流光是横跨容器的对角光带，随进度从卡片一角行进到对角；扫光是沿容器周向
+ * 行进的高光段，叠在 border 描边上。两者中段见峰、端点熄灭，落位不留残光。
+ */
+private fun DrawScope.drawEntryGlass(
+    container: Rect,
+    radius: Float,
+    progress: Float,
+    sweepWidth: Float,
+) {
+    val glass = Color.White
+    val sheen = entrySheenFrame(progress)
+    if (sheen.alpha > 0.001f) {
+        // 渐变线两端各向外扩半条对角线：容器本身占线的中段，光带才能完整地扫进又扫出
+        val diag = Offset(container.width, container.height)
+        val start = container.topLeft - diag * 0.5f
+        val end = container.bottomRight + diag * 0.5f
+        drawRoundRect(
+            brush =
+                Brush.linearGradient(
+                    colorStops = sheenStops(sheen, glass).toTypedArray(),
+                    start = start,
+                    end = end,
+                ),
+            topLeft = container.topLeft,
+            size = container.size,
+            cornerRadius = CornerRadius(radius),
+        )
+    }
+    val sweep = entryEdgeSweepFrame(progress)
+    if (sweep.alpha > 0.001f) {
+        drawRoundRect(
+            brush =
+                Brush.sweepGradient(
+                    colorStops = sweepStops(sweep, glass).toTypedArray(),
+                    center = container.center,
+                ),
+            topLeft = container.topLeft,
+            size = container.size,
+            cornerRadius = CornerRadius(radius),
+            style = Stroke(sweepWidth),
+        )
+    }
+}
+
+/** 光带的 colorStops：峰位在 [sheen.bandCenter]，两端夹出 [sheen.bandHalfWidth] 半宽 */
+private fun sheenStops(
+    sheen: EntrySheenFrame,
+    glass: Color,
+): List<Pair<Float, Color>> =
+    buildList {
+        val center = sheen.bandCenter.coerceIn(0.05f, 0.95f)
+        add(0f to glass.copy(alpha = 0f))
+        (center - sheen.bandHalfWidth).takeIf { it > 0f }?.let { add(it to glass.copy(alpha = 0f)) }
+        add(center to glass.copy(alpha = sheen.alpha))
+        (center + sheen.bandHalfWidth).takeIf { it < 1f }?.let { add(it to glass.copy(alpha = 0f)) }
+        add(1f to glass.copy(alpha = 0f))
+    }.sortedBy { it.first }
+
+/** 周向扫光的 colorStops：峰位在 [sweep.centerStop]，两端夹出 [sweep.halfWidth] 半宽 */
+private fun sweepStops(
+    sweep: EntryEdgeSweepFrame,
+    glass: Color,
+): List<Pair<Float, Color>> =
+    buildList {
+        val center = sweep.centerStop.coerceIn(0.05f, 0.95f)
+        add(0f to glass.copy(alpha = 0f))
+        (center - sweep.halfWidth).takeIf { it > 0f }?.let { add(it to glass.copy(alpha = 0f)) }
+        add(center to glass.copy(alpha = sweep.alpha))
+        (center + sweep.halfWidth).takeIf { it < 1f }?.let { add(it to glass.copy(alpha = 0f)) }
+        add(1f to glass.copy(alpha = 0f))
+    }.sortedBy { it.first }
 
 private class ContainerShape(
     private val clipRect: Rect,

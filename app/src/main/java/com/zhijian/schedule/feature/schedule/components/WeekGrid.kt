@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -165,7 +166,8 @@ fun WeekGrid(
             }
             // 恒定留白：跟收敛进度插值的话，浮岛每动一帧都会改内容高度 → 整页重新测量/布局，
             // 滚动中的显隐还会顺带改 maxScroll 让内容跳一下。18dp 的差别落在浮岛底下，肉眼看不到。
-            Spacer(Modifier.height(IslandContentPadding))
+            // navigationBarsPadding 把手势条高度补进让位：网格铺满全屏，末行收在浮岛上方
+            Spacer(Modifier.navigationBarsPadding().height(IslandContentPadding))
         }
         // 表头下方 22dp 渐隐：课块滚进来时是淡出，而不是被硬切一刀
         if (fade > 0.01f) {

@@ -227,6 +227,16 @@ object Motion {
      */
     val PressIn = spring<Float>(dampingRatio = 0.60f, stiffness = 1200f)
 
+    /**
+     * 入口卡「接住」返回画面的着地弹簧：快照落进卡片那一帧 snapTo 到 1.03，
+     * 再由这条弹簧软着陆回 1，过冲冲到 1 下方约 0.4% 再收口，读作卡片把页面「垫了一下」。
+     *
+     * 0.55 / 520：ω ≈ 22.8 rad/s，半程约 70ms、落位约 300ms；阻尼比 0.55 与
+     * [JellySlide] 同档——着地要有果冻的鼓动，但幅度只有 3% 行程，
+     * 过冲折到卡片上约 0.12%，眼睛读得到「软」，手不会觉得它在抖。
+     */
+    val CatchSpring = spring<Float>(dampingRatio = 0.55f, stiffness = 520f)
+
     /** 倾动高光淡出：松手后留一点余晖，但不要拖住回正（比旧版 150ms 更"余韵"） */
     const val DUR_TILT_GLARE_OUT = 200
 }

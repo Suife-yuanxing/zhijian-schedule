@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -185,6 +186,8 @@ fun JwImportScreen(
                 },
             )
         },
+        // 真全面屏：insets 不在这里消费——网页内容一路铺到屏幕底（手势条后面），阅读区域最大化
+        contentWindowInsets = WindowInsets(0.dp),
         containerColor = colors.bg,
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {

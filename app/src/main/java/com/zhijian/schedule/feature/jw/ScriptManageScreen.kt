@@ -8,9 +8,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -32,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -58,6 +61,9 @@ internal fun ScriptManageScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val colors = LocalCourseColors.current
+    // 手势条高度：列表末尾补进 contentPadding，内容铺到手势条底下
+    val navBottomDp =
+        with(LocalDensity.current) { WindowInsets.navigationBars.getBottom(this).toDp() }
     var indexDraft by remember(state.indexUrl) { mutableStateOf(state.indexUrl) }
     var pendingDelete by remember { mutableStateOf<ScriptOption?>(null) }
     val filePicker =
@@ -77,7 +83,7 @@ internal fun ScriptManageScreen(
                     start = 20.dp,
                     end = 20.dp,
                     top = 8.dp,
-                    bottom = 12.dp,
+                    bottom = 12.dp + navBottomDp,
                 ),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {

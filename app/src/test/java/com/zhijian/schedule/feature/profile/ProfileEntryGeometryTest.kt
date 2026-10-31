@@ -246,6 +246,59 @@ class ProfileEntryGeometryTest {
         assertTrue(remainingAtHalf < (full.width - target.width) * 0.2f)
     }
 
+    // ---------- 玻璃质感（流光 / 边缘扫光） ----------
+
+    @Test
+    fun `内侧流光两端熄灭且中段可见`() {
+        assertEquals(0f, entrySheenFrame(0f).alpha, 1e-6f)
+        assertEquals(0f, entrySheenFrame(1f).alpha, 1e-6f)
+        assertTrue(entrySheenFrame(0.5f).alpha in 0.001f..ENTRY_SHEEN_MAX_ALPHA)
+        // 展开刚开始与收尾都不擦亮：玻璃只在行进途中反光
+        assertEquals(0f, entrySheenFrame(0.02f).alpha, 1e-6f)
+        assertEquals(0f, entrySheenFrame(0.98f).alpha, 1e-6f)
+    }
+
+    @Test
+    fun `内侧流光峰值不超过上限且位置全程前进`() {
+        var last = entrySheenFrame(0f).bandCenter
+        var peak = 0f
+        var i = 0
+        while (i <= 100) {
+            val frame = entrySheenFrame(i / 100f)
+            assertTrue(frame.alpha <= ENTRY_SHEEN_MAX_ALPHA + 1e-6f)
+            assertTrue("bandCenter 不应倒卷 p=$i", frame.bandCenter >= last - 1e-6f)
+            last = frame.bandCenter
+            peak = maxOf(peak, frame.alpha)
+            i += 1
+        }
+        assertTrue("中段应该有可见流光，实际峰值 $peak", peak > ENTRY_SHEEN_MAX_ALPHA * 0.6f)
+    }
+
+    @Test
+    fun `边缘扫光两端熄灭且高光段合法`() {
+        assertEquals(0f, entryEdgeSweepFrame(0f).alpha, 1e-6f)
+        assertEquals(0f, entryEdgeSweepFrame(1f).alpha, 1e-6f)
+        val mid = entryEdgeSweepFrame(0.4f)
+        assertTrue(mid.alpha in 0.001f..ENTRY_SWEEP_MAX_ALPHA)
+        // 中段的高光段应完整落在 [0,1] 内（首尾的越界由绘制侧钳位负责）
+        assertTrue(mid.centerStop - mid.halfWidth >= 0f)
+        assertTrue(mid.centerStop + mid.halfWidth <= 1f)
+    }
+
+    @Test
+    fun `边缘扫光进度越界时钳位且位置单调`() {
+        assertEquals(entryEdgeSweepFrame(0f).centerStop, entryEdgeSweepFrame(-1f).centerStop, 1e-6f)
+        assertEquals(entryEdgeSweepFrame(1f).centerStop, entryEdgeSweepFrame(2f).centerStop, 1e-6f)
+        var last = entryEdgeSweepFrame(0f).centerStop
+        var i = 0
+        while (i <= 100) {
+            val stop = entryEdgeSweepFrame(i / 100f).centerStop
+            assertTrue(stop >= last - 1e-6f)
+            last = stop
+            i += 1
+        }
+    }
+
     // ---------- 边界与兜底 ----------
 
     @Test

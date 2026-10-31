@@ -1,5 +1,6 @@
 package com.zhijian.schedule.feature.profile
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -29,12 +30,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.theme.LocalCoursePreset
+import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.buttonFeedback
 import com.zhijian.schedule.core.ui.metal.CardTone
 import com.zhijian.schedule.core.ui.metal.metalCard
@@ -56,6 +59,14 @@ internal fun HeroEntryCard(
 ) {
     val colors = LocalCourseColors.current
     val pressSource = remember { MutableInteractionSource() }
+    val pressed by pressSource.collectIsPressedAsState()
+    // 图标底座的按压响应：按下缩一点，松手带过冲弹回——卡片整体缩之外，
+    // 图标自己「沉一下再浮起来」，页面还没打开就有被按住的手感
+    val tileScale by animateFloatAsState(
+        targetValue = if (pressed) 0.9f else 1f,
+        animationSpec = Motion.PressSpring,
+        label = "heroTilePress",
+    )
     Column(
         modifier
             .buttonFeedback(pressSource, pressedScale = 0.97f)
@@ -70,7 +81,10 @@ internal fun HeroEntryCard(
         Box(
             Modifier
                 .size(38.dp)
-                .clip(RoundedCornerShape(12.dp))
+                .graphicsLayer {
+                    scaleX = tileScale
+                    scaleY = tileScale
+                }.clip(RoundedCornerShape(12.dp))
                 .background(colors.accent.copy(alpha = ACCENT_TILE_ALPHA)),
             contentAlignment = Alignment.Center,
         ) {
@@ -137,6 +151,18 @@ internal fun GroupedEntryRow(
     val colors = LocalCourseColors.current
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
+    // 与入口大卡同款的图标底座按压响应；行本体仍用底色反馈，不缩放，避免分隔线跟着动
+    val tileScale by animateFloatAsState(
+        targetValue = if (pressed && onClick != null) 0.9f else 1f,
+        animationSpec = Motion.PressSpring,
+        label = "rowTilePress",
+    )
+    // 尾部箭头按住时往前探一点：方向暗示「要去哪」，松手弹回
+    val arrowNudge by animateFloatAsState(
+        targetValue = if (pressed && onClick != null) 1f else 0f,
+        animationSpec = Motion.PressSpring,
+        label = "rowArrowNudge",
+    )
     Row(
         Modifier
             .fillMaxWidth()
@@ -163,7 +189,10 @@ internal fun GroupedEntryRow(
         Box(
             Modifier
                 .size(36.dp)
-                .clip(RoundedCornerShape(11.dp))
+                .graphicsLayer {
+                    scaleX = tileScale
+                    scaleY = tileScale
+                }.clip(RoundedCornerShape(11.dp))
                 .metalCard(RoundedCornerShape(11.dp), colors.surfaceVariant, CardTone.INSET),
             contentAlignment = Alignment.Center,
         ) {
@@ -189,8 +218,11 @@ internal fun GroupedEntryRow(
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = null,
-                tint = colors.textMuted.copy(alpha = 0.7f),
-                modifier = Modifier.size(20.dp),
+                tint = colors.textMuted.copy(alpha = 0.7f + 0.3f * arrowNudge),
+                modifier =
+                    Modifier
+                        .size(20.dp)
+                        .graphicsLayer { translationX = 3.dp.toPx() * arrowNudge },
             )
         }
     }

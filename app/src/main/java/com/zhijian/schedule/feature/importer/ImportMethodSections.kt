@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -48,6 +49,8 @@ internal fun MethodList(
     Column(
         Modifier
             .fillMaxSize()
+            // 手势条让位：方法列表非滚动，末张卡收在手势条上方
+            .navigationBarsPadding()
             .padding(horizontal = 16.dp)
             .padding(top = 8.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
