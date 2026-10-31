@@ -1,12 +1,15 @@
 package com.zhijian.schedule.feature.schedule
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -27,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.ui.StaggerIn
 import com.zhijian.schedule.core.ui.TapTextButton
@@ -108,7 +112,19 @@ fun WeekPickerSheet(
             // 3dp + 行图层内 3dp 上垫 = 原来的 6dp
             Spacer(Modifier.height(3.dp))
 
-            (1..ui.totalWeeks).toList().chunked(4).forEachIndexed { rowIdx, rowWeeks ->
+            val rows =
+                remember(ui.totalWeeks, ui.dateOf(1, 1)) {
+                    WeekPickerRows.build(ui.totalWeeks, ui.dateOf(1, 1))
+                }
+            rows.forEachIndexed { rowIdx, row ->
+                row.monthLabel?.let { month ->
+                    StaggerIn(
+                        index = rowIdx + 1,
+                        contentPadding = PaddingValues(horizontal = 20.dp),
+                    ) {
+                        MonthDivider(month)
+                    }
+                }
                 StaggerIn(
                     index = rowIdx + 1,
                     contentPadding = PaddingValues(horizontal = 20.dp, vertical = 3.dp),
@@ -117,21 +133,20 @@ fun WeekPickerSheet(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(13.dp),
                     ) {
-                        rowWeeks.forEach { week ->
+                        row.weeks.forEach { week ->
                             WeekCell(
                                 title = "第 $week 周",
                                 subtitle = weekRangeText(ui.dateOf(week, 1), ui.dateOf(week, 7)),
                                 visual =
                                     resolveWeekCellVisual(
                                         selected = week == (pinnedWeek ?: ui.selectedWeek),
-                                        current = week == ui.currentWeek,
-                                        past = ui.currentWeek != null && week < ui.currentWeek,
+                                        current = week == ui.currentWeek, past = ui.currentWeek != null && week < ui.currentWeek,
                                     ),
                                 modifier = Modifier.weight(1f),
                                 onClick = { pick(week) },
                             )
                         }
-                        repeat(4 - rowWeeks.size) {
+                        repeat(4 - row.weeks.size) {
                             Spacer(Modifier.weight(1f))
                         }
                     }
@@ -154,3 +169,29 @@ private fun weekRangeText(
     } else {
         "${start.monthValue}.${start.dayOfMonth}-${end.monthValue}.${end.dayOfMonth}"
     }
+
+/** 月分界小标：给「第 N 周」一个月份锚点 */
+@Composable
+private fun MonthDivider(month: Int) {
+    val colors = LocalCourseColors.current
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = "$month 月",
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+            color = colors.textMuted,
+        )
+        Spacer(Modifier.width(8.dp))
+        Box(
+            Modifier
+                .weight(1f)
+                .height(1.dp)
+                .background(colors.border.copy(alpha = 0.6f)),
+        )
+    }
+}
