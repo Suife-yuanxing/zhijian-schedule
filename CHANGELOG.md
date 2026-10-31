@@ -12,9 +12,9 @@
 
 ## [Unreleased]
 
-## [1.0.15] - 2026-10-30
+## [1.0.15] - 2026-11-01
 
-*提交区间：v1.0.14..v1.0.15（20 个提交）— 水银镜面主题、涟漪加载态、根页切换重构*
+*提交区间：v1.0.14..v1.0.15（40 个提交）— 水银镜面主题、根页切换重构、教务成绩抓取与五家新教务适配器*
 
 ### Added
 
@@ -38,8 +38,19 @@
 - perf(schedule): 「现在」呼吸灯从逐帧无限动画改为定频采样（`PulseMath` + `rememberBreathingAlpha`，20Hz）——课表页静置 10 秒的实测产帧从 606 帧降到 192 帧；旧写法让这一页只要含「现在线」就恒定 ~61fps 重绘，切页时与整屏滑动抢同一条渲染管线
 - test(ui): 新增 `RootEntrancePolicyTest`（7 例）、`WeekAnchorPolicyTest`（9 例）、`PulseMathTest`（8 例）——钉住「关闸后三页全否」「二级页永不播」「同锚点不重定位」「采样台阶 < 5% 且 20Hz」
 - docs(spec): 新增 `docs/specs/2026-10-30-根页切换规范.md`——把根页切换的话题固化成硬约定（切 tab 只做位移 / 入场只播一次 / 定位只认锚点），含根因认定、真机实测对照、验证命令、单测清单、反模式条目与**已知遗留**（纵向滚动位置仍会回到顶部，本次三条路线均未通过真机复验，已全部撤回不留半成品）
+- feat(jw): **成绩跟随课表抓取覆盖入库**——`JwAdapter.fetchGrades` 能力化（返回空 = 未适配，空结果/失败静默跳过，绝不覆盖旧成绩），`JwSyncManager` 在课表抓取成功后 best-effort 同步，成绩页手动刷新同链路；七家既有适配器各自实现（强智 HTML 表、正方新 `xs_kccj_query.do` 嵌套解析、青果/URP/树维候选轮询 + 通用表头解析、gxgc CIP 三步一循环 `CipGradeFetcher`——CSRF 强制、403 视为令牌轮换重试一次）。新增 `JwUrlGuard` 安全闸门：新抓取路径拼 URL 前只放行 http(s) 公网主机，拒绝 localhost / 环回 / 私有 / 保留地址
+- feat(jw): **新增五家教务适配器**，教务类型 7 → 12，学校目录 1602 → 1935 条（`gen_school_catalog.py` 扩协议映射，上游社区目录零丢失）：超星 `*.jw.chaoxing.com` 租户域（encodeId 会话 + `sdpkkbList` 整学期 JSON + jqGrid 成绩）；金智 `/eams/`（与树维靠 `courseTableStudent` 端点指纹区分，新增 `EamsTaskParser` 解析页内嵌 TaskActivity JS——unitCount / 周次位图下标 0 占位 / index=D×unitCount+P 0 基 / 停课标记跳过）；乘方新旧两代（`week.page` 学期下拉 + businessHours 作息 + `getCalendarWeekDatas`，旧版内嵌 `var kbxx` 且 JS 反斜杠房间名先补无效转义再解析）；正方旧版（`default2.aspx` 指纹 + `xh=` 会话参数，全链路 GBK 解码，`fetchViaCandidates` 增加 charset 参数）；联奕（`lyuapServer` CAS 指纹，React 课表页仅 SSR 可解析、SPA 壳给明确「改用截图导入」提示）。端点证据来自 GitHub 爬虫仓库与拾光课程表逐校适配脚本的多源交叉验证
+- test(jw): 新增 34 例——五家适配器解析 fixture（连堂合并 / 教室分周 / TaskActivity 逗号课名 / GBK 成绩表全链路 MockWebServer）、`JwUrlGuardTest`（5 例）、`JwAssetCacheTest`（6 例），全量 708 例全绿
+
+### Fixed
+
+- fix(jw): 输入法收起时底部「每日自动同步」整条抬起挡住 WebView 页面与输入框——footer 去掉 `imePadding` 改随导航栏内边距
+- fix(jw): gxgc 的 `getTimetableRuleTime` 恒返回空却每次白发一个请求——空过一次即记忆化跳过，教务哪天真配了钟点重启一次 App 即可拿到
 
 ### Changed
+
+- perf(jw): 教务导入提速——识别到课表页即后台预取（点「抓取」直接出预览），WebView 静态资源磁盘缓存（`JwAssetCache`：js/css/图片按 7 天 TTL 落盘，元信息四行 + 正文长度校验防半截文件，8MB 目标 / 16MB 上限自动清理，登录页路径一律不缓存），教务二次打开明显变快
+- feat(jw): 教务导入优先落统一认证入口（`ssoEntry`）——本地登录页常被 WAF 拦或甩校内地址；统一认证打不开时给「改用本地登录」的双向回退按钮
 
 - chore(repo): 仓库规范化——补 `.gitattributes`（只钉死 `gradlew`/`gradlew.bat` 的换行符 + 二进制标记，不做全仓 renormalize）；`.editorconfig` 补 Room schema 生成物的尾换行豁免（生成器不写尾换行，之前规则与工具互相打架）
 - docs: 把散在各处的陈旧统计按实测重算并写清统计口径（`.kt` 300 个 / 42924 行 / 超 120 列 32 行；提交 135 个、`git log --merges` 为空；截图 12 张），`CHANGELOG` 的 v1.0.13 / v1.0.14 段补回缺失的发布日期、提交区间与版本号表条目
