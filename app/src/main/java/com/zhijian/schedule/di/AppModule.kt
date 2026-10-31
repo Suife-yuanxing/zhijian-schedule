@@ -19,6 +19,7 @@ import com.zhijian.schedule.core.data.db.TimeModeDao
 import com.zhijian.schedule.core.data.db.TimetableDao
 import com.zhijian.schedule.core.jw.script.ScriptStore
 import com.zhijian.schedule.core.net.ExpiredCertTolerance
+import com.zhijian.schedule.core.net.JwAssetCache
 import com.zhijian.schedule.core.net.ToleratedTls
 import com.zhijian.schedule.core.net.WebViewCookieJar
 import dagger.Module
@@ -131,4 +132,16 @@ object AppModule {
     fun provideScriptStore(
         @ApplicationContext context: Context,
     ): ScriptStore = ScriptStore(File(context.filesDir, "jw-scripts"))
+
+    /**
+     * 教务门户静态资源缓存：教务 WebView 的 shouldInterceptRequest 用。
+     * 与抓取共用同一个 [OkHttpClient]——后台预取门户静态资源时顺带预热了
+     * 抓取课表要用的连接池。
+     */
+    @Provides
+    @Singleton
+    fun provideJwAssetCache(
+        client: OkHttpClient,
+        @ApplicationContext context: Context,
+    ): JwAssetCache = JwAssetCache(client, File(context.cacheDir, "jw-assets"))
 }

@@ -25,7 +25,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -248,17 +247,34 @@ fun JwImportScreen(
                 adapterName = viewModel.detectedAdapterName,
             )
 
-            // 仅在学校本地登录入口返回 5xx（源站超时/被 WAF 拦截）时，才露出统一认证兜底入口
-            if (viewModel.httpErrorHint >= 500 && viewModel.ssoEntry != null) {
-                TapTextButton(
-                    onClick = viewModel::openSsoLogin,
-                    modifier = Modifier.padding(start = 8.dp),
-                ) {
-                    Text(
-                        text = "本地登录打不开？改用统一认证登录",
-                        fontSize = 12.sp,
-                        color = colors.accent,
-                    )
+            // 登录链路 5xx（源站超时/被 WAF 拦截）时的双向兜底：默认已优先走统一认证，
+            // 所以多数情况是「改回本地」；仅有 SSO 入口的学校失败时才引导去统一认证
+            if (viewModel.httpErrorHint >= 500) {
+                when {
+                    viewModel.loadedSsoEntry -> {
+                        TapTextButton(
+                            onClick = viewModel::openLocalLogin,
+                            modifier = Modifier.padding(start = 8.dp),
+                        ) {
+                            Text(
+                                text = "统一认证打不开？改用本地登录",
+                                fontSize = 12.sp,
+                                color = colors.accent,
+                            )
+                        }
+                    }
+                    viewModel.ssoEntry != null -> {
+                        TapTextButton(
+                            onClick = viewModel::openSsoLogin,
+                            modifier = Modifier.padding(start = 8.dp),
+                        ) {
+                            Text(
+                                text = "本地登录打不开？改用统一认证登录",
+                                fontSize = 12.sp,
+                                color = colors.accent,
+                            )
+                        }
+                    }
                 }
             }
 
@@ -281,6 +297,7 @@ fun JwImportScreen(
                     onHttpError = viewModel::onHttpError,
                     onCertNotice = viewModel::onCertNotice,
                     onWebView = { webView = it },
+                    assetCache = viewModel.assetCache,
                     modifier = Modifier.fillMaxSize().clipToBounds(),
                 )
                 TopProgressBar(
@@ -525,7 +542,10 @@ private fun JwImportFooter(
     fetchEnabled: Boolean,
 ) {
     val muted = jwMuted(colors)
-    Column(Modifier.fillMaxWidth().imePadding()) {
+    // 不跟随输入法（没有 imePadding）：键盘弹出时工具条宁可被盖住，也不要顶起——
+    // 它一让位，WebView 就被挤掉一条，教务登录页的输入框正好被压在工具条底下；
+    // 而 URL 栏在页面顶部，打字时也用不到底部的抓取按钮。
+    Column(Modifier.fillMaxWidth()) {
         AnimatedVisibility(
             visible = notices.scriptNotice != null,
             enter = expandVertically(tween(Motion.DUR_MEDIUM)) + fadeIn(tween(Motion.DUR_FAST)),

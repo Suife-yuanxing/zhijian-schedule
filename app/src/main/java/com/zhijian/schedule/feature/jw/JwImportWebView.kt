@@ -24,7 +24,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.zhijian.schedule.core.jw.JwAdapterRegistry
 import com.zhijian.schedule.core.jw.script.JwScriptRunner
 import com.zhijian.schedule.core.net.ExpiredCertTolerance
+import com.zhijian.schedule.core.net.JwAssetCache
 import org.json.JSONObject
+import java.io.ByteArrayInputStream
 import java.net.URI
 
 /**
@@ -270,6 +272,7 @@ internal fun WebViewBox(
     onHttpError: (Int) -> Unit,
     onCertNotice: (String) -> Unit = {},
     onWebView: (WebView?) -> Unit = {},
+    assetCache: JwAssetCache? = null,
     modifier: Modifier = Modifier,
 ) {
     val lastLoaded = remember { mutableStateOf<WebLoadRequest?>(null) }
@@ -328,6 +331,26 @@ internal fun WebViewBox(
                         }
                     webViewClient =
                         object : WebViewClient() {
+                            /**
+                             * 门户静态资源缓存：学校资源不带任何缓存头（见 [JwAssetCache]），
+                             * 命中直接回，未命中放行并后台存一份。主框架与 POST 一律不碰，
+                             * 任何异常都退回不拦截——页面可用性永远优先。
+                             */
+                            override fun shouldInterceptRequest(
+                                view: WebView?,
+                                req: WebResourceRequest?,
+                            ): WebResourceResponse? {
+                                val cache = assetCache ?: return null
+                                val url = req?.url?.toString() ?: return null
+                                if (req.method != "GET") return null
+                                val hit = runCatching { cache.intercept(url) }.getOrNull() ?: return null
+                                return WebResourceResponse(
+                                    hit.contentType,
+                                    hit.charset,
+                                    ByteArrayInputStream(hit.bytes),
+                                )
+                            }
+
                             override fun onPageStarted(
                                 view: WebView?,
                                 url: String?,

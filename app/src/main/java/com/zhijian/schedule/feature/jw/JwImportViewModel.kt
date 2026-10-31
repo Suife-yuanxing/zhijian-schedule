@@ -14,10 +14,12 @@ import com.zhijian.schedule.core.jw.script.ScriptCatalog
 import com.zhijian.schedule.core.jw.script.ScriptOption
 import com.zhijian.schedule.core.model.ImportPreview
 import com.zhijian.schedule.core.model.ImportSource
+import com.zhijian.schedule.core.net.JwAssetCache
 import com.zhijian.schedule.core.repository.ScheduleRepository
 import com.zhijian.schedule.core.sync.JwSyncManager
 import com.zhijian.schedule.core.sync.SyncScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -37,6 +39,7 @@ class JwImportViewModel
         private val settingsStore: SettingsStore,
         private val scheduler: SyncScheduler,
         private val catalog: ScriptCatalog,
+        val assetCache: JwAssetCache,
     ) : ViewModel() {
         var url by mutableStateOf("")
             private set
@@ -70,6 +73,17 @@ class JwImportViewModel
         /** 脚本 warnings / 管理操作反馈（accent 色提示条） */
         var scriptNotice by mutableStateOf<String?>(null)
             private set
+
+        /**
+         * 预抓取已就绪：WebView 停在可识别教务页时后台提前抓好的课表，
+         * 点「抓取」时直接用（零网络等待）。预抓取是只读请求，失败静默。
+         */
+        var prefetchReady by mutableStateOf(false)
+            private set
+
+        private var prefetched: JwSyncManager.FetchResult.Success? = null
+
+        private var prefetchJob: Job? = null
 
         /**
          * 证书过期放行提示（本校门户专属）。
@@ -108,12 +122,25 @@ class JwImportViewModel
                 return JwAdapterRegistry.forUrl(target)?.ssoEntry(target)
             }
 
-        /** 改跳统一认证登录（本地 LoginToXkLdap 源站响应超时 / 502 时的兜底入口） */
+        /** 本次 WebView 加载的是不是统一认证链路（决定 5xx 兜底按钮往哪边引） */
+        val loadedSsoEntry: Boolean
+            get() = loadRequest.url == ssoEntry
+
+        /** 改跳统一认证登录（与 [openLocalLogin] 互为兜底） */
         fun openSsoLogin() {
             val entry = ssoEntry ?: return
             pageError = null
             httpErrorHint = 0
             loadRequest = WebLoadRequest(entry, loadRequest.nonce + 1)
+        }
+
+        /** 回到学校本地登录入口（统一认证链路打不开时的兜底） */
+        fun openLocalLogin() {
+            val target = withScheme(url)
+            if (target.isBlank()) return
+            pageError = null
+            httpErrorHint = 0
+            loadRequest = WebLoadRequest(target, loadRequest.nonce + 1)
         }
 
         init {
@@ -122,7 +149,7 @@ class JwImportViewModel
                 if (s.jwUrl.isNotBlank()) {
                     val saved = withScheme(s.jwUrl)
                     url = saved
-                    loadRequest = WebLoadRequest(saved, loadRequest.nonce + 1)
+                    loadRequest = WebLoadRequest(preferredTarget(saved), loadRequest.nonce + 1)
                 }
                 autoSyncEnabled = s.autoSyncEnabled
                 lastSyncTime = s.lastSyncTime
@@ -132,22 +159,62 @@ class JwImportViewModel
         /** 用户可能只输入裸域名；WebView 需要完整 scheme 才能当网址加载 */
         private fun withScheme(value: String): String = normalizeJwUrl(value, BLANK_PAGE)
 
+        /**
+         * WebView 的落点：适配器提供统一认证入口时**优先走统一认证**，
+         * 学校本地登录入口常年是重灾区（WAF 拦校外、把浏览器甩到校内 `:8088` 等），
+         * 统一认证链路反而稳；没有 SSO 入口的适配器（如 gxgc 门户即统一登录）原样加载。
+         */
+        private fun preferredTarget(raw: String): String {
+            val normalized = withScheme(raw)
+            if (normalized.isBlank() || normalized == BLANK_PAGE) return normalized
+            return JwAdapterRegistry.forUrl(normalized)?.ssoEntry(normalized) ?: normalized
+        }
+
         fun onUrlChange(value: String) {
             url = value
         }
 
-        /** 「打开」：总是重新加载（含同 URL 重试） */
+        /** 「打开」：总是重新加载（含同 URL 重试）；有统一认证入口时优先走它 */
         fun reload() {
             val target = withScheme(url)
             if (target.isBlank()) return
             url = target
             pageError = null
             certNotice = null
-            loadRequest = WebLoadRequest(target, loadRequest.nonce + 1)
+            loadRequest = WebLoadRequest(preferredTarget(target), loadRequest.nonce + 1)
         }
 
         fun onPageUrl(value: String) {
             pageUrl = value
+            maybePrefetch()
+        }
+
+        /**
+         * WebView 停在可识别的教务页时，后台就把课表抓回来（预抓取）。
+         *
+         * 动机（2026-10 实测）：冷连接首个请求 ~0.9s + 5 个 API ~0.5s，而用户点
+         * 「抓取」前必然已在教务页面停留——这段时间足够把数据悄悄抓好，点下去
+         * 时直接出预览。抓取是只读请求；失败（含会话未登录）一律静默，
+         * 正式报错留给用户手动点抓取的那次。
+         */
+        private fun maybePrefetch() {
+            if (isJwLoginPage(pageUrl)) return
+            if (JwAdapterRegistry.forUrl(withScheme(pageUrl)) == null) return
+            if (loading || preview != null) return
+            if (prefetched != null || prefetchJob?.isActive == true) return
+            if (withScheme(url).isBlank()) return
+            // 与 fetchNow 同一套入口地址口径：WebView 停在教务页时优先用当前页
+            val effective = pageUrl.takeIf { isSameHost(it, withScheme(url)) }
+            prefetchJob =
+                viewModelScope.launch {
+                    when (val result = syncManager.fetchForPreview(effective)) {
+                        is JwSyncManager.FetchResult.Success -> {
+                            prefetched = result
+                            prefetchReady = true
+                        }
+                        else -> Unit
+                    }
+                }
         }
 
         fun onLoadProgress(value: Int) {
@@ -182,15 +249,24 @@ class JwImportViewModel
                 val trimmed = withScheme(url)
                 if (trimmed.isNotBlank()) url = trimmed
                 settingsStore.setJw(trimmed, JwAdapterRegistry.forUrl(trimmed)?.name.orEmpty())
-                // WebView 已停在课表页时（URP / 树维 带学期参数），优先用它抓，而不是地址栏
-                val effective = pageUrl.takeIf { isSameHost(it, trimmed) }
-                when (val result = syncManager.fetchForPreview(effective)) {
-                    is JwSyncManager.FetchResult.Success -> preview = result.preview
-                    is JwSyncManager.FetchResult.Failed -> {
-                        errorMessage = result.message
-                        needsLogin = result.needsLogin
+                // 预抓取在途就等它落地（通常早就好了）；就绪则直接用，零网络等待
+                prefetchJob?.takeIf { it.isActive }?.join()
+                val ready = prefetched
+                if (ready != null) {
+                    prefetched = null
+                    prefetchReady = false
+                    preview = ready.preview
+                } else {
+                    // WebView 已停在课表页时（URP / 树维 带学期参数），优先用它抓，而不是地址栏
+                    val effective = pageUrl.takeIf { isSameHost(it, trimmed) }
+                    when (val result = syncManager.fetchForPreview(effective)) {
+                        is JwSyncManager.FetchResult.Success -> preview = result.preview
+                        is JwSyncManager.FetchResult.Failed -> {
+                            errorMessage = result.message
+                            needsLogin = result.needsLogin
+                        }
+                        JwSyncManager.FetchResult.NoConfig -> errorMessage = "请先填写教务地址"
                     }
-                    JwSyncManager.FetchResult.NoConfig -> errorMessage = "请先填写教务地址"
                 }
                 loading = false
             }
