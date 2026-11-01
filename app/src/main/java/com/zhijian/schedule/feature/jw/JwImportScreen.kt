@@ -78,6 +78,7 @@ import com.zhijian.schedule.core.ui.TapIconButton
 import com.zhijian.schedule.core.ui.TapTextButton
 import com.zhijian.schedule.core.ui.buttonFeedback
 import com.zhijian.schedule.core.ui.island.IslandHint
+import com.zhijian.schedule.core.ui.island.IslandHintTone
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -294,6 +295,7 @@ fun JwImportScreen(
                     onCredentialCandidate = viewModel::onCredentialCandidate,
                     onLoginSucceeded = viewModel::onLoginSucceeded,
                     onCredentialFilled = viewModel::onCredentialFilled,
+                    onCredentialFillFailed = viewModel::onCredentialFillFailed,
                     modifier = Modifier.fillMaxSize().clipToBounds(),
                 )
                 TopProgressBar(
@@ -430,12 +432,14 @@ private fun CredentialFillHintOverlay(
 ) {
     IslandHint(
         visible = visible,
-        text = notice?.let { credentialFillHintText(it.username) }.orEmpty(),
-        // 令牌取「这一次填入的时刻」：同一个提示被再次触发时进度条要重新走，
+        text = notice?.message.orEmpty(),
+        // 令牌取「这一次结局的时刻」：同一个提示被再次触发时进度条要重新走，
         // 而不是接着上一轮的余量（见 IslandHint 的 resetKey）
-        resetKey = notice?.filledAt,
+        resetKey = notice?.at,
         onFinished = onFinished,
         colors = colors,
+        // 语气决定图标（对勾 / 叉号）、颜色，以及失败时那一下震动
+        tone = notice?.tone ?: IslandHintTone.Done,
         modifier = modifier,
     )
 }

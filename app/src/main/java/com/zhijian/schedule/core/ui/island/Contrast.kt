@@ -104,6 +104,39 @@ object Contrast {
     }
 
     /**
+     * 把一个**图形色**（图标、进度条）推到压在 [under] 上时达到 [minRatio] 为止。
+     *
+     * 与 [adjustUntil] 的区别是方向策略：那里有前景色 [fg] 可参照，所以先压深再提亮；
+     * 这里前景就是图形本身，判据只能是「与底色差多少」——亮底上压深更醒目、
+     * 暗底上提亮才看得见。按底色的相对亮度选方向，比无脑先压深稳：
+     * 暗底上先压深等于把一个深红压成黑，越试越糟。
+     *
+     * 达标即停的纪律同 [mixUntil]：多推一步就会让失败提示亮成荧光棒，
+     * 而它每次只出现五秒，刺眼比不显眼更难受。
+     */
+    fun visibleOn(
+        base: Color,
+        under: Color,
+        minRatio: Double,
+    ): Color {
+        if (ratio(base, under) >= minRatio) return base
+        // 底色偏亮 → 图形压深；底色偏暗 → 图形提亮。0.18 是 WCAG 里「深色底」的经验分界
+        val darken = luminance(under) > 0.18
+        for (i in 1..40) {
+            val step = i * 0.015f
+            val c = if (darken) scale(base, 1f - step) else scale(base, 1f + step)
+            if (ratio(c, under) >= minRatio) return c
+        }
+        // 一条方向走到底仍不达标（极端的纯黑/纯白底）：换方向再走一遍
+        for (i in 1..40) {
+            val step = i * 0.015f
+            val c = if (darken) scale(base, 1f + step) else scale(base, 1f - step)
+            if (ratio(c, under) >= minRatio) return c
+        }
+        return base
+    }
+
+    /**
      * 把 [base] 以 [alpha] 压在 [under] 上之后，使其与 [fg] 的对比度达到 [minRatio]。
      *
      * 先试「压深」（绝大多数主题的白字压彩底都靠这一步），压不动再试「提亮」

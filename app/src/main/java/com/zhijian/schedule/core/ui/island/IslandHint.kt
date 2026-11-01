@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,7 +33,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -46,17 +51,64 @@ import com.zhijian.schedule.core.ui.metal.CardTone
 import com.zhijian.schedule.core.ui.metal.metalCard
 import com.zhijian.schedule.core.ui.rememberAnimationsDisabled
 import kotlinx.coroutines.delay
+import kotlin.math.PI
+import kotlin.math.sin
 
 /** 浮岛提示的默认展示时长：胶囊下方那条进度条从空走到满所用的毫秒数 */
 const val ISLAND_HINT_HOLD_MS: Int = 5_000
 
 /**
+ * 浮岛提示的语气：决定图标、强调色、进度条颜色，以及要不要震一下。
+ *
+ * 只有两档，不是三档：这条通道说的事情只有「成了」和「没成」两种结局。
+ * 再加一档「提醒」会让三者的差别退化成颜色深浅，而颜色深浅读不出轻重。
+ */
+enum class IslandHintTone {
+    /**
+     * 做成了一件事：对勾 + 强调色，安静地来、安静地走。
+     *
+     * 不震：成功是预期结果，每成功一次都震，触感就失去了信息量
+     * （与 [com.zhijian.schedule.core.ui.buttonFeedback] 的同一条规矩）。
+     */
+    Done,
+
+    /**
+     * 没做成：叉号 + 危险色 + 一次短促的震动。
+     *
+     * 失败必须能被错过也不能被漏掉——用户此刻的注意力在网页上，未必看着顶部。
+     * 所以除了颜色，再加两样不依赖注视的通道：**手感的震**与**视觉的抖**。
+     * 两者都只持续三分之一秒，不拦路、不需要确认，但足以把眼睛拉过来。
+     *
+     * ## 为什么不能只靠颜色
+     * 「纸本暖白」的强调色本身是陶土橘（#D97757），与失败用的正红 #E5484D
+     * 在对比度上只差 1.25:1——两档压在同一个底上，颜色这一层几乎不传递差别。
+     * 所以真正分开两档的是**图标（对勾 / 叉号）**、文案、以及失败独有的抖动与震动：
+     * 即使把屏幕调成灰度、即使色觉不同，两者依然一眼可分（WCAG 2.1 1.4.1）。
+     */
+    Failed,
+}
+
+/**
  * 滑入 / 滑出的位移比例。
  *
- * 只走三分之一：浮岛提示贴着网页顶部弹出，整条滑进来会读成「又从上面掉下来一层界面」；
+ * 只走三分之一：浮岛提示贴着内容顶部弹出，整条滑进来会读成「又从上面掉下来一层界面」；
  * 三分之一的高度足以让出现有方向、又不至于挡住在它下面正要被点的东西。
  */
 private const val SLIDE_FRACTION = 1f / 3f
+
+/** 失败态那一下横向抖动的总时长：够被看见，又不至于让人等它停 */
+private const val SHAKE_MS = 340
+
+/**
+ * 抖动来回的次数。
+ *
+ * 2.5 而不是整数：整周期会让波形在收尾时正好停在起点、位移看起来是「弹回去」；
+ * 半周期收尾时位移与振幅**同时**归零，读作「自己站住了」。
+ */
+private const val SHAKE_CYCLES = 2.5f
+
+/** 抖动幅度（dp）；贴着屏幕两侧还有 12dp 外距时不会顶出边界 */
+private const val SHAKE_AMPLITUDE_DP = 6f
 
 /** 进度条高度：胶囊里最细的一档信息，不能和文字抢权重 */
 private val BarHeight = 2.dp
@@ -83,20 +135,26 @@ private val BarInsetX = 20.dp
  * 而不是在它下面另挂一根线，是为了让「提示」与「它的寿命」读成同一件东西：
  * 游离在胶囊外的进度条会被当成页面的一部分，胶囊内的一根则是它的仪表。
  *
+ * ## 两种语气共用一套骨架
+ * 成功与失败只在 [tone] 上分叉：图标、颜色、以及失败额外的那一下震动与抖动。
+ * 几何、时长、动效曲线、进度条位置全部相同——同一条通道上的两种结果，
+ * 换了形状或时长，用户就得重新学一遍「这玩意儿会自己消失吗」。
+ *
  * ## 两个参数各自回答一个问题
  * - [visible] 决定在不在；
- * - [resetKey] 决定**什么时候重新计时**。同一个提示被再次触发时（例如用户又登了一次、
- *   我们又填了一次），进度条必须从头走，而不是接着上一轮的余量——所以计时效应挂在它上面，
+ * - [resetKey] 决定**什么时候重新计时**。同一个提示被再次触发时（例如用户又登录了一次），
+ *   进度条必须从头走，而不是接着上一轮的余量——所以计时效应挂在它上面，
  *   而不是挂在 [visible] 上（后者只要一直是 true，效应就不会重跑）。
  *
  * ## 系统关掉动画时
- * 不演进度（进度条停在空位当作装饰下划线），但**时长照走**：无障碍用户同样需要
- * 「它不会一直杵在这里」这个确定性，只是不需要那段运动。
+ * 不演进度、不抖，但**时长照走**：无障碍用户同样需要「它不会一直杵在这里」这个确定性。
+ * 震动保留——「移除动画」关的是运动，不是触觉反馈，而失败的手感正是这次要传达的东西。
  *
  * @param text 一行说明；超过两行省略，胶囊高度因此是稳定的
- * @param resetKey 重新计时的令牌；变化即从头计时
+ * @param resetKey 重新计时的令牌；变化即从头计时、重新抖、重新震
  * @param onFinished 进度走完时回调一次，调用方据此把 [visible] 置 false
- * @param icon 前置图标，默认对勾（这个组件的语义就是「刚才做成了一件事」）
+ * @param tone 语气；失败档会用叉号、危险色，并震一下
+ * @param icon 覆盖默认图标；默认按 [tone] 取对勾或叉号
  * @param holdMillis 展示时长，默认 [ISLAND_HINT_HOLD_MS]
  */
 @Composable
@@ -107,7 +165,8 @@ fun IslandHint(
     onFinished: () -> Unit,
     colors: CourseColors,
     modifier: Modifier = Modifier,
-    icon: ImageVector = Icons.Filled.Check,
+    tone: IslandHintTone = IslandHintTone.Done,
+    icon: ImageVector? = null,
     holdMillis: Int = ISLAND_HINT_HOLD_MS,
 ) {
     AnimatedVisibility(
@@ -128,11 +187,25 @@ fun IslandHint(
             resetKey = resetKey,
             onFinished = onFinished,
             colors = colors,
-            icon = icon,
+            tone = tone,
+            icon = icon ?: defaultIcon(tone),
             holdMillis = holdMillis,
         )
     }
 }
+
+/**
+ * 语气对应的默认图标：成了打对勾，没成打叉。
+ *
+ * 抽成 [internal] 是为了能进本机单测钉住一条不变量：两档**必须**拿到不同的图标。
+ * 原因见 [IslandHintTone.Failed] 里那段：颜色这一层在暖色主题上分不开，
+ * 图标是那条不依赖色觉的分界线（WCAG 2.1 1.4.1 Use of Color）。
+ */
+internal fun defaultIcon(tone: IslandHintTone): ImageVector =
+    when (tone) {
+        IslandHintTone.Done -> Icons.Filled.Check
+        IslandHintTone.Failed -> Icons.Filled.Close
+    }
 
 /**
  * 胶囊本体与计时。
@@ -146,6 +219,7 @@ private fun IslandHintBody(
     resetKey: Any?,
     onFinished: () -> Unit,
     colors: CourseColors,
+    tone: IslandHintTone,
     icon: ImageVector,
     holdMillis: Int,
 ) {
@@ -153,21 +227,40 @@ private fun IslandHintBody(
     val finish = rememberUpdatedState(onFinished)
     val animationsOff = rememberAnimationsDisabled()
     val fill = remember(resetKey) { Animatable(0f) }
+    // 横向抖动单独一条时间线：它只在前三分之一秒有事，和五秒的倒计时没有共同点，
+    // 合成一条要处处换算。关动画时不跑，位移恒为 0。
+    val shake = remember(resetKey) { Animatable(0f) }
     LaunchedEffect(resetKey, animationsOff) {
+        fill.snapTo(0f)
         if (animationsOff) {
             delay(holdMillis.toLong())
-            finish.value()
-            return@LaunchedEffect
+        } else {
+            // 线性：进度条要读作「还剩多少时间」，任何缓动都会让中段走得比真实时间快或慢
+            fill.animateTo(1f, tween(durationMillis = holdMillis, easing = LinearEasing))
         }
-        fill.snapTo(0f)
-        // 线性：进度条要读作「还剩多少时间」，任何缓动都会让中段走得比真实时间快或慢
-        fill.animateTo(1f, tween(durationMillis = holdMillis, easing = LinearEasing))
         finish.value()
     }
+    // 抖动与震动另起一条效应：上面那条要跑满五秒，把抖动挂进去就得在它里面开子协程，
+    // 而子协程会被那五秒的异常取消（例如页面重排导致中途重组）一起带走
+    val context = LocalContext.current
+    LaunchedEffect(resetKey, tone, animationsOff) {
+        if (tone != IslandHintTone.Failed) return@LaunchedEffect
+        // 用它而不是 HapticFeedbackType.Reject：后者在 ColorOS 上是 480ms 的长震，
+        // 与「五秒后自己消失的小提示」完全不是一个量级（真机实测见 IslandHaptics）
+        IslandHaptics.failure(context)
+        if (animationsOff) return@LaunchedEffect
+        shake.snapTo(0f)
+        shake.animateTo(1f, tween(durationMillis = SHAKE_MS, easing = LinearEasing))
+    }
+    val accent = if (tone == IslandHintTone.Failed) rememberIslandDanger() else colors.accent
+    val amplitudePx = with(LocalDensity.current) { SHAKE_AMPLITUDE_DP.dp.toPx() }
     val shape = RoundedCornerShape(percent = 50)
     Column(
         Modifier
             .fillMaxWidth()
+            // 抖动作用在**整颗胶囊**上，不是只抖文字：只抖文字读作「渲染出错」，
+            // 整颗抖才读作「这东西自己打了个冷颤」
+            .graphicsLayer { translationX = dampedShake(shake.value) * amplitudePx }
             .clip(shape)
             // RAISED：与「记住这次登录？」气泡同一档——两者都是浮在网页之上、等着被看一眼的卡
             .metalCard(shape = shape, color = colors.surface, tone = CardTone.RAISED)
@@ -182,7 +275,7 @@ private fun IslandHintBody(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = colors.accent,
+                tint = accent,
                 modifier = Modifier.size(IconSize),
             )
             Spacer(Modifier.width(IconGap))
@@ -198,9 +291,31 @@ private fun IslandHintBody(
             )
         }
         Spacer(Modifier.height(TextBarGap))
-        IslandHintCountdown(colors = colors, progress = { fill.value })
+        IslandHintCountdown(colors = colors, barColor = accent, progress = { fill.value })
     }
 }
+
+/**
+ * 抖动波形：振幅衰减的正弦，p 在 0..1 上由线性时钟推进，返回值是 -1..1 的比例。
+ *
+ * ## 为什么是衰减正弦而不是关键帧
+ * 关键帧要手写五六个时间点与幅度，调一次得重新算一遍；而「越抖越小、最后停住」
+ * 本来就是一条衰减正弦的自然形状。振幅用 (1-p) 而不是指数：线性收尾时位移与振幅
+ * **同一帧**归零，不会留下半帧的硬切。
+ *
+ * ## 为什么从 0 起、在 0 落
+ * p=0 时 sin(0)=0，胶囊不会凭空跳一下；p=1 时 sin(5π)=0 且 (1-p)=0，
+ * 两个零点重合，收尾干净。
+ *
+ * 返回值是**比例**而不是 dp：幅度留给调用处按屏幕与点击目标单独调，波形不用动。
+ */
+internal fun dampedShake(progress: Float): Float {
+    val p = progress.coerceIn(0f, 1f)
+    return sin(p * SHAKE_CYCLES * TWO_PI_F) * (1f - p)
+}
+
+/** 2π（Float）：避免每帧把 Double 常量搬进浮点运算 */
+private const val TWO_PI_F = (2.0 * PI).toFloat()
 
 /**
  * 胶囊底部那条倒计时进度条。
@@ -215,10 +330,10 @@ private fun IslandHintBody(
 @Composable
 private fun IslandHintCountdown(
     colors: CourseColors,
+    barColor: Color,
     progress: () -> Float,
 ) {
     val barShape = RoundedCornerShape(percent = 50)
-    val barColor = colors.accent
     Box(
         Modifier
             .fillMaxWidth()

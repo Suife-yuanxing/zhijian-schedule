@@ -91,6 +91,47 @@ object IslandTokens {
     const val MIN_ICON_CONTRAST = 3.0
 
     /**
+     * 危险色：失败态那个红的**起点**。
+     *
+     * 与页面正文用的 #E5484D 同源（本工程删课、删除等破坏性操作都用它），
+     * 但它压在浮岛面上未必够醒目——所以真正上屏的是 [dangerOn] 求解后的结果。
+     */
+    val DANGER_BASE = Color(0xFFE5484D)
+
+    /**
+     * 金属档浮岛面的实测亮度（与 [solve] 里 `under` 的取法同源，这里只做常量备查）。
+     *
+     * 危险色求解需要知道「压在哪」，而金属面既不是 surface 也不是 bg，
+     * 是着色器算出来的，只能取样。
+     */
+    private val METAL_UNDER_DARK = Color(0xFF22262F)
+    private val METAL_UNDER_LIGHT = Color(0xFFC3CAD5)
+
+    /**
+     * 危险色在浮岛面上的取值：以 [DANGER_BASE] 为起点，推到与底色达到图形门槛（3.0）为止。
+     *
+     * ## 为什么不能直接写死 #E5484D
+     * 那是页面正文压 [CourseColors.surface] 的取值。而浮岛是悬浮层——六套预设里
+     * 墨夜与玻璃暗档的浮岛面比正文底色更亮，同一个红压上去只剩 3.1:1，
+     * 叉号与进度条都会糊进背景。失败提示最不能出的问题就是「看不清」。
+     *
+     * 用图形门槛 3.0 而不是正文门槛 4.5：红只用于**图标与进度条**，
+     * 文字一律用 [CourseColors.text]；把一个颜色通道推到 4.5 会让它亮得像荧光棒。
+     */
+    fun dangerOn(
+        colors: CourseColors,
+        isDark: Boolean,
+        metal: MetalSpec?,
+    ): Color {
+        val under =
+            when {
+                metal != null -> if (isDark) METAL_UNDER_DARK else METAL_UNDER_LIGHT
+                else -> colors.surface
+            }
+        return Contrast.visibleOn(DANGER_BASE, under, MIN_ICON_CONTRAST)
+    }
+
+    /**
      * 求解一套浮岛配色。
      *
      * [under] 取法：玻璃档本体近清水（bodyAlpha 0.16~0.20），透出的就是页面底色 bg；
@@ -160,4 +201,18 @@ fun rememberIslandPalette(): IslandPalette {
     val metal = LocalCoursePreset.current.metal
     val isDark = LocalIsDark.current
     return remember(colors, metal, isDark) { IslandTokens.solve(colors, isDark, metal) }
+}
+
+/**
+ * 当前主题下的安全提示色（浮岛层）。
+ *
+ * 与 [rememberIslandPalette] 同一套依赖：主题 / 亮暗 / 金属档任一变化都要重新求解，
+ * 否则换皮肤之后那个红还停在上一套底色的解上。
+ */
+@Composable
+fun rememberIslandDanger(): Color {
+    val colors = LocalCourseColors.current
+    val metal = LocalCoursePreset.current.metal
+    val isDark = LocalIsDark.current
+    return remember(colors, metal, isDark) { IslandTokens.dangerOn(colors, isDark, metal) }
 }

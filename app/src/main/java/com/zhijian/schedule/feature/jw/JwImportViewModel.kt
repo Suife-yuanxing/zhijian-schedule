@@ -17,6 +17,7 @@ import com.zhijian.schedule.core.jw.credential.JwCredentialSummary
 import com.zhijian.schedule.core.jw.script.JwScriptOutput
 import com.zhijian.schedule.core.jw.script.ScriptCatalog
 import com.zhijian.schedule.core.jw.script.ScriptOption
+import com.zhijian.schedule.core.ui.island.IslandHintTone
 import com.zhijian.schedule.core.model.ImportPreview
 import com.zhijian.schedule.core.model.ImportSource
 import com.zhijian.schedule.core.net.JwAssetCache
@@ -391,12 +392,14 @@ class JwImportViewModel
                 // 候选在气泡挂着期间被下一次登录覆盖了：用户看到的是旧问句，
                 // 存下去的就是另一条。宁可这次不存，也不能错配
                 if (candidate == null || candidate.at != prompt.candidateAt) {
-                    credentialNotice = "没有保存：这次登录的账号已变化，请重新确认"
+                    onCredentialSaveFailed(JwCredentialSaveFailure.CandidateChanged)
                     return@launch
                 }
                 val ok = credentialStore.save(candidate.origin, candidate.username, candidate.password)
                 if (!ok) {
-                    credentialNotice = "记住登录失败：本机密钥不可用"
+                    // save() 的 false 既可能是加密失败也可能是落盘失败；对用户来说
+                    // 两者的可操作面完全相同（再试一次 / 手输），所以归成一类说
+                    onCredentialSaveFailed(JwCredentialSaveFailure.Storage)
                     return@launch
                 }
                 credentialFill =
@@ -430,13 +433,51 @@ class JwImportViewModel
          * 网页侧确认「账号密码真的被写进登录框了」：弹一条限时浮岛提示。
          *
          * 时间戳在**这里**取，不由网页传：它有双重身份——既是这条提示的身份，
-         * 也是进度条的重置令牌（见 [JwCredentialFillNotice.filledAt]）。
+         * 也是进度条的重置令牌（见 [JwCredentialFillNotice.at]）。
          * 取一次系统时钟就够，让页面参与只会引入一个不可信的输入。
          */
         fun onCredentialFilled(username: String) {
-            credentialFillNotice = JwCredentialFillNotice(username = username, filledAt = System.currentTimeMillis())
-            // 同一次填入可能被两次 onPageFinished 各报一次（探测是异步的）：
-            // 令牌变了就重新计时，这正是用户期望的「又填了一次 → 再提醒一次」
+            postFillNotice(IslandHintTone.Done, credentialFillHintText(username))
+        }
+
+        /**
+         * 网页侧报告「这次回填没成」：弹同一条浮岛，换成失败的叉号与危险色。
+         *
+         * 与成功走同一个入口 [postFillNotice]，所以位置、时长、进度条完全一致——
+         * 同一条通道上的两种结局，只差语气。
+         */
+        fun onCredentialFillFailed(reason: JwCredentialFillFailure) {
+            postFillNotice(IslandHintTone.Failed, credentialFillFailedText(reason))
+        }
+
+        /**
+         * 保存失败：也走浮岛，不再用底部工具条那一行红字。
+         *
+         * 为什么不复用 [credentialNotice]：那条挂在底部工具条上方，用户点「记住」时
+         * 眼睛在网页底部的气泡上——红字出现在半个屏幕之外，而且那里与「抓取失败」
+         * 共用同一行，读起来像是导入出了问题。失败属于刚刚那一下，
+         * 就该出现在刚刚那一下的位置。
+         */
+        fun onCredentialSaveFailed(reason: JwCredentialSaveFailure) {
+            postFillNotice(IslandHintTone.Failed, credentialSaveFailedText(reason))
+        }
+
+        /**
+         * 浮岛提示的唯一入口：写入内容、翻可见性、刷新令牌。
+         *
+         * 令牌取 [System.currentTimeMillis] 而不是由调用方传：它既是这条提示的身份，
+         * 也是进度条的重置令牌（见 [JwCredentialFillNotice.at]）。取一次系统时钟就够，
+         * 让上层参与只会引入一个不可信的输入。
+         *
+         * 同一毫秒内连发两条（成功紧接失败）时时间戳相同、令牌不变——这不会漏提示，
+         * 内容变了依然会重组；只是进度条不重走，而那一刻本来也不该重走。
+         */
+        private fun postFillNotice(
+            tone: IslandHintTone,
+            message: String,
+        ) {
+            credentialFillNotice =
+                JwCredentialFillNotice(tone = tone, message = message, at = System.currentTimeMillis())
             credentialFillNoticeVisible = true
         }
 
@@ -454,7 +495,9 @@ class JwImportViewModel
             credentialFillNoticeVisible = false
             viewModelScope.launch {
                 credentialStore.clear()
-                credentialNotice = "已清除保存的教务账号密码"
+                // 清除是「做成了一件事」，与回填成功共用同一条成功提示：
+                // 它挂在页面顶部，用户刚在设置里点完，回到这里能立刻看到结果
+                postFillNotice(IslandHintTone.Done, "已清除保存的教务账号密码")
             }
         }
 

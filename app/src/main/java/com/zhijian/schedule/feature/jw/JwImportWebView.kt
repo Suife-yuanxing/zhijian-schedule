@@ -319,34 +319,95 @@ private fun applyCredentialScripts(
     fill: JwCredentialFill?,
     filledOrigin: Array<String?>,
     onFilled: (String) -> Unit,
+    onFillFailed: (JwCredentialFillFailure) -> Unit,
 ) {
     if (url.isNullOrBlank()) return
     val origin = JwCredentialOrigin.of(url) ?: return
     val pending = fill
-    if (filledOrigin[0] != origin && shouldAutoFill(url, pending) && pending != null) {
-        // 先探测页面上是否真有可见的密码框：没有就别把密码送进去，
-        // 也别记「这个 origin 已经填过」——下一帧页面可能才长出登录框
-        view.evaluateJavascript(CREDENTIAL_PROBE_JS) { raw ->
-            if (raw?.trim('"') != "yes") return@evaluateJavascript
-            // 探测是异步的：两次 onPageFinished 挨得很近时会各自发起一次探测，
-            // 命中后又各自回填一次。填两次值一样，但浮岛提示会被重置、进度条重新走，
-            // 读作「它怎么又弹了一次」。回填前再确认一次，把这件事变成幂等的
-            if (filledOrigin[0] == origin) return@evaluateJavascript
-            filledOrigin[0] = origin
-            // 回填结果是脚本的返回值：'user+pass' / 'pass' / ''（页面上没有可见密码框）。
-            // 只有非空才算「真的填进去了」——这是浮岛提示唯一的触发源。
-            //
-            // 为什么不拿「页面有密码框」当依据：探测与回填之间页面可能已经重排，
-            // 更常见的是脚本被页面自己的「安全提示」分支挡住（见 fillJs 首行）。
-            // 报喜要报发生在输入框里的事，不是发生在浏览器里的事。
-            view.evaluateJavascript(JwCredentialScripts.fillJs(origin, pending.username, pending.password)) { result ->
-                if (!result.isNullOrBlank() && result.trim('"').isNotEmpty()) onFilled(pending.username)
-            }
-        }
-    }
+    // 没有可回填的凭据就不该报任何失败：新用户第一次打开登录页时 fill 恒为 null，
+    // 那不是「填失败了」，那是「还没存过东西」——把它做成红叉等于每次开页都骂一句
+    if (pending == null || !shouldAutoFill(url, pending)) return
+    if (filledOrigin[0] == origin) return
+    // 先探测页面上是否真有可见的密码框：没有就别把密码送进去，
+    // 也别记「这个 origin 已经填过」——下一帧页面可能才长出登录框
+    probeAndFill(view, url, origin, pending, filledOrigin, onFilled, onFillFailed)
     // 捕获 + 登录成功判定（页面内自带 `__zjCaptureInstalled` 幂等标记）
     view.evaluateJavascript(JwCredentialScripts.captureJs, null)
     view.evaluateJavascript(JwCredentialScripts.loginProbeJs, null)
+}
+
+/** 探测不到密码框时，隔多久再看一眼；到这个次数还没有，才判定为 [JwCredentialFillFailure.NoInput] */
+private const val PROBE_RETRY_DELAY_MS = 700L
+
+/** 最多看几次。首次 + 两次重试约 1.4 秒，覆盖「登录表单由 JS 渲染」的常见延迟 */
+private const val PROBE_MAX_ATTEMPTS = 3
+
+/**
+ * 探测密码框并回填；找不到时**先等一会儿再看**，看够了才判定失败。
+ *
+ * ## 为什么不能一次探测不到就报失败
+ * `onPageFinished` 的触发时刻是「主文档加载完」，不是「页面渲染完」。统一认证与多数
+ * 教务的登录表单是**之后**由 JS 拼出来的：真机上实测 300~900ms 才出现。
+ * 一次探不到就弹红叉加震动，用户会在看到「没能填入」之后不到一秒，
+ * 又眼睁睁看着账密被填进去——这比不提示更让人不信任这个功能。
+ *
+ * ## 为什么重试有上限
+ * 有的页面（例如已登录的课表页套着旧 frame）永远长不出密码框。无限重试会让
+ * 「这次没填上」这件事永远不被告知，而用户确实需要知道。三次、约 1.4 秒，
+ * 是「表单由 JS 渲染」与「这页真没有」之间的经验分界。
+ *
+ * ## 为什么是递归而不是循环
+ * 每次探测都是一次异步的 `evaluateJavascript` 回调。链式写法让「等上一次结果再决定
+ * 要不要再来一遍」在代码结构上就是串行的；写成循环反而要靠额外状态变量手动排序。
+ */
+private fun probeAndFill(
+    view: WebView,
+    url: String,
+    origin: String,
+    pending: JwCredentialFill,
+    filledOrigin: Array<String?>,
+    onFilled: (String) -> Unit,
+    onFillFailed: (JwCredentialFillFailure) -> Unit,
+    attempt: Int = 1,
+) {
+    view.evaluateJavascript(CREDENTIAL_PROBE_JS) { raw ->
+        if (raw?.trim('"') != "yes") {
+            // 期间已经被别的回调填过了：这不是失败，是重复触发
+            if (filledOrigin[0] == origin) return@evaluateJavascript
+            if (attempt >= PROBE_MAX_ATTEMPTS) {
+                // 停在**登录页**却始终摸不到密码框，才是真的异常：页面结构变了、或它把框藏了起来。
+                // 停在别的页面（课表页、门户首页）本来就没有框，那不是失败
+                if (isJwLoginPage(url)) onFillFailed(JwCredentialFillFailure.NoInput)
+                return@evaluateJavascript
+            }
+            view.postDelayed(
+                { probeAndFill(view, url, origin, pending, filledOrigin, onFilled, onFillFailed, attempt + 1) },
+                PROBE_RETRY_DELAY_MS,
+            )
+            return@evaluateJavascript
+        }
+        // 探测是异步的：两次 onPageFinished 挨得很近时会各自发起一次探测，
+        // 命中后又各自回填一次。填两次值一样，但浮岛提示会被重置、进度条重新走，
+        // 读作「它怎么又弹了一次」。回填前再确认一次，把这件事变成幂等的
+        if (filledOrigin[0] == origin) return@evaluateJavascript
+        filledOrigin[0] = origin
+        // 回填结果是脚本的返回值：'user+pass' / 'pass' / ''（脚本一项都没写进去）。
+        // 只有非空才算「真的填进去了」——这是成功提示唯一的触发源。
+        //
+        // 为什么不拿「页面有密码框」当依据：探测与回填之间页面可能已经重排，
+        // 更常见的是脚本被页面自己的「安全提示」分支挡住（见 fillJs 首行）。
+        // 报喜要报发生在输入框里的事，不是发生在浏览器里的事。
+        view.evaluateJavascript(
+            JwCredentialScripts.fillJs(origin, pending.username, pending.password),
+        ) { result ->
+            if (!result.isNullOrBlank() && result.trim('"').isNotEmpty()) {
+                onFilled(pending.username)
+            } else {
+                // 框探测到了、值却没写进去：setValue 抛异常、或 element 在两次调用之间被移除
+                onFillFailed(JwCredentialFillFailure.WriteRejected)
+            }
+        }
+    }
 }
 
 /**
@@ -372,6 +433,8 @@ internal fun WebViewBox(
     onLoginSucceeded: () -> Unit = {},
     /** 账密**真的被写进了登录框**：参数是填进去的那个账号，供页面弹一条限时浮岛提示 */
     onCredentialFilled: (String) -> Unit = {},
+    /** 本该填上却没填上：与 [onCredentialFilled] 共用同一套浮岛提示，只换语气 */
+    onCredentialFillFailed: (JwCredentialFillFailure) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val lastLoaded = remember { mutableStateOf<WebLoadRequest?>(null) }
@@ -390,6 +453,7 @@ internal fun WebViewBox(
     val loginHandler = rememberUpdatedState(onLoginSucceeded)
     // 同一个理由：evaluateJavascript 的回调跑在 WebViewClient 实例里，只能经它拿到最新闭包
     val filledHandler = rememberUpdatedState(onCredentialFilled)
+    val fillFailedHandler = rememberUpdatedState(onCredentialFillFailed)
     // 同一个坑：凭据是 init 里异步从磁盘读出来的，首帧一定是 null。
     // factory 与 webViewClient 只创建一次，直接闭包捕获会永远读到那个 null
     val fillState = rememberUpdatedState(credentialFill)
@@ -504,6 +568,7 @@ internal fun WebViewBox(
                                         fill = fillState.value,
                                         filledOrigin = filledOrigin.value,
                                         onFilled = { username -> filledHandler.value(username) },
+                                        onFillFailed = { reason -> fillFailedHandler.value(reason) },
                                     )
                                 }
                                 // WAF 错误页可能以 200 返回：先查正文；GET 页自动重试，登录 POST 直接提示

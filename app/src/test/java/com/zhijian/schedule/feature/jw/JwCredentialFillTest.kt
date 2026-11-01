@@ -1,8 +1,10 @@
 package com.zhijian.schedule.feature.jw
 
 import com.zhijian.schedule.core.jw.credential.JwCredentialScripts
+import com.zhijian.schedule.core.ui.island.IslandHintTone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -119,7 +121,7 @@ class JwCredentialFillTest {
     }
 
     /**
-     * 浮岛提示的文案：说清「填的是哪个号」，**绝不**暗示密码已经存好了。
+     * 成功提示的文案：说清「填的是哪个号」，**绝不**暗示密码已经存好了。
      *
      * 这条提示只活五秒、不会再来一次（见 IslandHint 的进度条），所以它说错话时
      * 用户没有第二次机会澄清。最容易说错的一句是「已为你保存密码」——
@@ -138,26 +140,108 @@ class JwCredentialFillTest {
     }
 
     /**
-     * 浮岛提示的**重置令牌**必须能区分「又填了一次」与「还挂着上一轮」。
+     * 失败提示必须说清**下一步做什么**，不能只宣布失败。
      *
-     * 计时效应挂在 filledAt 上（见 IslandHint）：两个令牌相等时进度条不会重走。
+     * 这条提示只活五秒、还带着震动把人叫过来——叫过来之后如果只说「失败了」，
+     * 用户除了困惑什么也得不到。两种失败各自要对上一种可执行的行动。
+     */
+    @Test
+    fun fillFailedTextTellsWhatToDoNext() {
+        val noInput = credentialFillFailedText(JwCredentialFillFailure.NoInput)
+        val rejected = credentialFillFailedText(JwCredentialFillFailure.WriteRejected)
+        assertTrue("必须点明没有填入", noInput.startsWith("没能自动填入"))
+        assertTrue("找不到登录框时要给出可执行的下一步", noInput.contains("手动输入") || noInput.contains("重新打开"))
+        assertTrue("写入被拒时必须明确要求手输，别让人白等", rejected.contains("手动输入"))
+        assertNotEquals("两种原因的文案不能一样，否则等于没分", noInput, rejected)
+    }
+
+    /** 保存失败的三种原因各自给一条，且都不含密码 */
+    @Test
+    fun saveFailedTextCoversEveryReason() {
+        val all = JwCredentialSaveFailure.entries.map { credentialSaveFailedText(it) }
+        assertEquals("每种原因都必须有文案", JwCredentialSaveFailure.entries.size, all.size)
+        assertTrue("文案不能重复，否则用户分不清发生了什么", all.toSet().size == all.size)
+        all.forEach { text ->
+            assertTrue("每条都要以「没能记住」开头，与成功提示共用同一句式", text.startsWith("没能记住"))
+            assertFalse("密码不该出现在任何 UI 文案里", text.contains("密码"))
+        }
+    }
+
+    /**
+     * 浮岛提示的**重置令牌**必须能区分「又发生了一次」与「还挂着上一轮」。
+     *
+     * 计时效应挂在 at 上（见 IslandHint）：两个令牌相等时进度条不会重走。
      * 若这里退化成布尔值或常量，用户清掉 cookie 重开登录页、我们真的又填了一次，
      * 提示却不会重新弹出——功能等于对第二次之后的所有回填失效。
      */
     @Test
-    fun fillNoticeTimestampChangesPerFill() {
-        val first = JwCredentialFillNotice(username = "20230001", filledAt = 1L)
-        val second = first.copy(filledAt = 2L)
-        assertFalse("两次填入必须得到两个不同的令牌，进度条才会重走", first == second)
-        assertEquals("账号相同不构成不同的一次填入", second.username, first.username)
+    fun fillNoticeTimestampChangesPerEvent() {
+        val first = JwCredentialFillNotice(IslandHintTone.Done, "已填入", at = 1L)
+        val second = first.copy(at = 2L)
+        assertFalse("两次事件必须得到两个不同的令牌，进度条才会重走", first == second)
     }
 
-    /** 提示对象不带密码字段：它要回答的只是「填的是哪个号」 */
+    /**
+     * 语气只有成功 / 失败两档，且失败档**不**等于成功档。
+     *
+     * 这条看着像废话，钉的是「两者共用同一套骨架、只差语气」这个约定：
+     * 若将来有人给失败单独造一个组件，这两档就不会再被放在一起比较，
+     * 用户也要重新学一遍这条提示会自己消失吗。
+     */
     @Test
-    fun fillNoticeCarriesNoPassword() {
-        val notice = JwCredentialFillNotice(username = "20230001", filledAt = 1L)
-        assertFalse(notice.toString().contains("p@ss"))
-        assertTrue(notice.toString().contains("20230001"))
+    fun noticeCarriesToneDistinctFromSuccess() {
+        val ok = JwCredentialFillNotice(IslandHintTone.Done, "已填入", at = 1L)
+        val fail = ok.copy(tone = IslandHintTone.Failed, message = "没能自动填入")
+        assertNotEquals("失败必须与成功可区分", ok.tone, fail.tone)
+        assertFalse("提示对象不带密码字段", fail.toString().contains("p@ss"))
+    }
+
+    /**
+     * 探测不到密码框**不能**一次就报失败。
+     *
+     * 这条防的是一次真机实测过的误报：onPageFinished 是「主文档加载完」，
+     * 统一认证与多数教务的登录表单是之后由 JS 拼出来的（真机 300~900ms）。
+     * 一次探不到就弹红叉，用户会在看到「没能填入」之后不到一秒，
+     * 又眼睁睁看着账密被填进去——那比不提示更让人不信任这个功能。
+     *
+     * 断言写的是源码里的常量关系而不是行为（没有 WebView 可跑）：
+     * 次数必须大于 1，且重试间隔要够覆盖上面那段延迟。
+     */
+    @Test
+    fun probeRetriesBeforeDeclaringFailure() {
+        val src = readSource("app/src/main/java/com/zhijian/schedule/feature/jw/JwImportWebView.kt")
+        assertTrue("探测必须允许重试，否则 JS 渲染的登录表单会被误判为失败", src.contains("PROBE_MAX_ATTEMPTS"))
+        assertTrue("重试次数必须大于 1", src.contains("PROBE_MAX_ATTEMPTS = 3"))
+        assertTrue("必须有重试间隔", src.contains("PROBE_RETRY_DELAY_MS"))
+        // 3 次 x 700ms ≈ 1.4s：覆盖真机上测到的 300~900ms 渲染延迟
+        assertTrue(
+            "重试窗口不足以覆盖 JS 渲染延迟",
+            src.contains("PROBE_RETRY_DELAY_MS = 700L"),
+        )
+    }
+
+    /**
+     * 失败判定必须挂在「停在登录页」这个前提上。
+     *
+     * 课表页、门户首页本来就没有密码框。如果不管在哪一页都报 NoInput，
+     * 用户每进一次课表页就会被红叉加震动训一次——而那里的账密早就填好了。
+     */
+    @Test
+    fun noInputFailureOnlyOnLoginPage() {
+        val src = readSource("app/src/main/java/com/zhijian/schedule/feature/jw/JwImportWebView.kt")
+        assertTrue(
+            "NoInput 必须先确认还停在登录页",
+            src.contains("if (isJwLoginPage(url)) onFillFailed(JwCredentialFillFailure.NoInput)"),
+        )
+    }
+
+    /** 读取仓库内文本，供"源码里必须存在的约束"这类断言使用 */
+    private fun readSource(relativePath: String): String {
+        val f = java.io.File(relativePath)
+        // 测试工作目录是模块根目录（app/），仓库根还要往上一级
+        val candidates = listOf(f, java.io.File("..", relativePath))
+        val hit = candidates.firstOrNull { it.isFile } ?: return ""
+        return hit.readText()
     }
 
     /**
