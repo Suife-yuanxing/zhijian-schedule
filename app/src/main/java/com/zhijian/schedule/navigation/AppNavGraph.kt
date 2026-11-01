@@ -39,6 +39,16 @@ internal fun AppNavHost(
     navController: NavHostController,
     state: AppNavHostState,
     currentDestination: NavDestination?,
+    /**
+     * 入口卡 → 二级页的唯一导航入口（宿主侧的单飞闸门 + 栈上限，见 [ProfileEntryNavigator]）。
+     *
+     * 为什么从这里进来而不是各页面各调 navController.navigate：两张不同的卡在展开首帧
+     * 之前相继被点中，会各压一层二级页，按一次返回退不出去（真机 30ms 间隔复现）。
+     * 闸门必须活在宿主这一层，「我的」页返回后会被销毁，闸门挂在页面里就跟着没了。
+     */
+    onOpenProfileEntry: (String) -> Unit = { route ->
+        navController.navigateToProfileEntry(route)
+    },
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalCourseColors.current
@@ -335,25 +345,19 @@ internal fun AppNavHost(
                         reveal = state.reveal,
                         playEntrance = state.entrance.shouldPlay(Routes.PROFILE),
                         onEntranceShown = { state.entrance.markPlayed() },
-                        onOpenImport = {
-                            navController.navigate(Routes.PROFILE_IMPORTER) { launchSingleTop = true }
-                        },
-                        onOpenSettings = {
-                            navController.navigate(Routes.PROFILE_SETTINGS) { launchSingleTop = true }
-                        },
+                        // 五个入口统一走宿主侧的单飞闸门（ProfileEntryNavigator）：
+                        // 窗口内的第二次点击被丢弃，且每次导航前先把栈收回到「我的」。
+                        // 各页面自己调 navigate + launchSingleTop 拦不住「两张不同的卡」——
+                        // 30ms 内连点会各压一层，按一次返回退不回去（真机钉死）。
+                        onOpenImport = { onOpenProfileEntry(Routes.PROFILE_IMPORTER) },
+                        onOpenSettings = { onOpenProfileEntry(Routes.PROFILE_SETTINGS) },
                         onOpenGrades = {
-                            navController.navigate(Routes.profileGrades(ProfileEntryKeys.GRADES)) {
-                                launchSingleTop = true
-                            }
+                            onOpenProfileEntry(Routes.profileGrades(ProfileEntryKeys.GRADES))
                         },
                         onOpenGradesFromSummary = {
-                            navController.navigate(Routes.profileGrades(ProfileEntryKeys.GRADES_GPA)) {
-                                launchSingleTop = true
-                            }
+                            onOpenProfileEntry(Routes.profileGrades(ProfileEntryKeys.GRADES_GPA))
                         },
-                        onOpenExams = {
-                            navController.navigate(Routes.PROFILE_EXAMS) { launchSingleTop = true }
-                        },
+                        onOpenExams = { onOpenProfileEntry(Routes.PROFILE_EXAMS) },
                     )
                 }
             }
@@ -414,7 +418,14 @@ internal fun AppNavHost(
                     isTop = currentDestination?.route == Routes.PROFILE_SETTINGS,
                     onPop = { navController.popBackStack() },
                 ) { handleBack ->
-                    SettingsScreen(onBack = handleBack)
+                    SettingsScreen(
+                        onBack = handleBack,
+                        // 二级页入场闸门：本次进程里这一页只播一次（见 SecondLevelEntrancePolicy）。
+                        // 写在宿主这一层才跨 entry 生效——页面内部的 rememberSaveable
+                        // 在返回再进（新 entry）时会重新初始化，那正是「打开像刷新了一遍」
+                        playEntrance = state.secondLevelEntrance.shouldPlay(Routes.PROFILE_SETTINGS),
+                        onEntranceShown = { state.secondLevelEntrance.markPlayed(Routes.PROFILE_SETTINGS) },
+                    )
                 }
             }
             composable(
@@ -443,6 +454,8 @@ internal fun AppNavHost(
                     GradesScreen(
                         onBack = handleBack,
                         onOpenJwImport = { navController.navigate(Routes.PROFILE_JW_IMPORT) },
+                        playEntrance = state.secondLevelEntrance.shouldPlay(Routes.PROFILE_GRADES),
+                        onEntranceShown = { state.secondLevelEntrance.markPlayed(Routes.PROFILE_GRADES) },
                     )
                 }
             }
@@ -465,6 +478,8 @@ internal fun AppNavHost(
                         onNeedsLogin = {
                             navController.navigate(Routes.PROFILE_JW_IMPORT) { launchSingleTop = true }
                         },
+                        playEntrance = state.secondLevelEntrance.shouldPlay(Routes.PROFILE_EXAMS),
+                        onEntranceShown = { state.secondLevelEntrance.markPlayed(Routes.PROFILE_EXAMS) },
                     )
                 }
             }

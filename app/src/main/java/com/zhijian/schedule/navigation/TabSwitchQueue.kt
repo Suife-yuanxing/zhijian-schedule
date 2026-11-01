@@ -20,20 +20,31 @@ internal const val TAB_SWITCH_SETTLE_BUDGET_MS: Long = 260L
 internal val systemMonotonicMs: () -> Long = { System.nanoTime() / 1_000_000L }
 
 /**
- * 按系统动画时长缩放折算落位窗口：Compose 动画（含 [Motion.SlideSpring]）遵循
- * 开发者选项「动画时长」缩放，10x 慢放下转场真的要 2.2s——预算若不跟着缩放，
- * 慢放设备（以及任何调过该选项的用户）会在窗口过期后照样触发打断。
- * 缩放为 0（动画关闭）时转场瞬间完成，预算为 0，不引入人为等待。
+ * 系统「动画时长」缩放系数（开发者选项 / 无障碍「移除动画」都写这个值）。
+ *
+ * 所有「按时间」的闸门都要用它折算：Compose 动画遵循这个缩放，10x 慢放下
+ * 260ms 的转场真的要 2.6s；预算不跟着缩放，慢放设备上窗口一过期就漏。
+ * 读失败按 1（允许动画）回落——个别 ROM 会拒绝这个 Global 读。
  */
-internal fun animatorScaledBudgetMs(context: Context): Long {
-    val scale =
+internal fun animatorScale(context: Context): Float =
+    try {
         Settings.Global.getFloat(
             context.contentResolver,
             Settings.Global.ANIMATOR_DURATION_SCALE,
             1f,
         )
-    return (TAB_SWITCH_SETTLE_BUDGET_MS * scale).toLong()
-}
+    } catch (_: Exception) {
+        1f
+    }
+
+/**
+ * 按系统动画时长缩放折算落位窗口：Compose 动画（含 [Motion.SlideSpring]）遵循
+ * 开发者选项「动画时长」缩放，10x 慢放下转场真的要 2.2s——预算若不跟着缩放，
+ * 慢放设备（以及任何调过该选项的用户）会在窗口过期后照样触发打断。
+ * 缩放为 0（动画关闭）时转场瞬间完成，预算为 0，不引入人为等待。
+ */
+internal fun animatorScaledBudgetMs(context: Context): Long =
+    (TAB_SWITCH_SETTLE_BUDGET_MS * animatorScale(context)).toLong()
 
 /**
  * 切页单飞队列：把落位窗口内的快速连点合并成「最后一次意图、一次干净转场」。

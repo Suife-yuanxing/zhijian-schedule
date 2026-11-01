@@ -11,9 +11,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -32,6 +32,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -66,10 +67,24 @@ import java.time.format.DateTimeFormatter
 fun ExamScreen(
     onBack: () -> Unit,
     onNeedsLogin: () -> Unit = {},
+    /**
+     * 是否播放入场：本次进程里打开「考试安排」的**第一次**为 true（见 SecondLevelEntrancePolicy）。
+     *
+     * 之前这里两组标题的 StaggerIn 与每一行的 cascadeIn 都没有闸门：每次推入都重播，
+     * 行数越多拖得越长（19 行时行级延迟封顶 320ms + 弹簧收尾）。
+     * 与根页 2026-10-30 修掉的是同一个病，只是二级页当时没跟上。
+     */
+    playEntrance: Boolean = false,
+    /** 首帧入场已经开始：宿主据此关闸，之后再打开这一页不再重播 */
+    onEntranceShown: () -> Unit = {},
     viewModel: ExamViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val colors = LocalCourseColors.current
+    // 冻结成本次组合的值：关闸后入参会变 false，但这一轮已经在跑，
+    // 不能中途按停（会留下半透明的半张页面）。与三个根页同一写法。
+    val entranceOnce = remember { playEntrance }
+    LaunchedEffect(Unit) { if (entranceOnce) onEntranceShown() }
     val now = remember { LocalDateTime.now() }
     var editing by remember { mutableStateOf<ExamEntity?>(null) }
     var showEditor by remember { mutableStateOf(false) }
@@ -137,7 +152,7 @@ fun ExamScreen(
                     val (upcoming, past) = state.exams.partition { it.examTime >= System.currentTimeMillis() }
                     if (upcoming.isNotEmpty()) {
                         Spacer(Modifier.height(14.dp))
-                        StaggerIn(index = 0, stepMs = 40, durationMs = 280) {
+                        StaggerIn(index = 0, stepMs = 40, durationMs = 280, skip = !entranceOnce) {
                             GroupLabel("即将到来")
                         }
                         upcoming.forEachIndexed { index, exam ->
@@ -145,7 +160,8 @@ fun ExamScreen(
                                 exam,
                                 now,
                                 past = false,
-                                entranceDelayMs = (60L + index * 24).coerceAtMost(240L),
+                                entranceDelayMs =
+                                    if (entranceOnce) (60L + index * 24).coerceAtMost(240L) else -1L,
                                 onClick = {
                                     editing = exam
                                     showEditor = true
@@ -156,7 +172,7 @@ fun ExamScreen(
                     }
                     if (past.isNotEmpty()) {
                         Spacer(Modifier.height(14.dp))
-                        StaggerIn(index = 1, stepMs = 40, durationMs = 280) {
+                        StaggerIn(index = 1, stepMs = 40, durationMs = 280, skip = !entranceOnce) {
                             GroupLabel("已结束")
                         }
                         past.forEachIndexed { index, exam ->
@@ -164,7 +180,8 @@ fun ExamScreen(
                                 exam,
                                 now,
                                 past = true,
-                                entranceDelayMs = (140L + index * 24).coerceAtMost(320L),
+                                entranceDelayMs =
+                                    if (entranceOnce) (140L + index * 24).coerceAtMost(320L) else -1L,
                                 onClick = {},
                                 onLongClick = { pendingDelete = exam },
                             )

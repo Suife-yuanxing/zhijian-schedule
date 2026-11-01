@@ -34,15 +34,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -73,6 +72,16 @@ private val UPDATE_FMT = DateTimeFormatter.ofPattern("M月d日 HH:mm")
 fun GradesScreen(
     onBack: () -> Unit,
     onOpenJwImport: () -> Unit,
+    /**
+     * 是否播放入场：本次进程里打开「成绩查询」的**第一次**为 true（见 SecondLevelEntrancePolicy）。
+     *
+     * 这一页原来是自己用 rememberSaveable 记「已播」的，但那只在同一个 back stack entry
+     * 存活期内有效——返回再进就是新 entry，标记重新初始化，整页又从 alpha=0 长一遍，
+     * 读作「打开像刷新了一遍」。闸门改由宿主持有后，跨 entry、跨重建都算数。
+     */
+    playEntrance: Boolean = false,
+    /** 首帧入场已经开始：宿主据此关闸，之后再打开这一页不再重播 */
+    onEntranceShown: () -> Unit = {},
     viewModel: GradesViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -94,12 +103,17 @@ fun GradesScreen(
             filtered.groupBy { it.term }.toSortedMap(compareByDescending { it })
         }
 
-    // 结构块级联只在「首次拿到成绩」播一次：刷新、切学期筛选都算已就位的内容，
-    // 重播会读成「每次操作都刷新一遍」（与切页不重播入场同一条规矩）
-    var entrancePlayed by rememberSaveable { mutableStateOf(false) }
-    val playEntrance = state.records.isNotEmpty() && !entrancePlayed
-    LaunchedEffect(playEntrance) {
-        if (playEntrance) entrancePlayed = true
+    // 结构块级联只在「本次进程第一次打开这一页」播一次：宿主闸门（SecondLevelEntrancePolicy）
+    // 已经保证这一点。这里再冻结一次，理由与三个根页相同——关闸后入参翻面，
+    // 正在跑的那一轮会被中途按停，留下半透明的半张页面
+    val entranceOnce = remember { playEntrance }
+    LaunchedEffect(Unit) { if (entranceOnce) onEntranceShown() }
+    // 数据晚到（仓库还在发第一次结果）时补播一次：入场意图已消费但还没内容可播，
+    // 这时直接把「已播」当成过期标记，等数据落地的第一帧再播
+    var pendingEntrance by remember { mutableStateOf(entranceOnce) }
+    val playEntranceNow = state.records.isNotEmpty() && pendingEntrance
+    LaunchedEffect(playEntranceNow) {
+        if (playEntranceNow) pendingEntrance = false
     }
 
     Column(
@@ -155,19 +169,25 @@ fun GradesScreen(
                 ) {
                     item(key = "summary") {
                         Spacer(Modifier.height(4.dp))
-                        StaggerIn(index = 0, stepMs = 40, durationMs = 300, skip = !playEntrance) {
-                            SummaryCard(stats, term, state.fetchedAt, state.error != null || state.needsLogin, latestTerm)
+                        StaggerIn(index = 0, stepMs = 40, durationMs = 300, skip = !playEntranceNow) {
+                            SummaryCard(
+                                stats = stats,
+                                term = term,
+                                fetchedAt = state.fetchedAt,
+                                failed = state.error != null || state.needsLogin,
+                                latestTerm = latestTerm,
+                            )
                         }
                     }
                     if (trend.size >= 2) {
                         item(key = "trend") {
-                            StaggerIn(index = 1, stepMs = 40, durationMs = 300, skip = !playEntrance) {
+                            StaggerIn(index = 1, stepMs = 40, durationMs = 300, skip = !playEntranceNow) {
                                 TermTrendCard(trend)
                             }
                         }
                     }
                     item(key = "chips") {
-                        StaggerIn(index = 2, stepMs = 40, durationMs = 300, skip = !playEntrance) {
+                        StaggerIn(index = 2, stepMs = 40, durationMs = 300, skip = !playEntranceNow) {
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 TermChip(label = "全部", selected = term == null) {
                                     viewModel.selectTerm(null)
@@ -181,13 +201,13 @@ fun GradesScreen(
                         }
                     }
                     // 行级联接在结构块之后：延迟在行首次出现时定格（remember），
-                    // 之后 playEntrance 翻转也不会打断正在播的入场
+                    // 之后 playEntranceNow 翻转也不会打断正在播的入场
                     var runningIndex = 0
                     groups.forEach { (groupTerm, list) ->
                         val groupStart = runningIndex
                         runningIndex += list.size
                         item(key = "h_$groupTerm") {
-                            StaggerIn(index = 3, stepMs = 40, durationMs = 300, skip = !playEntrance) {
+                            StaggerIn(index = 3, stepMs = 40, durationMs = 300, skip = !playEntranceNow) {
                                 GroupHeader(groupTerm, GradeParser.stats(list))
                             }
                         }
@@ -201,7 +221,7 @@ fun GradesScreen(
                                 record,
                                 entranceDelayMs =
                                     remember {
-                                        if (playEntrance) {
+                                        if (playEntranceNow) {
                                             180L + ((groupStart + index) * 18).coerceAtMost(140)
                                         } else {
                                             -1L

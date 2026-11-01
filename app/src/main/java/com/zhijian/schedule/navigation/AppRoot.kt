@@ -155,8 +155,37 @@ private fun AppScaffold(
     val islandCollapse = rememberIslandCollapseState()
     // 三个根页共用的入场闸门：宿主创建一次，页面只读、由页面自己关闸（见 RootEntrancePolicy）
     val entrance = rememberRootEntranceGate()
+    // 二级页的入场闸门：同上一条规矩，按路由各记一次（见 SecondLevelEntrancePolicy）。
+    // 放在宿主这一层而不是页面内部，才能跨 back stack entry、跨 Activity 重建都算数
+    val secondLevelEntrance = rememberSecondLevelEntranceGate()
     val navState =
-        remember(entrance) { AppNavHostState(reveal, islandCollapse, entryTransitions, entryLayer, entrance) }
+        remember(entrance, secondLevelEntrance) {
+            AppNavHostState(
+                reveal = reveal,
+                islandCollapse = islandCollapse,
+                entryTransitions = entryTransitions,
+                entryLayer = entryLayer,
+                entrance = entrance,
+                secondLevelEntrance = secondLevelEntrance,
+            )
+        }
+    // 入口卡单飞：窗口内的第二次点击丢弃（两张不同的卡会各压一层二级页，真机钉死。
+    // 预算随系统动画缩放折算，与 TabSwitchQueue 同一套折算方式）
+    val entryNavContext = LocalContext.current
+    val entryNavigator =
+        remember(entryNavContext) {
+            ProfileEntryNavigator(
+                budgetMs = { entryNavBudgetMs(entryNavContext) },
+                nowMs = systemMonotonicMs,
+                navigate = { route -> navController.navigateToProfileEntry(route) },
+            )
+        }
+    // 入口卡的导航回调：五个入口共用同一个闸门。放在宿主而不是 ProfileScreen 里，
+    // 是因为闸门要跨「我的」页的重组与重建活着（ProfileScreen 返回后会被销毁）
+    val openEntry: (String) -> Unit =
+        remember(entryNavigator) {
+            { route -> entryNavigator.request(route) }
+        }
     val colors = LocalCourseColors.current
     val tabs =
         listOf(
@@ -217,6 +246,7 @@ private fun AppScaffold(
                     navController = navController,
                     state = navState,
                     currentDestination = currentDestination,
+                    onOpenProfileEntry = openEntry,
                     modifier =
                         Modifier
                             .metalBackdropSource(

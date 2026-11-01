@@ -36,6 +36,15 @@ internal class AppNavHostState(
      * 规则本体见 [RootEntrancePolicy]（纯逻辑，有单测）。
      */
     val entrance: RootEntranceGate,
+    /**
+     * 二级页的入场闸门：与 [entrance] 同一条规矩，但**按路由各记一次**。
+     *
+     * 根页的闸门管不到二级页：成绩 / 考试 / 设置三页原先各自在页面内部用
+     * rememberSaveable 记「已播」，而那只在同一个 back stack entry 存活期内有效——
+     * 返回再进就是新 entry，标记重新初始化，整页又从 alpha=0 长一遍。
+     * 闸门挂在宿主这一层，才能跨 entry、跨 Activity 重建都算数。
+     */
+    val secondLevelEntrance: SecondLevelEntranceGate,
 ) {
     /** 复点当前 tab 的回顶请求：自增即触发，页面各自消费 */
     var scrollToTopTick by mutableIntStateOf(0)

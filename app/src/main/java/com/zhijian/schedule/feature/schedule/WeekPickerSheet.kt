@@ -1,8 +1,8 @@
 package com.zhijian.schedule.feature.schedule
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -36,10 +36,10 @@ import com.zhijian.schedule.core.ui.StaggerIn
 import com.zhijian.schedule.core.ui.TapTextButton
 import com.zhijian.schedule.core.ui.week.WeekCell
 import com.zhijian.schedule.core.ui.week.resolveWeekCellVisual
-import java.time.LocalDate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 
 /**
  * 周选择面板：4 列周格（「第 N 周」+ 日期范围），点选即收起并切换周页。
@@ -92,7 +92,8 @@ fun WeekPickerSheet(
                 Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                StaggerIn(index = 0) {
+                // 嵌在 Row 里：不能撑满，否则把「回到本周」挤到屏幕外
+                StaggerIn(index = 0, fillWidth = false) {
                     Text(
                         text = "选择周次",
                         style = MaterialTheme.typography.titleMedium,
@@ -102,7 +103,7 @@ fun WeekPickerSheet(
                 }
                 Spacer(Modifier.weight(1f))
                 ui.currentWeek?.takeIf { it != ui.selectedWeek }?.let { cw ->
-                    StaggerIn(index = 1) {
+                    StaggerIn(index = 1, fillWidth = false) {
                         TapTextButton(onClick = { pick(cw) }) {
                             Text("回到本周", color = colors.accent)
                         }
@@ -140,7 +141,8 @@ fun WeekPickerSheet(
                                 visual =
                                     resolveWeekCellVisual(
                                         selected = week == (pinnedWeek ?: ui.selectedWeek),
-                                        current = week == ui.currentWeek, past = ui.currentWeek != null && week < ui.currentWeek,
+                                        current = week == ui.currentWeek,
+                                        past = ui.currentWeek != null && week < ui.currentWeek,
                                     ),
                                 modifier = Modifier.weight(1f),
                                 onClick = { pick(week) },

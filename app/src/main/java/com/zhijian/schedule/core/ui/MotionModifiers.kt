@@ -7,6 +7,7 @@ import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -117,8 +118,12 @@ fun Modifier.selectedPop(
  * 子项的越界绘制（选中弹跳、投影溢出）会被裁掉；需要溢出时用它撑大图层，
  * 外层布局间距自行补偿。
  * [durationMs]：单段淡入上浮的时长；切页级联可缩短以压住整体节奏。
- * [skip]：首次组合时直接落位。用于「我的」页返回时避免入口卡重播入场，
- * 保证共享元素锚点从第一帧起就可见。
+ * [skip]：首次组合时直接落位。所有「页面入场」都必须接一个闸门控制它——
+ * 根页读 RootEntranceGate，二级页读 SecondLevelEntranceGate。不接闸门 = 每次进入都重播，
+ * 那就是「打开这一页像刷新了一遍」。
+ * [fillWidth]：默认撑满可用宽度。**撑满是刻意的新默认**：不撑宽时 Box 只有内容那么宽、
+ * 又贴在左对齐的父容器里，叠上 20dp 的上浮位移，整块内容读作「从左上角长出来」。
+ * 只有嵌在 Row 里的单个元素（标题、按钮）才该关掉它，否则会把兄弟项挤到屏幕外。
  */
 @Composable
 fun StaggerIn(
@@ -129,6 +134,7 @@ fun StaggerIn(
     durationMs: Int = Motion.DUR_SLOW,
     contentPadding: PaddingValues = PaddingValues(),
     skip: Boolean = false,
+    fillWidth: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     var arrived by remember { mutableFloatStateOf(if (skip) 1f else 0f) }
@@ -145,9 +151,12 @@ fun StaggerIn(
     )
     Box(
         modifier
+            .then(if (fillWidth) Modifier.fillMaxWidth() else Modifier)
             .graphicsLayer {
                 alpha = progress
-                translationY = (1f - progress) * 20.dp.toPx()
+                // 8dp 而不是 20dp：上浮只需要「落位」的暗示，位移越大越像从角落飞入。
+                // 这条与「整页从左上角打开」的读法直接相关，别再调大。
+                translationY = (1f - progress) * 8.dp.toPx()
             }.padding(contentPadding),
     ) {
         content()
