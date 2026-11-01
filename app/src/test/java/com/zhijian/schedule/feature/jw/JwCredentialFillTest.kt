@@ -1,8 +1,6 @@
 package com.zhijian.schedule.feature.jw
 
 import com.zhijian.schedule.core.jw.credential.JwCredentialScripts
-import kotlinx.serialization.builtins.serializer
-import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -99,12 +97,13 @@ class JwCredentialFillTest {
     fun promptCarriesNoPasswordField() {
         // 气泡要回答的是「记的是不是我这个号」。密码摆到屏幕上没有任何收益，
         // 只是多一处会被旁人看到的可能——明文到写盘为止都不出 ViewModel
-        val prompt = JwCredentialPrompt(
-            origin = "https://jw.example.edu.cn",
-            maskedUsername = "20***01",
-            siteLabel = "jw.example.edu.cn",
-            candidateAt = 1_700_000_000_000L,
-        )
+        val prompt =
+            JwCredentialPrompt(
+                origin = "https://jw.example.edu.cn",
+                maskedUsername = "20***01",
+                siteLabel = "jw.example.edu.cn",
+                candidateAt = 1_700_000_000_000L,
+            )
         assertFalse(prompt.toString().contains("p@ss"))
         assertTrue(prompt.toString().contains("20***01"))
     }
