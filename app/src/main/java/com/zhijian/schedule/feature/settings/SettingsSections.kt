@@ -136,6 +136,37 @@ internal fun SectionTimesSection(
     }
 }
 
+/**
+ * 没有已保存凭据时，这一块该显示哪一句。
+ *
+ * 抽成纯函数是因为**判定顺序本身就是那次 bug**：先判地址、后判凭据的写法
+ * 会让已保存的数据被一句无关提示整个盖住，而这种错误在界面上看不出来
+ * （两句话都是灰字，都"合理"），只能靠测试钉住。
+ */
+internal enum class JwCredentialPlaceholder {
+    /** 没配过教务地址，也没存过凭据：先让用户去配地址 */
+    NoAddress,
+
+    /** 地址有了，但还没在教务页登录成功过 */
+    NoCredential,
+}
+
+/**
+ * 返回 null 表示「有已保存的凭据，应当显示摘要」。
+ *
+ * 凭据优先：存过就是存过，与教务地址当前是否为空无关——
+ * 地址为空是导入页该提示的事，不该让设置页假装没存过密码。
+ */
+internal fun jwCredentialPlaceholder(
+    hasCredential: Boolean,
+    addressConfigured: Boolean,
+): JwCredentialPlaceholder? =
+    when {
+        hasCredential -> null
+        addressConfigured -> JwCredentialPlaceholder.NoCredential
+        else -> JwCredentialPlaceholder.NoAddress
+    }
+
 /** 教务账号密码：自动填充开关 + 已保存账号摘要 + 清除 */
 @Composable
 internal fun JwCredentialSection(
@@ -146,6 +177,7 @@ internal fun JwCredentialSection(
     onClear: () -> Unit,
 ) {
     val colors = LocalCourseColors.current
+    val placeholder = jwCredentialPlaceholder(credential != null, enabled)
     SettingsCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -158,41 +190,57 @@ internal fun JwCredentialSection(
             }
             JellySwitch(
                 checked = autoFillEnabled,
-                enabled = enabled,
+                // 已存过凭据时开关始终可点：地址缺失是导入页的问题，
+                // 不该顺手把「要不要自动填」这个决定也锁死
+                enabled = enabled || credential != null,
                 onCheckedChange = onToggleAutoFill,
             )
         }
         Spacer(Modifier.height(10.dp))
-        when {
-            !enabled ->
-                Text(
-                    text = "先填写教务地址并成功登录一次，这里才会出现可记住的账号",
-                    color = colors.textMuted,
-                    fontSize = 12.sp,
-                )
+        // 判定顺序由 [jwCredentialPlaceholder] 定：凭据优先，地址其次。
+        // 反过来写过一次，结果很难看：凭据明明存好了，只要 jw_url 是空的
+        // （用户从没点过「抓取」，或点过一次空地址），这一块就只说「先填写教务地址」，
+        // 已保存的账号、站点、时间一条都不显示——用户以为保存失败，实际是显示条件挡住了。
+        when (placeholder) {
+            // placeholder 为 null 恰好等价于 credential 非空（见 [jwCredentialPlaceholder] 的契约），
+            // 这里用 ?.let 而不是加一个 if：那个 if 的 else 分支永远不会被执行
+            null -> credential?.let { JwCredentialSummaryRows(it, onClear) }
 
-            credential == null ->
+            JwCredentialPlaceholder.NoCredential ->
                 Text(
                     text = "尚未保存：在「导入课表」里登录一次教务后自动记住",
                     color = colors.textMuted,
                     fontSize = 12.sp,
                 )
 
-            else -> {
-                InfoRow("账号", credential.maskedUsername)
-                InfoRow("站点", credential.origin.substringAfter("://"))
-                InfoRow("记住于", formatSavedAt(credential.savedAt))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "密码以 Keystore 加密保存在本机，不进备份、不随导出带走",
-                        color = colors.textMuted,
-                        fontSize = 12.sp,
-                        modifier = Modifier.weight(1f),
-                    )
-                    TapTextButton(onClick = onClear) { Text("清除") }
-                }
-            }
+            JwCredentialPlaceholder.NoAddress ->
+                Text(
+                    text = "先填写教务地址并登录一次，这里才会出现可记住的账号",
+                    color = colors.textMuted,
+                    fontSize = 12.sp,
+                )
         }
+    }
+}
+
+/** 已保存凭据的三行摘要 + 清除入口；**只读摘要**，拿不到密码 */
+@Composable
+private fun JwCredentialSummaryRows(
+    credential: JwCredentialSummary,
+    onClear: () -> Unit,
+) {
+    val colors = LocalCourseColors.current
+    InfoRow("账号", credential.maskedUsername)
+    InfoRow("站点", credential.origin.substringAfter("://"))
+    InfoRow("记住于", formatSavedAt(credential.savedAt))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = "密码以 Keystore 加密保存在本机，不进备份、不随导出带走",
+            color = colors.textMuted,
+            fontSize = 12.sp,
+            modifier = Modifier.weight(1f),
+        )
+        TapTextButton(onClick = onClear) { Text("清除") }
     }
 }
 

@@ -560,6 +560,26 @@ class JwImportViewModel
             loadRequest = WebLoadRequest(preferredTarget(target), loadRequest.nonce + 1)
             // 地址可能刚改过（换学校 / 换校区）：重新比对 origin 再决定回填
             reloadCredentialFill()
+            rememberUrl(target)
+        }
+
+        /**
+         * 把这次「打开」的地址落盘。
+         *
+         * ## 为什么在这里，而不是只在 [fetchNow] 里
+         * 用户真实的动作顺序是「填地址 → 打开 → 登录 → 记住密码」，
+         * 而**抓取课表是可以不按的**（只想登进去看看课表，或先存密码下次再说）。
+         * 原先只有抓取那一步写盘，于是只登录、不抓取的人会同时踩两个坑：
+         * 下次进来地址栏是空的要重打一遍；设置页的「教务账号密码」也永远停在
+         * 「先填写教务地址」——明明密码已经存好了。
+         *
+         * 地址是在按下「打开」那一刻被确认的，就该在那一刻记下来。
+         */
+        private fun rememberUrl(target: String) {
+            viewModelScope.launch {
+                if (settingsStore.settings.first().jwUrl == target) return@launch
+                settingsStore.setJw(target, JwAdapterRegistry.forUrl(target)?.name.orEmpty())
+            }
         }
 
         fun onPageUrl(value: String) {
@@ -629,8 +649,13 @@ class JwImportViewModel
                 errorMessage = null
                 needsLogin = false
                 val trimmed = withScheme(url)
-                if (trimmed.isNotBlank()) url = trimmed
-                settingsStore.setJw(trimmed, JwAdapterRegistry.forUrl(trimmed)?.name.orEmpty())
+                // 地址为空时绝不能写盘：写下去就是 setJw("", "")，把已保存的教务地址
+                // 直接抹掉——下次进来地址栏空着，自动填入也再认不出 origin。
+                // 空地址本来就会走下面的 NoConfig 分支报错，不需要顺手清一下配置。
+                if (trimmed.isNotBlank()) {
+                    url = trimmed
+                    settingsStore.setJw(trimmed, JwAdapterRegistry.forUrl(trimmed)?.name.orEmpty())
+                }
                 // 预抓取在途就等它落地（通常早就好了）；就绪则直接用，零网络等待
                 prefetchJob?.takeIf { it.isActive }?.join()
                 val ready = prefetched
