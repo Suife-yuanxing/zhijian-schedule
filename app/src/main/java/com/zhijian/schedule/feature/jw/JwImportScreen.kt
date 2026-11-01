@@ -39,7 +39,6 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -57,13 +56,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.zhijian.schedule.BuildConfig
 import com.zhijian.schedule.core.jw.script.JwScriptRunner
@@ -77,6 +74,7 @@ import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.SecondaryTopBar
 import com.zhijian.schedule.core.ui.TapIconButton
 import com.zhijian.schedule.core.ui.TapTextButton
+import com.zhijian.schedule.core.ui.TypeScale
 import com.zhijian.schedule.core.ui.buttonFeedback
 import com.zhijian.schedule.core.ui.debug.DebugTapTitle
 import com.zhijian.schedule.core.ui.island.IslandHint
@@ -182,8 +180,10 @@ fun JwImportScreen(
                     // 选校 = 填地址的快捷入口，与脚本管理同级放在顶栏，不占正文宽度
                     Text(
                         text = "选校",
+                        // 顶栏动作与标题同档：它在语义上是"这一屏的一个入口"，
+                        // 不是一段说明文字，比正文小一档会读成附注
+                        style = TypeScale.BodyStrong,
                         color = colors.accent,
-                        fontSize = 13.sp,
                         modifier =
                             Modifier
                                 .clip(RoundedCornerShape(10.dp))
@@ -223,9 +223,8 @@ fun JwImportScreen(
                 ) {
                     Text(
                         text = notice,
+                        style = TypeScale.Micro,
                         color = colors.accent,
-                        fontSize = 10.5.sp,
-                        lineHeight = 15.sp,
                         modifier = Modifier.weight(1f),
                     )
                     TapIconButton(onClick = viewModel::dismissCertNotice, modifier = Modifier.size(28.dp)) {
@@ -260,7 +259,7 @@ fun JwImportScreen(
                         ) {
                             Text(
                                 text = "统一认证打不开？改用本地登录",
-                                fontSize = 12.sp,
+                                style = TypeScale.Label,
                                 color = colors.accent,
                             )
                         }
@@ -272,7 +271,7 @@ fun JwImportScreen(
                         ) {
                             Text(
                                 text = "本地登录打不开？改用统一认证登录",
-                                fontSize = 12.sp,
+                                style = TypeScale.Label,
                                 color = colors.accent,
                             )
                         }
@@ -540,7 +539,9 @@ private fun UrlBar(
     onOpen: () -> Unit,
     colors: CourseColors,
 ) {
-    val muted = jwMuted(colors)
+    // 占位文字压在输入条自己的 surface 上，不是页面底色——按 surface 求解
+    // （金属亮档上这两者差 1.4:1 以上，按 bg 解出来的颜色压上去只有 3.7:1）
+    val muted = jwMuted(colors, colors.surface)
     val source = remember { MutableInteractionSource() }
     val focused by source.collectIsFocusedAsState()
     val stroke by animateColorAsState(
@@ -569,7 +570,9 @@ private fun UrlBar(
                 value = url,
                 onValueChange = onUrlChange,
                 singleLine = true,
-                textStyle = LocalTextStyle.current.copy(fontSize = 13.sp, color = colors.text),
+                // 输入内容用正文默认档；TextStyle 整体由标尺给出，
+                // 这样聚焦/未聚焦、有无内容时行高一致（否则光标与占位文字会差半行）
+                textStyle = TypeScale.Body.copy(color = colors.text),
                 cursorBrush = SolidColor(colors.accent),
                 keyboardOptions =
                     KeyboardOptions(
@@ -584,8 +587,8 @@ private fun UrlBar(
                         if (url.isEmpty()) {
                             Text(
                                 text = "教务系统地址",
+                                style = TypeScale.Body,
                                 color = muted,
-                                fontSize = 13.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -676,9 +679,8 @@ private fun JwImportFooter(
             ) {
                 Text(
                     text = notices.scriptNotice.orEmpty(),
+                    style = TypeScale.Footnote,
                     color = colors.accent,
-                    fontSize = 11.5.sp,
-                    lineHeight = 16.sp,
                     modifier = Modifier.weight(1f),
                 )
                 TapIconButton(onClick = notices.onDismissNotice, modifier = Modifier.size(28.dp)) {
@@ -700,13 +702,12 @@ private fun JwImportFooter(
             Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                 Text(
                     text = notices.errorMessage.orEmpty(),
+                    style = TypeScale.Label,
                     color = ErrorRed,
-                    fontSize = 12.sp,
-                    lineHeight = 17.sp,
                 )
                 notices.needsLoginNote?.takeIf { it.isNotBlank() }?.let { note ->
                     Spacer(Modifier.height(2.dp))
-                    Text(text = note, color = muted, fontSize = 11.sp, lineHeight = 15.sp)
+                    Text(text = note, style = TypeScale.Footnote, color = muted)
                 }
             }
         }
@@ -719,14 +720,14 @@ private fun JwImportFooter(
         ) {
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("每日自动同步", color = colors.text, fontSize = 13.sp)
+                    Text("每日自动同步", style = TypeScale.Body, color = colors.text)
                     Spacer(Modifier.width(10.dp))
                     JellySwitch(checked = autoSyncEnabled, onCheckedChange = onAutoSyncChange)
                 }
                 Text(
                     text = lastSyncHint,
+                    style = TypeScale.Footnote,
                     color = muted,
-                    fontSize = 11.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -790,9 +791,10 @@ private fun PrimaryPill(
         leading?.invoke()
         Text(
             text = label,
+            // 主行动按钮与卡片标题同档：它是这一屏唯一的实心按钮，
+            // 比正文大一档是"这是动作"的信号，不需要再加粗到 Bold
+            style = TypeScale.Headline,
             color = if (enabled) colors.onAccent else colors.textMuted,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.SemiBold,
         )
     }
 }

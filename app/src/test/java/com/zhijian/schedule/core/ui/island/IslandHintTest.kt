@@ -8,12 +8,12 @@ import org.junit.Test
 import kotlin.math.abs
 
 /**
- * 失败态抖动的波形与危险色的对比度。
+ * 失败态抖动的波形、两档语气的对比度下限，以及进度条轨道的可见度。
  *
- * 这两件事都只在真机上「看起来对不对」，本机单测守的是它们的**端点与下限**：
+ * 这三件事都只在真机上「看起来对不对」，本机单测守的是它们的**端点与下限**：
  * 波形起点／终点必须是 0，否则胶囊会在出现那一帧凭空一跳、或结束时硬切回原位；
- * 危险色在每一套预设的浮岛面上都必须够亮，否则「没成」这件事根本看不见。
- * 两种毛病都不会抛异常，只会安静地做错事。
+ * 语气色与轨道色在每一套预设的浮岛面上都必须够亮，否则「没成」这件事根本看不见、
+ * 或者进度条退化成一根自己变长的色块。这些毛病都不会抛异常，只会安静地做错事。
  */
 class IslandHintTest {
     @Test
@@ -60,11 +60,15 @@ class IslandHintTest {
     }
 
     /**
-     * 危险色必须在浮岛面上达到图形门槛。
+     * 失败色必须在浮岛面上达到图形门槛。
      *
      * 最容易出问题的组合是「墨夜」与「水银镜面」的暗档：浮岛面比正文底色更亮，
      * 页面里那个 #E5484D 压上去只剩约 3.1:1，叉号与进度条会糊进背景。
      * 失败提示最不能出的问题就是「看不清」。
+     *
+     * 判据的底色取自 [IslandTokens.pillUnder]，与求解器用的是**同一个函数**——
+     * 上一版这里写死 colors.surface，金属档上验的其实是错的底，
+     * 于是「单测全绿、真机上对勾发灰」这种最坏的分歧得以存在。
      */
     @Test
     fun dangerColorMeetsGraphicContrastOnEveryPreset() {
@@ -72,13 +76,89 @@ class IslandHintTest {
             for (isDark in listOf(false, true)) {
                 val colors = if (isDark) preset.dark else preset.light
                 val solved = IslandTokens.dangerOn(colors, isDark, preset.metal)
-                // 判据的底色与 dangerOn 内部一致：非金属档压 surface
-                val ratio = Contrast.ratio(solved, colors.surface)
+                val under = IslandTokens.pillUnder(colors, isDark, preset.metal)
+                val ratio = Contrast.ratio(solved, under)
                 val label = preset.id + if (isDark) "/dark" else "/light"
                 assertTrue(
                     "$label 的危险色只有 $ratio:1，低于图形门槛 3.0",
                     ratio >= IslandTokens.MIN_ICON_CONTRAST,
                 )
+            }
+        }
+    }
+
+    /**
+     * 成功色同样必须在浮岛面上达到图形门槛。
+     *
+     * 上一版成功档直接借用 `colors.accent`——那是**页面**的语义色，保证的是
+     * 「压在页面底色上」够醒目。浮岛换了底（surface / 金属面）之后，
+     * 水银镜面亮档上蓝色强调色压金属面只有 2.89:1，对勾与进度条会发灰。
+     *
+     * 这条与 [dangerColorMeetsGraphicContrastOnEveryPreset] 成对存在，钉的正是
+     * 「视觉统一」里最关键的一句：两档语气的**醒目程度**必须来自同一套求解，
+     * 否则用户会以为更艳的那一档是更严重的错误。
+     */
+    @Test
+    fun doneColorMeetsGraphicContrastOnEveryPreset() {
+        for (preset in ThemePresets.all) {
+            for (isDark in listOf(false, true)) {
+                val colors = if (isDark) preset.dark else preset.light
+                val solved = IslandTokens.doneOn(colors, isDark, preset.metal)
+                val under = IslandTokens.pillUnder(colors, isDark, preset.metal)
+                val ratio = Contrast.ratio(solved, under)
+                val label = preset.id + if (isDark) "/dark" else "/light"
+                assertTrue(
+                    "$label 的成功色只有 $ratio:1，低于图形门槛 3.0",
+                    ratio >= IslandTokens.MIN_ICON_CONTRAST,
+                )
+            }
+        }
+    }
+
+    /**
+     * 进度条轨道必须看得见。
+     *
+     * 轨道说的是「这条进度条总共有多少」。它看不见时，正在走的色条就变成
+     * 一根无缘无故变长的东西——「还剩多少」这个唯一的语义整个丢掉。
+     * 改造前 12 组预设实测只有 1.22~1.55:1（border 本来是给描边用的）。
+     */
+    @Test
+    fun trackIsVisibleAgainstPillSurface() {
+        for (preset in ThemePresets.all) {
+            for (isDark in listOf(false, true)) {
+                val colors = if (isDark) preset.dark else preset.light
+                val track = IslandTokens.trackOn(colors, isDark, preset.metal)
+                val under = IslandTokens.pillUnder(colors, isDark, preset.metal)
+                val ratio = Contrast.ratio(track, under)
+                val label = preset.id + if (isDark) "/dark" else "/light"
+                assertTrue(
+                    "$label 的轨道只有 $ratio:1，低于 $IslandTokens.MIN_TRACK_CONTRAST",
+                    ratio >= IslandTokens.MIN_TRACK_CONTRAST,
+                )
+            }
+        }
+    }
+
+    /**
+     * 已走段必须比轨道更醒目。
+     *
+     * 两段若反过来，进度条会读成「一开始就是满的、正在变空」——方向读反了，
+     * 「还有多久」就变成了「已经过了多久」，而这条提示的全部意义是前者。
+     *
+     * 这也是两档语气「统一」的另一面：语气色要压得住轨道，不能与轨道糊成一段。
+     */
+    @Test
+    fun progressFillOutweighsTrackOnEveryPreset() {
+        for (preset in ThemePresets.all) {
+            for (isDark in listOf(false, true)) {
+                val colors = if (isDark) preset.dark else preset.light
+                val under = IslandTokens.pillUnder(colors, isDark, preset.metal)
+                val track = Contrast.ratio(IslandTokens.trackOn(colors, isDark, preset.metal), under)
+                val done = Contrast.ratio(IslandTokens.doneOn(colors, isDark, preset.metal), under)
+                val failed = Contrast.ratio(IslandTokens.dangerOn(colors, isDark, preset.metal), under)
+                val label = preset.id + if (isDark) "/dark" else "/light"
+                assertTrue("$label 的成功段 $done 不比轨道 $track 醒目", done > track)
+                assertTrue("$label 的失败段 $failed 不比轨道 $track 醒目", failed > track)
             }
         }
     }
@@ -115,8 +195,9 @@ class IslandHintTest {
             for (isDark in listOf(false, true)) {
                 val colors = if (isDark) preset.dark else preset.light
                 val danger = IslandTokens.dangerOn(colors, isDark, preset.metal)
+                val under = IslandTokens.pillUnder(colors, isDark, preset.metal)
                 val label = preset.id + if (isDark) "/dark" else "/light"
-                val ratio = Contrast.ratio(danger, colors.surface)
+                val ratio = Contrast.ratio(danger, under)
                 assertTrue(
                     label + " 的危险色压在胶囊面上只有 " + ratio + ":1，图形门槛是 3.0",
                     ratio >= IslandTokens.MIN_ICON_CONTRAST,

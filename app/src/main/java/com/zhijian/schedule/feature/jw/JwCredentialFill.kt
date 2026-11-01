@@ -57,7 +57,7 @@ data class JwCredentialFillNotice(
  * 不写「已为你保存密码」：回填与保存是两件事。保存要用户按气泡里的「记住」才发生，
  * 把两者说成一件事会让用户以为密码已经存好了，于是下次换设备时找不到它。
  */
-internal fun credentialFillHintText(username: String): String = "已填入保存的教务账号（" + username + "），确认无误后点登录"
+internal fun credentialFillHintText(username: String): String = "已填入保存的账号 " + username + " · 确认后点登录"
 
 /**
  * 回填失败的那句话：说清**没能做什么**，并把用户下一步能做的事给出来。
@@ -72,8 +72,8 @@ internal fun credentialFillHintText(username: String): String = "已填入保存
  */
 internal fun credentialFillFailedText(reason: JwCredentialFillFailure): String =
     when (reason) {
-        JwCredentialFillFailure.NoInput -> "没能自动填入：这一页找不到登录框，请手动输入或重新打开"
-        JwCredentialFillFailure.WriteRejected -> "没能自动填入：登录框不接受自动写入，请手动输入账号密码"
+        JwCredentialFillFailure.NoInput -> "没能自动填入 · 这一页没有登录框，请手动输入"
+        JwCredentialFillFailure.WriteRejected -> "没能自动填入 · 登录框不接受写入，请手动输入"
     }
 
 /**
@@ -103,9 +103,9 @@ enum class JwCredentialFillFailure {
  */
 internal fun credentialSaveFailedText(reason: JwCredentialSaveFailure): String =
     when (reason) {
-        JwCredentialSaveFailure.KeyUnavailable -> "没能记住：本机密钥不可用，下次登录仍需手动输入"
-        JwCredentialSaveFailure.CandidateChanged -> "没能记住：这次登录的账号已变化，请重新确认"
-        JwCredentialSaveFailure.Storage -> "没能记住：写入本机存储失败，请稍后再试"
+        JwCredentialSaveFailure.KeyUnavailable -> "没能记住 · 本机密钥不可用，下次仍需手动输入"
+        JwCredentialSaveFailure.CandidateChanged -> "没能记住 · 登录账号已变化，请重新确认"
+        JwCredentialSaveFailure.Storage -> "没能记住 · 写入本机存储失败，请稍后再试"
     }
 
 /** 保存失败的三种原因；口径见 [credentialSaveFailedText] */

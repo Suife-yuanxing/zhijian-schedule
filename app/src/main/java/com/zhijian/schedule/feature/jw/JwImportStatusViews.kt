@@ -32,24 +32,34 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.zhijian.schedule.core.jw.AdapterSteps
 import com.zhijian.schedule.core.theme.CourseColors
 import com.zhijian.schedule.core.ui.Motion
+import com.zhijian.schedule.core.ui.OverlayMotion
 import com.zhijian.schedule.core.ui.RippleLoader
 import com.zhijian.schedule.core.ui.TapButton
 import com.zhijian.schedule.core.ui.TapIconButton
 import com.zhijian.schedule.core.ui.TapTextButton
+import com.zhijian.schedule.core.ui.TypeScale
 import com.zhijian.schedule.core.ui.island.Contrast
 import com.zhijian.schedule.core.ui.metal.CardTone
 import com.zhijian.schedule.core.ui.metal.metalCard
+import com.zhijian.schedule.core.ui.overlayShadow
 
 /** WCAG 2.1 AA 对正文（非大字）的对比度门槛：本页所有次要文字都按它求解 */
 private const val MIN_BODY_CONTRAST = 4.5
+
+/**
+ * 「网页加载失败」浮层遮罩的不透明度。
+ *
+ * 留出 10% 的透明度是为了让人看得见底下确实是一张失败的网页（与「页面被整块盖住」
+ * 区分开）。**次要文字的求解底必须用这个合成值**，不能用 bg——
+ * 见 [PageErrorOverlay] 里那段实测。
+ */
+private const val PAGE_ERROR_SCRIM_ALPHA = 0.9f
 
 // 教务导入流程的「状态与反馈」区块：步骤进度、登录指引、加载进度、失败浮层、WAF 提示条。
 //
@@ -58,18 +68,30 @@ private const val MIN_BODY_CONTRAST = 4.5
 
 /**
  * 本页所有「次要文字」的取值口径：从 [CourseColors.textMuted] 往 [CourseColors.text] 混到
- * 与底色达到 WCAG AA 4.5:1 为止。
+ * 与背景达到 WCAG AA 4.5:1 为止。
  *
  * 为什么不能直接用 textMuted：六套预设里 muted 压在 bg 上的实测对比度是
  * 纸本 3.53 / 清爽极简 3.26 / 多彩 3.62 / 墨夜 4.34 / 玻璃 4.38——只有动态取色（4.40）
  * 勉强擦线，其余全部低于正文门槛。本页的状态行是**用户唯一照着做的下一步**，
  * 它是提示而不是装饰，压不达标就等于把指引藏起来。
  *
+ * ## 为什么要参数化「压在哪」
+ * 上一版把底写死成 [CourseColors.bg]。可这个函数同时被「记住这次登录？」气泡调用，
+ * 而那块底是 [CourseColors.surface]（金属档下更亮，是着色器算出来的亮灰）。
+ * 实测水银镜面**亮档**：按 bg 解出 5.19:1 的颜色，压到 surface 上只剩 **3.73:1**，
+ * 低于 4.5——一条按 AA 解出来的次要文字，在它真正被画的地方不达标。
+ *
+ * 求解用的底必须与**绘制时的底**是同一个。这不是配色偏好，是这条函数的语义。
+ *
  * 达标即停（[Contrast.mixUntil] 的语义）：多混一步，次要信息就会抢主信息的权重。
+ *
+ * @param under 这段文字实际压在哪；默认页面底色，浮在卡面上的场合要显式传
  */
 @Composable
-internal fun jwMuted(colors: CourseColors): Color =
-    Contrast.mixUntil(colors.textMuted, colors.text, colors.bg, MIN_BODY_CONTRAST)
+internal fun jwMuted(
+    colors: CourseColors,
+    under: Color = colors.bg,
+): Color = Contrast.mixUntil(colors.textMuted, colors.text, under, MIN_BODY_CONTRAST)
 
 /**
  * 步骤进度 + 下面一步提示：本页唯一常驻的「现在该做什么」。
@@ -118,8 +140,11 @@ internal fun GuideBar(
             Spacer(Modifier.weight(1f))
             Text(
                 text = adapterLabel(adapterName),
+                // 「识别为 XX / 未识别」是最次要的一行，用 Micro 档；
+                // 改造前是 10.5sp——半像素字号，与相邻的 11sp 说明只差 0.5，
+                // 并排时读作"没对齐"而不是"更次要"
+                style = TypeScale.Micro,
                 color = if (adapterName != null) colors.accent else muted,
-                fontSize = 10.5.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(start = 8.dp),
@@ -131,19 +156,16 @@ internal fun GuideBar(
             text = status.primary,
             // 当前阶段已就绪（FETCH）时这句话不再是命令而是确认，交给强调色收尾；
             // 其余阶段是行动指令，用正文色保证在任何预设下都读得清。
+            style = TypeScale.LabelStrong,
             color = if (stage == JwStage.FETCH) colors.accent else colors.text,
-            fontSize = 12.5.sp,
-            lineHeight = 17.sp,
-            fontWeight = FontWeight.Medium,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
         if (status.secondary.isNotEmpty()) {
             Text(
                 text = status.secondary,
+                style = TypeScale.Footnote,
                 color = muted,
-                fontSize = 11.sp,
-                lineHeight = 15.sp,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -193,9 +215,11 @@ private fun JwStepProgress(
             Spacer(Modifier.size(4.dp))
             Text(
                 text = label,
+                // 三个步骤标签（登录 / 课表 / 抓取）必须**同字号同字重基线**，
+                // 只让「当前这一步」加粗：字重差是"你在第几步"的信号，
+                // 字号差会让三者读成三种不同的东西
+                style = if (active) TypeScale.LabelStrong else TypeScale.Label,
                 color = if (done || active) colors.text else muted,
-                fontSize = 12.sp,
-                fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
             )
         }
     }
@@ -249,23 +273,27 @@ internal fun PageErrorOverlay(
         enter = fadeIn(tween(durationMillis = Motion.DUR_MEDIUM, easing = Motion.EaseOut)),
         exit = fadeOut(tween(durationMillis = Motion.DUR_FAST)),
     ) {
+        // 遮罩是**半透明**的：底下的网页会透上来，所以文字实际压的颜色既不是 bg
+        // 也不是网页，而是两者的合成。按最坏情况（网页纯黑）解一次，
+        // 其余网页只会更亮、对比更高。
+        // 实测不这么解时：纸本暖白亮档按 bg 求出的 4.55:1，压在这层遮罩上只剩 3.63:1。
+        val scrimUnder = Contrast.composite(colors.bg, Color.Black, PAGE_ERROR_SCRIM_ALPHA)
         Box(
             Modifier
                 .fillMaxSize()
-                .background(colors.bg.copy(alpha = 0.9f)),
+                .background(colors.bg.copy(alpha = PAGE_ERROR_SCRIM_ALPHA)),
             contentAlignment = Alignment.Center,
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.padding(horizontal = 32.dp),
             ) {
-                Text("网页加载失败", color = colors.text, fontWeight = FontWeight.SemiBold)
+                Text("网页加载失败", style = TypeScale.Headline, color = colors.text)
                 Spacer(Modifier.height(6.dp))
                 Text(
                     text = error.orEmpty(),
-                    color = jwMuted(colors),
-                    fontSize = 12.sp,
-                    lineHeight = 17.sp,
+                    style = TypeScale.Label,
+                    color = jwMuted(colors, scrimUnder),
                     textAlign = TextAlign.Center,
                 )
                 Spacer(Modifier.height(14.dp))
@@ -305,7 +333,15 @@ internal fun LoadingOverlay(
     }
 }
 
-/** 校外直连被 WAF 拦截时的顶部提示横幅：从上滑入，可关闭 */
+/**
+ * 校外直连被 WAF 拦截时的顶部提示横幅：从上滑入，可关闭。
+ *
+ * 进出场走 [OverlayMotion]：与同一屏的限时浮岛、底部保存气泡**同一套时长与曲线**。
+ * 上一版这条横幅的离场用了 `DUR_MEDIUM`（比入场还长，且曲线是 tween 默认的
+ * FastOutSlowIn），于是同一条横幅进来一个手感、出去另一个手感；
+ * 而它上面的浮岛提示正好是 150ms 出场——两块浮层贴着网页顶部先后出现时，
+ * 那个差别是看得见的。
+ */
 @Composable
 internal fun HttpErrorBanner(
     code: Int,
@@ -315,18 +351,21 @@ internal fun HttpErrorBanner(
 ) {
     AnimatedVisibility(
         visible = code >= 400,
+        // 横幅从上方进来、也往上方离开：与它落点的位置同向，来回是一对镜像
         enter =
-            slideInVertically(
-                animationSpec = tween(durationMillis = Motion.DUR_MEDIUM, easing = Motion.EaseOut),
-            ) { -it } + fadeIn(tween(durationMillis = Motion.DUR_MEDIUM)),
+            slideInVertically(animationSpec = OverlayMotion.enter()) { OverlayMotion.slideUp(it) } +
+                fadeIn(OverlayMotion.enter()),
         exit =
-            slideOutVertically(tween(durationMillis = Motion.DUR_MEDIUM)) { -it } +
-                fadeOut(tween(durationMillis = Motion.DUR_FAST)),
+            slideOutVertically(animationSpec = OverlayMotion.exit()) { OverlayMotion.slideUp(it) } +
+                fadeOut(OverlayMotion.exit()),
         modifier = modifier,
     ) {
         Row(
             Modifier
                 .fillMaxWidth()
+                // 与浮岛、气泡同源：浮在网页之上的薄壳都该有一层影，
+                // 否则它会读作网页自带的一条横幅
+                .overlayShadow(RoundedCornerShape(0.dp))
                 .background(colors.surfaceVariant)
                 .padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -337,12 +376,11 @@ internal fun HttpErrorBanner(
                     "学校服务器返回 " + code +
                         "：源站暂时不可用或校外网络被拦截。可改用统一认证登录（见上方），" +
                         "或连校园 WiFi / WebVPN 后重试",
+                style = TypeScale.Label,
                 color = colors.text,
-                fontSize = 12.sp,
-                lineHeight = 17.sp,
                 modifier = Modifier.weight(1f),
             )
-            TapTextButton(onClick = onDismiss) { Text("知道了", fontSize = 12.sp) }
+            TapTextButton(onClick = onDismiss) { Text("知道了", style = TypeScale.Label) }
         }
     }
 }
@@ -361,10 +399,9 @@ internal fun PlainHttpNotice(
 ) {
     if (!url.trim().startsWith("http://", ignoreCase = true)) return
     Text(
-        text = "该地址是 HTTP 明文，登录凭据可能被同一网络中的他人看到；学校支持时请改用 HTTPS",
+        text = "该地址是 HTTP 明文，登录凭据可能被同一网络中的他人看到。学校支持时请改用 HTTPS",
+        style = TypeScale.Micro,
         color = colors.accent,
-        fontSize = 10.5.sp,
-        lineHeight = 15.sp,
         maxLines = 2,
         modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 2.dp),
     )
@@ -399,21 +436,24 @@ internal fun CredentialSaveBubble(
 ) {
     AnimatedVisibility(
         visible = prompt != null,
+        // 气泡贴在屏幕底部：从下方顶起来，也往下方收回去
         enter =
-            slideInVertically(
-                animationSpec = tween(durationMillis = Motion.DUR_MEDIUM, easing = Motion.EaseOut),
-            ) { it } + fadeIn(tween(durationMillis = Motion.DUR_MEDIUM)),
+            slideInVertically(animationSpec = OverlayMotion.enter()) { OverlayMotion.slideDown(it) } +
+                fadeIn(OverlayMotion.enter()),
         exit =
-            slideOutVertically(tween(durationMillis = Motion.DUR_FAST)) { it } +
-                fadeOut(tween(durationMillis = Motion.DUR_FAST)),
+            slideOutVertically(animationSpec = OverlayMotion.exit()) { OverlayMotion.slideDown(it) } +
+                fadeOut(OverlayMotion.exit()),
         modifier = modifier,
     ) {
-        val muted = jwMuted(colors)
+        // 这块文字压在气泡自己的面上（不透明 surface），所以按 surface 求解而不是 bg
+        val muted = jwMuted(colors, colors.surface)
         val shape = RoundedCornerShape(16.dp)
         Column(
             Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 10.dp)
+                // 与浮岛同一份投影配方：两颗都是"浮在网页之上、等着被看一眼"的卡
+                .overlayShadow(shape)
                 .clip(shape)
                 // RAISED：这是浮在网页之上、等着被处理的一张卡，读作"焦点"。
                 // 与设置页那些 SURFACE 档的分组卡拉开一档，用户一眼看出它是临时的
@@ -423,9 +463,8 @@ internal fun CredentialSaveBubble(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = "记住这次登录？",
+                    style = TypeScale.Headline,
                     color = colors.text,
-                    fontSize = 13.5.sp,
-                    fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f),
                 )
                 TapIconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
@@ -439,11 +478,12 @@ internal fun CredentialSaveBubble(
             }
             Spacer(Modifier.height(2.dp))
             Text(
-                // 账号打码 + 站点：够认出"是哪个号在哪所学校"，又不把学号原样摊在屏幕上
+                // 账号打码 + 站点：够认出"是哪个号在哪所学校"，又不把学号原样摊在屏幕上。
+                // 中间的 · 是**不可断的分隔符**用法：中文没有空格，靠标点分隔两个字段时
+                // 断行点必须落在分隔符之后，否则会读成"账号 20***01 · jw.example" 断成两截
                 text = "账号 " + prompt?.maskedUsername.orEmpty() + " · " + prompt?.siteLabel.orEmpty(),
+                style = TypeScale.Footnote,
                 color = muted,
-                fontSize = 11.5.sp,
-                lineHeight = 16.sp,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -453,14 +493,14 @@ internal fun CredentialSaveBubble(
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TapTextButton(onClick = onDismiss) { Text("不用", fontSize = 12.5.sp) }
+                TapTextButton(onClick = onDismiss) { Text("不用", style = TypeScale.Label) }
                 Spacer(Modifier.width(4.dp))
                 TapButton(
                     onClick = onSave,
                     hapticType = HapticFeedbackType.Confirm,
                     contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp),
                 ) {
-                    Text("记住", fontSize = 12.5.sp)
+                    Text("记住", style = TypeScale.Label)
                 }
             }
         }

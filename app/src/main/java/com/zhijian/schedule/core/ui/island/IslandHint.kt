@@ -9,6 +9,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -32,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -41,14 +43,16 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.zhijian.schedule.core.theme.CourseColors
+import com.zhijian.schedule.core.theme.LocalCoursePreset
 import com.zhijian.schedule.core.ui.Motion
+import com.zhijian.schedule.core.ui.OverlayMotion
+import com.zhijian.schedule.core.ui.TypeScale
 import com.zhijian.schedule.core.ui.metal.CardTone
 import com.zhijian.schedule.core.ui.metal.metalCard
+import com.zhijian.schedule.core.ui.overlayShadow
 import com.zhijian.schedule.core.ui.rememberAnimationsDisabled
 import kotlinx.coroutines.delay
 import kotlin.math.PI
@@ -68,7 +72,7 @@ enum class IslandHintTone {
      * 做成了一件事：对勾 + 强调色，安静地来、安静地走。
      *
      * 不震：成功是预期结果，每成功一次都震，触感就失去了信息量
-     * （与 [com.zhijian.schedule.core.ui.buttonFeedback] 的同一条规矩）。
+     * （与 `buttonFeedback` 的同一条规矩）。
      */
     Done,
 
@@ -88,16 +92,21 @@ enum class IslandHintTone {
     Failed,
 }
 
-/**
- * 滑入 / 滑出的位移比例。
- *
- * 只走三分之一：浮岛提示贴着内容顶部弹出，整条滑进来会读成「又从上面掉下来一层界面」；
- * 三分之一的高度足以让出现有方向、又不至于挡住在它下面正要被点的东西。
- */
-private const val SLIDE_FRACTION = 1f / 3f
-
 /** 失败态那一下横向抖动的总时长：够被看见，又不至于让人等它停 */
 private const val SHAKE_MS = 340
+
+/**
+ * 抖动**等落地**之后再开始。
+ *
+ * ## 为什么不能和入场同时起
+ * 上一版把抖动挂在出现的那一帧：胶囊一边从上方滑进来、一边左右晃。
+ * 两段位移叠在同一个时间窗里，读到的不是「它打了个冷颤」，而是
+ * 「这条提示渲染得在抖」——像掉帧，像画错了。真机上就是这么读的。
+ *
+ * 取 [Motion.DUR_MEDIUM] 而不是写死一个数：入场动画用的就是它，
+ * 两处取值一旦分家，改了入场时长而忘了这里，抖动就会重新压在滑入的半路上。
+ */
+private const val SHAKE_DELAY_MS = Motion.DUR_MEDIUM
 
 /**
  * 抖动来回的次数。
@@ -112,9 +121,6 @@ private const val SHAKE_AMPLITUDE_DP = 6f
 
 /** 进度条高度：胶囊里最细的一档信息，不能和文字抢权重 */
 private val BarHeight = 2.dp
-
-/** 进度条左右留白：胶囊两端是半圆，条要落在直段上才不会被弧线啃掉两头 */
-private val BarInsetX = 20.dp
 
 /**
  * 浮岛提示：浮在内容之上的一枚胶囊，里面一行字，**下方一条进度条**，走完自动收起。
@@ -171,15 +177,28 @@ fun IslandHint(
 ) {
     AnimatedVisibility(
         visible = visible,
+        // 进出场走 [OverlayMotion]：与本页另外两块浮层（WAF 横幅、保存气泡）同一套时长与曲线。
+        // 上一版离场用的是 tween 的默认曲线（FastOutSlowIn），同一条提示进来一个手感、
+        // 出去另一个手感；而旁边那条横幅的离场时长还比入场长——两块浮层先后出现时，
+        // 这个差别是看得见的。
+        // 入场：从**上方**滑下来。它贴在网页顶部，从上面来与它的落点同向，
+        // 读作「从屏幕外落进来」；从下往上顶会穿过正在读的网页内容。
         enter =
-            slideInVertically(
-                animationSpec = tween(durationMillis = Motion.DUR_MEDIUM, easing = Motion.EaseOut),
-            ) { height -> (height * SLIDE_FRACTION).toInt() } + fadeIn(tween(durationMillis = Motion.DUR_MEDIUM)),
-        // 离场比入场快：快速消失读作「说完了」，慢消失读作「还赖着」
+            slideInVertically(animationSpec = OverlayMotion.enter()) { height ->
+                OverlayMotion.slideUp(height)
+            } + fadeIn(OverlayMotion.enter()),
+        // 离场：向**上方**离开——从哪个方向来、就从哪个方向走。
+        //
+        // 改造前它往下走（正偏移）。那一步与入场方向相反，读到的不是"说完了"，
+        // 而是「被吸进网页里去了」：它会穿过下面那层网页内容，而那颗胶囊恰恰是
+        // 我们盖在别人页面上的东西，往页面里沉成了一件矛盾的事。
+        // 向上离开则干净——和入场同一条轴、同一个起落点，来回是一对镜像。
+        //
+        // 时长比入场短一截：快速消失读作「说完了」，慢消失读作「还赖着」。
         exit =
-            slideOutVertically(tween(durationMillis = Motion.DUR_FAST)) { height ->
-                (height * SLIDE_FRACTION).toInt()
-            } + fadeOut(tween(durationMillis = Motion.DUR_FAST)),
+            slideOutVertically(animationSpec = OverlayMotion.exit()) { height ->
+                OverlayMotion.slideUp(height)
+            } + fadeOut(OverlayMotion.exit()),
         modifier = modifier,
     ) {
         IslandHintBody(
@@ -200,6 +219,9 @@ fun IslandHint(
  * 抽成 [internal] 是为了能进本机单测钉住一条不变量：两档**必须**拿到不同的图标。
  * 原因见 [IslandHintTone.Failed] 里那段：颜色这一层在暖色主题上分不开，
  * 图标是那条不依赖色觉的分界线（WCAG 2.1 1.4.1 Use of Color）。
+ *
+ * 两个都取 `Icons.Filled`：素材库只有 core（未引入 extended），也确实不需要更多——
+ * 图标在 [IconBadge] 里被挖空成一枚面色字形，字形细节在 11dp 上本来也读不出来。
  */
 internal fun defaultIcon(tone: IslandHintTone): ImageVector =
     when (tone) {
@@ -245,6 +267,8 @@ private fun IslandHintBody(
     val context = LocalContext.current
     LaunchedEffect(resetKey, tone, animationsOff) {
         if (tone != IslandHintTone.Failed) return@LaunchedEffect
+        // 等它落位再抖：理由见 SHAKE_DELAY_MS。关动画时没有入场，不需要等。
+        if (!animationsOff) delay(SHAKE_DELAY_MS.toLong())
         // 用它而不是 HapticFeedbackType.Reject：后者在 ColorOS 上是 480ms 的长震，
         // 与「五秒后自己消失的小提示」完全不是一个量级（真机实测见 IslandHaptics）
         IslandHaptics.failure(context)
@@ -252,7 +276,13 @@ private fun IslandHintBody(
         shake.snapTo(0f)
         shake.animateTo(1f, tween(durationMillis = SHAKE_MS, easing = LinearEasing))
     }
-    val accent = if (tone == IslandHintTone.Failed) rememberIslandDanger() else colors.accent
+    // 语气色与轨道色来自**同一个求解器**（IslandTokens），两档语气与两段进度条
+    // 因此压在同一个可见度基准上：不会出现"成功偏淡、失败偏艳"或"某套预设没有轨道"
+    val accent = rememberIslandTone(tone)
+    val track = rememberIslandTrack()
+    // 挖空圆徽的底色：图标要用"胶囊自己的面"来画，才读作被挖空。
+    // 金属档的面是着色器算出来的，不是 colors.surface——与求解器取同一个答案
+    val pillFace = rememberIslandFace()
     val amplitudePx = with(LocalDensity.current) { SHAKE_AMPLITUDE_DP.dp.toPx() }
     val shape = RoundedCornerShape(percent = 50)
     Column(
@@ -261,37 +291,109 @@ private fun IslandHintBody(
             // 抖动作用在**整颗胶囊**上，不是只抖文字：只抖文字读作「渲染出错」，
             // 整颗抖才读作「这东西自己打了个冷颤」
             .graphicsLayer { translationX = dampedShake(shake.value) * amplitudePx }
+            // 投影：这颗胶囊压在**别人的网页**上。没有影时它读作网页自带的一块横幅
+            // （网页自己也有白底卡片），有一层软影才读作"我们盖上去的"。
+            // 配方与同屏的 WAF 横幅、保存气泡共用（OverlayMotion），三块浮层同一层高度。
+            .overlayShadow(shape)
             .clip(shape)
             // RAISED：与「记住这次登录？」气泡同一档——两者都是浮在网页之上、等着被看一眼的卡
             .metalCard(shape = shape, color = colors.surface, tone = CardTone.RAISED)
+            .pillEdge(shape, colors)
             // 播报给读屏：这是异步发生、随后自动消失的状态，不主动念出来就完全错过了
             .semantics { liveRegion = LiveRegionMode.Polite }
-            .padding(top = TextTopPad, bottom = TextBottomPad),
+            .padding(top = PillTopPad, bottom = PillBottomPad),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(start = TextStartPad, end = BarInsetX),
+            modifier = Modifier.fillMaxWidth().padding(start = TextStartPad, end = TextStartPad),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = accent,
-                modifier = Modifier.size(IconSize),
-            )
+            IconBadge(icon = icon, tint = accent, face = pillFace)
             Spacer(Modifier.width(IconGap))
             Text(
                 text = text,
+                // 字号与行高来自全站标尺（TypeScale），不在这里单独取值：
+                // 改造前这里是 12.5sp / 17sp，而同一屏的说明文字是 11.5sp、
+                // 气泡标题是 13.5sp——半像素字号是"每处差一点点、各调半磅"的产物
+                style = TypeScale.LabelStrong,
                 color = colors.text,
-                fontSize = 12.5.sp,
-                lineHeight = 17.sp,
-                fontWeight = FontWeight.Medium,
+                // 中文避头尾：词组内不断行，标点不落在行首。
+                // 不设这一条时真机上「（202530002131）」会在「（」后面整个折下去，
+                // 而后半句被 ellipsis 吃掉——用户读到的是一条断成两截的话。
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
         }
         Spacer(Modifier.height(TextBarGap))
-        IslandHintCountdown(colors = colors, barColor = accent, progress = { fill.value })
+        IslandHintCountdown(barColor = accent, trackColor = track, progress = { fill.value })
+    }
+}
+
+/**
+ * 胶囊的 hairline 边：与底部导航浮岛**同一条边缘契约**（`FloatingIslandBar` 里的
+ * `clip + background + border`）。
+ *
+ * ## 为什么投影不够，还要一条边
+ * 投影只在"底下比它亮"时成立。这颗胶囊压的是**别人的网页**——深色网页、
+ * 或者用户在系统里开了强制深色时，黑投影落在黑底上等于没有，胶囊就成了一张
+ * 平贴在页面上的剪影。墨夜纯黑主题那一档最极端：胶囊面 #0A0A0B、页面纯黑，
+ * 没有任何东西说明它的边界在哪。
+ *
+ * 一条 hairline 不依赖底色明暗，任何情况下都定义得出轮廓——这正是底部浮岛
+ * 当初加描边的同一条理由，两处取同一个答案，形状语言才是一套。
+ *
+ * ## 为什么金属档不画
+ * 金属面的边界由着色器的倒角与球冠明暗建模出来，再压一圈线会读成"贴了个框"。
+ * 判据与 `metalCard` 一致：金属档自己已经建过边缘。
+ */
+@Composable
+private fun Modifier.pillEdge(
+    shape: RoundedCornerShape,
+    colors: CourseColors,
+): Modifier =
+    if (LocalCoursePreset.current.metal != null) {
+        this
+    } else {
+        border(width = 1.dp, color = colors.border, shape = shape)
+    }
+
+/**
+ * 语气图标：一枚**挖空**的圆徽，字形用胶囊自己的面色画出来。
+ *
+ * ## 为什么不是直接给图标染色
+ * 上一版把 `Filled.Check` 与 `Filled.Close` 用同一个 13dp 直接染成语气色。
+ * 问题在字形的**墨量**：对勾是一笔斜线，叉号是两笔交叉——同样 13dp，
+ * 叉号在视觉上明显更重。于是失败提示天然显得更"吵"，成功提示显得更"虚"，
+ * 而同一条通道的两种结局本该等重。
+ *
+ * 圆徽把两者的差别压回到"字形内容"这一层：外面那枚实心圆提供**完全相同**的
+ * 面积与轮廓，字形只负责说明是哪一种结局。
+ *
+ * ## 为什么字形取胶囊面色而不是白色
+ * 白色在暖色主题上压陶土橘只有 2.6:1；而语气色本身已经解到"与胶囊面 ≥3.0"，
+ * 反过来用胶囊面色画字形，对比度就是同一个 3.0 以上——不用再解一次，
+ * 也不会在某套预设上掉到看不见。
+ *
+ * ## 为什么圆徽比字形大
+ * 11dp 的字形放进 16dp 的圆里，四周各留 2.5dp。这是"挖空"读得出来的最小留白：
+ * 再紧一点，叉号的四个端点会顶到圆周，读成一枚被划掉的圆而不是一枚徽。
+ */
+@Composable
+private fun IconBadge(
+    icon: ImageVector,
+    tint: Color,
+    face: Color,
+) {
+    Box(
+        modifier = Modifier.size(BadgeSize).clip(RoundedCornerShape(percent = 50)).background(tint),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = face,
+            modifier = Modifier.size(BadgeGlyphSize),
+        )
     }
 }
 
@@ -324,13 +426,19 @@ private const val TWO_PI_F = (2.0 * PI).toFloat()
  * 读在组合里会让这颗胶囊五秒内每帧重组一次，而它正压在 WebView 之上——
  * 这里要的只是每帧重画一根两 dp 的条，不是每帧重算一次布局。
  *
- * 未走到的部分用 [CourseColors.border]：它是「这条轨道总长多少」的参照，
- * 没有轨道时进度条会读成一个自己随机变长的色块。
+ * ## 轨道为什么不用 colors.border
+ * border 只需要在同色系里划一条线，本来就该淡（实测 12 组预设压胶囊面只有 1.22~1.55:1）。
+ * 进度条要回答的是"总共有多少"，轨道看不见时用户看到的是一根无缘无故变长的色条。
+ * 所以轨道色由 [IslandTokens.trackOn] 解到 1.5:1 以上——看得见、但退在已走段后面。
+ *
+ * ## 两段为什么都是圆头
+ * 已走段左端贴齐轨道左端、右端是"当前时刻"；方头会把这两个意思画成同一个直角。
+ * 右端圆头读作「进度推进到这里」，与胶囊家族其余控件（开关、指示器）的圆润语言一致。
  */
 @Composable
 private fun IslandHintCountdown(
-    colors: CourseColors,
     barColor: Color,
+    trackColor: Color,
     progress: () -> Float,
 ) {
     val barShape = RoundedCornerShape(percent = 50)
@@ -340,28 +448,55 @@ private fun IslandHintCountdown(
             .padding(horizontal = BarInsetX)
             .height(BarHeight)
             .clip(barShape)
-            .background(colors.border)
+            .background(trackColor)
             .drawBehind {
                 val w = size.width * progress().coerceIn(0f, 1f)
-                if (w > 0f) drawRect(color = barColor, size = Size(width = w, height = size.height))
+                if (w <= 0f) return@drawBehind
+                // 宽度还不到一个圆时整段画成一个圆：此时"圆头"就是条本身，
+                // 再去减半径会把圆心推到左边、被 clip 啃掉一块
+                val r = size.height / 2f
+                if (w <= size.height) {
+                    drawCircle(color = barColor, radius = w / 2f, center = Offset(w / 2f, r))
+                } else {
+                    drawRect(color = barColor, size = Size(width = w - r, height = size.height))
+                    drawCircle(color = barColor, radius = r, center = Offset(w - r, r))
+                }
             },
     )
 }
 
-/** 文字行上沿留白 */
-private val TextTopPad = 11.dp
+/** 胶囊上沿留白 */
+private val PillTopPad = 11.dp
 
-/** 文字行下沿到进度条的留白 */
-private val TextBottomPad = 8.dp
+/** 胶囊下沿留白：比上沿多一点，进度条才不会贴边 */
+private val PillBottomPad = 9.dp
 
-/** 文字行左起留白：与胶囊半圆端对齐后仍留一点呼吸 */
+/**
+ * 胶囊横向留白（文字左缘与进度条两端共用）。
+ *
+ * 三处取同一个值不是巧合：进度条是这颗胶囊的**仪表**，它的两端必须和文字对齐，
+ * 才读作"一条刻度"。上一版进度条用了 20dp、文字用了 18dp，两者相差 2dp——
+ * 单看不明显，但胶囊两端是半圆，那 2dp 会让条的两头分别探出去一点点，
+ * 读起来像没对齐。胶囊端点本身在弧线之外，18dp 已足够避开半径。
+ */
+private val BarInsetX = 18.dp
+
+/** 文字行左起留白：与 [BarInsetX] 同一个值 */
 private val TextStartPad = 18.dp
 
 /** 图标与文字之间 */
-private val IconGap = 7.dp
+private val IconGap = 8.dp
 
-/** 前置图标尺寸：与正文同高，不喧宾夺主 */
-private val IconSize = 13.dp
+/** 圆徽直径：16dp 是「比文字高一档、但不抢行高」的量级（正文行高 17sp） */
+private val BadgeSize = 16.dp
+
+/**
+ * 徽内字形尺寸。
+ *
+ * 11dp 是 [BadgeSize] 的 69%：留出 2.5dp 的四周边距，挖空才读得出来。
+ * 再大一点，叉号的两个端点会顶到圆周。
+ */
+private val BadgeGlyphSize = 11.dp
 
 /** 文字与进度条之间 */
-private val TextBarGap = 8.dp
+private val TextBarGap = 7.dp

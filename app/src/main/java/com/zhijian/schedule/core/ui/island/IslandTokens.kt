@@ -55,7 +55,7 @@ object IslandTokens {
      * 填充的纵向渐变系数：上缘更透、下缘更实（光从上面来）。
      *
      * 取 0.77 / 1.23，中点正好回到 1.0 —— 文字与图标压在胶囊中段，实测浓度仍是
-     * [CHIP_ALPHA]，所以 [IslandContrastTest] 里按单一浓度复算的对比度结论继续成立。
+     * [CHIP_ALPHA]，所以 `IslandContrastTest` 里按单一浓度复算的对比度结论继续成立。
      * 幅度刻意小：这是给淡色指示器加一层体积，不是把它变成色块。
      */
     const val CHIP_FILL_TOP = 0.77f
@@ -91,6 +91,21 @@ object IslandTokens {
     const val MIN_ICON_CONTRAST = 3.0
 
     /**
+     * 进度条**轨道**（没走到的部分）与浮岛面的最小对比度。
+     *
+     * ## 为什么轨道也要设门槛
+     * 进度条说的是「还剩多少」，而这个「还剩」只能由**已走 / 未走两段的差**表达。
+     * 轨道看不见时，条就退化成一根自己随机变长的色块——真机实测 12 组预设里，
+     * 轨道压在胶囊面上只有 1.22~1.55:1（最低是「纸本暖白」暗档 1.22、
+     * 「水银镜面」暗档 1.28），连「这根管子有多长」都读不出来。
+     *
+     * ## 为什么是 1.5 而不是图形的 3.0
+     * 轨道是**参照物**，不是要读的图形。推到 3.0 它会和已走段争，
+     * 读成两条并排的进度条；1.5 是「看得见但退在后面」的最低限度。
+     */
+    const val MIN_TRACK_CONTRAST = 1.5
+
+    /**
      * 危险色：失败态那个红的**起点**。
      *
      * 与页面正文用的 #E5484D 同源（本工程删课、删除等破坏性操作都用它），
@@ -99,13 +114,39 @@ object IslandTokens {
     val DANGER_BASE = Color(0xFFE5484D)
 
     /**
-     * 金属档浮岛面的实测亮度（与 [solve] 里 `under` 的取法同源，这里只做常量备查）。
+     * 金属档浮岛面的实测亮度（与 [pillUnder] 同源，这里只做常量备查）。
      *
      * 危险色求解需要知道「压在哪」，而金属面既不是 surface 也不是 bg，
      * 是着色器算出来的，只能取样。
      */
     private val METAL_UNDER_DARK = Color(0xFF22262F)
     private val METAL_UNDER_LIGHT = Color(0xFFC3CAD5)
+
+    /**
+     * 浮岛面在求解时假定的**底层色**。
+     *
+     * ## 为什么必须集中在这里
+     * 「语气色够不够醒目」「轨道看不看得见」「文字读不读得出」三个问题都要先回答
+     * 「压在哪」。此前每个求解函数各写一份 `when (metal != null)`，于是出现了
+     * 一处用着色器取样值、另一处用 surface 的分歧——单测跟着实现的分歧走，
+     * 在金属档上验的是错的底（见 `IslandHintTest`）。
+     *
+     * 现在只有这一个答案，求解与断言取同一个数，漂移不可能再发生。
+     *
+     * 金属档的底不是 surface 也不是 bg，而是**着色器算出来的金属面**：
+     * 暗色下实测落在 #1A1E26 附近（球冠中心更亮、边缘更暗）。取 surface 会算偏松，
+     * 未选中的 tab 文字在真机上直接读不出来（截图确认过）。
+     */
+    internal fun pillUnder(
+        colors: CourseColors,
+        isDark: Boolean,
+        metal: MetalSpec?,
+    ): Color =
+        if (metal != null) {
+            if (isDark) METAL_UNDER_DARK else METAL_UNDER_LIGHT
+        } else {
+            colors.surface
+        }
 
     /**
      * 危险色在浮岛面上的取值：以 [DANGER_BASE] 为起点，推到与底色达到图形门槛（3.0）为止。
@@ -122,34 +163,63 @@ object IslandTokens {
         colors: CourseColors,
         isDark: Boolean,
         metal: MetalSpec?,
-    ): Color {
-        val under =
-            when {
-                metal != null -> if (isDark) METAL_UNDER_DARK else METAL_UNDER_LIGHT
-                else -> colors.surface
-            }
-        return Contrast.visibleOn(DANGER_BASE, under, MIN_ICON_CONTRAST)
-    }
+    ): Color = Contrast.visibleOn(DANGER_BASE, pillUnder(colors, isDark, metal), MIN_ICON_CONTRAST)
+
+    /**
+     * 成功档的**上屏色**：以页面强调色为起点，推到与浮岛面达到图形门槛（3.0）为止。
+     *
+     * ## 为什么不能直接用 colors.accent
+     * 强调色是**页面**的语义色，它保证的是「压在页面底色上」够醒目。浮岛是悬浮层，
+     * 底换成了 surface 或金属面——真机实测水银镜面亮档上，蓝色强调色压在
+     * #C3CAD5 的金属面上只有 2.89:1，低于图形门槛 3.0，对勾与进度条会发灰。
+     *
+     * ## 为什么与 [dangerOn] 走同一条公式
+     * 这一条才是「视觉统一」真正的落点：两档语气若各用各的取色规则，它们在同一块
+     * 胶囊面上的**醒目程度**就会不一样——成功偏淡、失败偏艳，用户会以为后者更严重。
+     * 两档都解到同一个门槛，才谈得上"同一件事的两种结局"。
+     *
+     * 已经达标时原样返回：多推一步会让成功提示变成荧光色，而它每次只出现五秒。
+     */
+    fun doneOn(
+        colors: CourseColors,
+        isDark: Boolean,
+        metal: MetalSpec?,
+    ): Color = Contrast.visibleOn(colors.accent, pillUnder(colors, isDark, metal), MIN_ICON_CONTRAST)
+
+    /**
+     * 进度条**轨道**在浮岛面上的取值：以 [CourseColors.border] 为起点往正文色混，
+     * 混到与浮岛面达到 [MIN_TRACK_CONTRAST] 为止。
+     *
+     * ## 为什么不用 colors.border
+     * border 是「描边」用的：它只需要在**同色系里划一条线**，本来就该淡
+     * （12 组实测 1.22~1.55:1）。而进度条轨道要回答的是「总共有多少」——
+     * 淡到看不见时，用户看到的是一根无缘无故变长的色条，不是一颗正在倒计时的仪表。
+     *
+     * ## 为什么混向正文色而不是纯白 / 纯黑
+     * 往 text 混会同时移动明度与色相，压在任何一套预设的浮岛面上都保持同一套纸感；
+     * 混向白或黑会让暖色主题的轨道泛灰、冷色主题的轨道发紫。
+     *
+     * 达标即停（[Contrast.mixUntil] 的纪律）：多混一步轨道就会浮上来和已走段打架。
+     */
+    fun trackOn(
+        colors: CourseColors,
+        isDark: Boolean,
+        metal: MetalSpec?,
+    ): Color = Contrast.mixUntil(colors.border, colors.text, pillUnder(colors, isDark, metal), MIN_TRACK_CONTRAST)
 
     /**
      * 求解一套浮岛配色。
      *
      * [under] 取法：玻璃档本体近清水（bodyAlpha 0.16~0.20），透出的就是页面底色 bg；
-     * 其余档是不透明 surface。取错会让求解偏松或偏紧，所以按档位分别取。
+     * 其余档是不透明 surface。取错会让求解偏松或偏紧，所以按档位分别取
+     * （判据见 [pillUnder]，与语气色的求解共用同一个答案）。
      */
     fun solve(
         colors: CourseColors,
         isDark: Boolean,
         metal: MetalSpec? = null,
     ): IslandPalette {
-        // 金属档的底不是 surface 也不是 bg，而是**着色器算出来的金属面**：
-        // 暗色下实测落在 #1A1E26 附近（球冠中心更亮、边缘更暗）。取 surface 会算偏松，
-        // 未选中的 tab 文字在真机上直接读不出来（截图确认过）。
-        val under =
-            when {
-                metal != null -> if (isDark) Color(0xFF22262F) else Color(0xFFC3CAD5)
-                else -> colors.surface
-            }
+        val under = pillUnder(colors, isDark, metal)
         // muted 求解：金属面上的未选中文字必须提到 4.5:1 以上。
         // 混到 text 只是起点——暗金属面吸光，实测还要再亮一档才「一眼看得见」，
         // 所以金属档额外朝 text 多混 12%（超过 AA 门槛后，可读性优先于"低调"）。
@@ -204,15 +274,56 @@ fun rememberIslandPalette(): IslandPalette {
 }
 
 /**
- * 当前主题下的安全提示色（浮岛层）。
+ * 当前主题下、某档语气的上屏色。
  *
  * 与 [rememberIslandPalette] 同一套依赖：主题 / 亮暗 / 金属档任一变化都要重新求解，
- * 否则换皮肤之后那个红还停在上一套底色的解上。
+ * 否则换皮肤之后那个色还停在上一套底色的解上。
+ *
+ * ## 为什么用一个函数而不是两个
+ * 两档语气必须走**同一条**求解路径，这是「视觉统一」的硬前提。若拆成
+ * [IslandTokens.doneOn] 与 [IslandTokens.dangerOn] 两个 @Composable 入口，
+ * 调用处就会出现 `if (tone == ...) rememberA() else rememberB()`——
+ * 条件调用 Composable 会打乱槽位；更要紧的是两档从此各有一条组装路径，
+ * 将来任何一侧单独加个 `remember` 键，两者就会在同一帧里算出不同基准的色。
  */
 @Composable
-fun rememberIslandDanger(): Color {
+fun rememberIslandTone(tone: IslandHintTone): Color {
     val colors = LocalCourseColors.current
     val metal = LocalCoursePreset.current.metal
     val isDark = LocalIsDark.current
-    return remember(colors, metal, isDark) { IslandTokens.dangerOn(colors, isDark, metal) }
+    return remember(tone, colors, metal, isDark) {
+        when (tone) {
+            IslandHintTone.Done -> IslandTokens.doneOn(colors, isDark, metal)
+            IslandHintTone.Failed -> IslandTokens.dangerOn(colors, isDark, metal)
+        }
+    }
+}
+
+/**
+ * 当前主题下的进度条轨道色。
+ *
+ * 与 [rememberIslandTone] 同源：轨道与已走段压在**同一块面**上，
+ * 二者的可见度下限若来自两套基准，进度条就会在某一套预设上读成"没有轨道"。
+ */
+@Composable
+fun rememberIslandTrack(): Color {
+    val colors = LocalCourseColors.current
+    val metal = LocalCoursePreset.current.metal
+    val isDark = LocalIsDark.current
+    return remember(colors, metal, isDark) { IslandTokens.trackOn(colors, isDark, metal) }
+}
+
+/**
+ * 当前主题下浮岛面的实际底色（求解与绘制共用的那一个答案）。
+ *
+ * 存在的理由只有一个：挖空图标要用"胶囊自己的面"去画字形。
+ * 若这里另写一份 `colors.surface`，金属档上字形就压在错误的底色上——
+ * 它会在亮金属面上变成一个发白的小点，而不是一道被挖出来的缝。
+ */
+@Composable
+fun rememberIslandFace(): Color {
+    val colors = LocalCourseColors.current
+    val metal = LocalCoursePreset.current.metal
+    val isDark = LocalIsDark.current
+    return remember(colors, metal, isDark) { IslandTokens.pillUnder(colors, isDark, metal) }
 }
