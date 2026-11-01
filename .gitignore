@@ -48,6 +48,7 @@ skills-audit-tmp/
 skills-install-compose-animations/
 gh-work/
 _selftest-root-*/
+worktree/
 
 # --- 本机运行时（pymanager 把 Python 3.14 装进了仓库目录，属机器状态不入库）---
 Python/
