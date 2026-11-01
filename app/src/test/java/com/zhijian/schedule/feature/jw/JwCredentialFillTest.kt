@@ -119,6 +119,48 @@ class JwCredentialFillTest {
     }
 
     /**
+     * 浮岛提示的文案：说清「填的是哪个号」，**绝不**暗示密码已经存好了。
+     *
+     * 这条提示只活五秒、不会再来一次（见 IslandHint 的进度条），所以它说错话时
+     * 用户没有第二次机会澄清。最容易说错的一句是「已为你保存密码」——
+     * 回填与保存是两件独立的事，保存要用户按气泡里的「记住」才发生。
+     */
+    @Test
+    fun fillHintNamesTheAccountWithoutClaimingPasswordIsSaved() {
+        val text = credentialFillHintText("202530002131")
+        assertTrue("提示里必须出现账号，否则用户认不出填的是谁", text.contains("202530002131"))
+        assertTrue("提示必须以「已填入」开头，说的是回填发生了", text.startsWith("已填入"))
+        // 「保存的账号」是定语（填的是那条已保存的记录），合规；
+        // 真正危险的是把它写成谓语——「已保存」「已为你保存」会读成密码已经存好。
+        assertFalse("回填不是保存，谓语位置不能出现「已保存」", text.contains("已保存"))
+        assertFalse("不能替用户宣告保存完成", text.contains("为你保存"))
+        assertFalse("密码不该出现在任何 UI 文案里", text.contains("密码"))
+    }
+
+    /**
+     * 浮岛提示的**重置令牌**必须能区分「又填了一次」与「还挂着上一轮」。
+     *
+     * 计时效应挂在 filledAt 上（见 IslandHint）：两个令牌相等时进度条不会重走。
+     * 若这里退化成布尔值或常量，用户清掉 cookie 重开登录页、我们真的又填了一次，
+     * 提示却不会重新弹出——功能等于对第二次之后的所有回填失效。
+     */
+    @Test
+    fun fillNoticeTimestampChangesPerFill() {
+        val first = JwCredentialFillNotice(username = "20230001", filledAt = 1L)
+        val second = first.copy(filledAt = 2L)
+        assertFalse("两次填入必须得到两个不同的令牌，进度条才会重走", first == second)
+        assertEquals("账号相同不构成不同的一次填入", second.username, first.username)
+    }
+
+    /** 提示对象不带密码字段：它要回答的只是「填的是哪个号」 */
+    @Test
+    fun fillNoticeCarriesNoPassword() {
+        val notice = JwCredentialFillNotice(username = "20230001", filledAt = 1L)
+        assertFalse(notice.toString().contains("p@ss"))
+        assertTrue(notice.toString().contains("20230001"))
+    }
+
+    /**
      * 桥的构造参数名不能与 @JavascriptInterface 的方法名相同。
      *
      * 这条断言对应一次真机事故（PKG110 / 2026-11-01）：两者同名时，

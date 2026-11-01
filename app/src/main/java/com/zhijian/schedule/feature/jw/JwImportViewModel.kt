@@ -127,6 +127,32 @@ class JwImportViewModel
         var credentialFill by mutableStateOf<JwCredentialFill?>(null)
             private set
 
+        /**
+         * 「刚刚把保存的账号填进登录页了」：浮岛限时提示的数据源，null = 不显示。
+         *
+         * 与 [credentialFill] 的区别是时态——那个是「下次要填什么」，一直躺在内存里；
+         * 这个是「刚刚真的填了一次」，五秒后自动消失（见 IslandHint 的进度条）。
+         *
+         * 为什么不复用 [credentialNotice]：那条提示挂在底部工具条上，说的是**保存的结果**，
+         * 由用户点「记住」触发；这条浮在网页上，说的是**回填的发生**，由页面自己触发。
+         * 两者可能同时存在（刚保存完又刷新登录页），共用字段会互相抹掉。
+         */
+        var credentialFillNotice by mutableStateOf<JwCredentialFillNotice?>(null)
+            private set
+
+        /**
+         * 浮岛提示此刻是否该出现在屏幕上。
+         *
+         * 与 [credentialFillNotice] 分成两个状态，是为了让退场动画有内容可演：
+         * 进度条走完时如果直接把数据清空，胶囊会在 150ms 的淡出里变成一个
+         * 只剩图标和进度条的空壳。所以收起只翻这个开关，数据留到下一次填入时才被覆盖。
+         *
+         * 代价是「已收起」的账号名还留在内存里——而它本来就在 [credentialFill] 里，
+         * 且从不上屏、不落盘，不构成新的暴露面。
+         */
+        var credentialFillNoticeVisible by mutableStateOf(false)
+            private set
+
         /** 已保存凭据的摘要（设置页展示用，不含密码） */
         val credentialSummary: StateFlow<JwCredentialSummary?> = credentialStore.summary
 
@@ -400,11 +426,32 @@ class JwImportViewModel
             credentialNotice = null
         }
 
+        /**
+         * 网页侧确认「账号密码真的被写进登录框了」：弹一条限时浮岛提示。
+         *
+         * 时间戳在**这里**取，不由网页传：它有双重身份——既是这条提示的身份，
+         * 也是进度条的重置令牌（见 [JwCredentialFillNotice.filledAt]）。
+         * 取一次系统时钟就够，让页面参与只会引入一个不可信的输入。
+         */
+        fun onCredentialFilled(username: String) {
+            credentialFillNotice = JwCredentialFillNotice(username = username, filledAt = System.currentTimeMillis())
+            // 同一次填入可能被两次 onPageFinished 各报一次（探测是异步的）：
+            // 令牌变了就重新计时，这正是用户期望的「又填了一次 → 再提醒一次」
+            credentialFillNoticeVisible = true
+        }
+
+        /** 浮岛提示的进度条走完：收起它（数据留着，退场动画才有内容可演） */
+        fun dismissCredentialFillNotice() {
+            credentialFillNoticeVisible = false
+        }
+
         /** 清空已保存的凭据（高级设置里手动清除，或换学校时） */
         fun clearCredential() {
             pendingCredential = null
             credentialPrompt = null
             credentialFill = null
+            // 凭据刚被抹掉，屏幕上却还挂着「已填入保存的教务账号」是自相矛盾的
+            credentialFillNoticeVisible = false
             viewModelScope.launch {
                 credentialStore.clear()
                 credentialNotice = "已清除保存的教务账号密码"

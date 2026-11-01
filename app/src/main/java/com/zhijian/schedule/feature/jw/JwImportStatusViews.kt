@@ -371,32 +371,6 @@ internal fun PlainHttpNotice(
 }
 
 /**
- * 「已填入保存的教务账号」提示条。
- *
- * 只在**这一页确实有可回填的凭据、且当前停在登录页**时出现：凭据在、但已经进了课表页时
- * 再说「已填入」是错的（那里没有输入框）。
- *
- * 文案只说用户当下看得到的那一件事——**不写「已为你保存密码」**：回填与保存是两件事，
- * 保存要用户按气泡里的「记住」才发生，把两者说成一件事会让用户以为密码已经存好了。
- */
-@Composable
-internal fun CredentialFillHint(
-    fill: JwCredentialFill?,
-    visible: Boolean,
-    colors: CourseColors,
-) {
-    if (fill == null || !visible) return
-    Text(
-        text = "已填入保存的教务账号（" + fill.username + "），确认无误后点登录",
-        color = colors.textMuted,
-        fontSize = 10.5.sp,
-        lineHeight = 15.sp,
-        maxLines = 2,
-        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 2.dp),
-    )
-}
-
-/**
  * 「记住这次登录？」确认气泡。
  *
  * ## 为什么是气泡不是对话框

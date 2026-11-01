@@ -318,6 +318,7 @@ private fun applyCredentialScripts(
     url: String?,
     fill: JwCredentialFill?,
     filledOrigin: Array<String?>,
+    onFilled: (String) -> Unit,
 ) {
     if (url.isNullOrBlank()) return
     val origin = JwCredentialOrigin.of(url) ?: return
@@ -327,8 +328,20 @@ private fun applyCredentialScripts(
         // 也别记「这个 origin 已经填过」——下一帧页面可能才长出登录框
         view.evaluateJavascript(CREDENTIAL_PROBE_JS) { raw ->
             if (raw?.trim('"') != "yes") return@evaluateJavascript
+            // 探测是异步的：两次 onPageFinished 挨得很近时会各自发起一次探测，
+            // 命中后又各自回填一次。填两次值一样，但浮岛提示会被重置、进度条重新走，
+            // 读作「它怎么又弹了一次」。回填前再确认一次，把这件事变成幂等的
+            if (filledOrigin[0] == origin) return@evaluateJavascript
             filledOrigin[0] = origin
-            view.evaluateJavascript(JwCredentialScripts.fillJs(origin, pending.username, pending.password), null)
+            // 回填结果是脚本的返回值：'user+pass' / 'pass' / ''（页面上没有可见密码框）。
+            // 只有非空才算「真的填进去了」——这是浮岛提示唯一的触发源。
+            //
+            // 为什么不拿「页面有密码框」当依据：探测与回填之间页面可能已经重排，
+            // 更常见的是脚本被页面自己的「安全提示」分支挡住（见 fillJs 首行）。
+            // 报喜要报发生在输入框里的事，不是发生在浏览器里的事。
+            view.evaluateJavascript(JwCredentialScripts.fillJs(origin, pending.username, pending.password)) { result ->
+                if (!result.isNullOrBlank() && result.trim('"').isNotEmpty()) onFilled(pending.username)
+            }
         }
     }
     // 捕获 + 登录成功判定（页面内自带 `__zjCaptureInstalled` 幂等标记）
@@ -357,6 +370,8 @@ internal fun WebViewBox(
     onCredentialCandidate: (String) -> Unit = {},
     /** 页面自己判定「已经进入教务系统」：此刻暂存的候选才被服务器验证过，可以落库 */
     onLoginSucceeded: () -> Unit = {},
+    /** 账密**真的被写进了登录框**：参数是填进去的那个账号，供页面弹一条限时浮岛提示 */
+    onCredentialFilled: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val lastLoaded = remember { mutableStateOf<WebLoadRequest?>(null) }
@@ -373,6 +388,8 @@ internal fun WebViewBox(
     // 用 rememberUpdatedState 持有「最新那一个」，否则桥永远调用首帧的旧闭包
     val candidateHandler = rememberUpdatedState(onCredentialCandidate)
     val loginHandler = rememberUpdatedState(onLoginSucceeded)
+    // 同一个理由：evaluateJavascript 的回调跑在 WebViewClient 实例里，只能经它拿到最新闭包
+    val filledHandler = rememberUpdatedState(onCredentialFilled)
     // 同一个坑：凭据是 init 里异步从磁盘读出来的，首帧一定是 null。
     // factory 与 webViewClient 只创建一次，直接闭包捕获会永远读到那个 null
     val fillState = rememberUpdatedState(credentialFill)
@@ -480,7 +497,15 @@ internal fun WebViewBox(
                                     view?.evaluateJavascript(js, null)
                                 }
                                 view?.evaluateJavascript(JW_SHELL_FIX_JS, null)
-                                view?.let { wv -> applyCredentialScripts(wv, url, fillState.value, filledOrigin.value) }
+                                view?.let { wv ->
+                                    applyCredentialScripts(
+                                        view = wv,
+                                        url = url,
+                                        fill = fillState.value,
+                                        filledOrigin = filledOrigin.value,
+                                        onFilled = { username -> filledHandler.value(username) },
+                                    )
+                                }
                                 // WAF 错误页可能以 200 返回：先查正文；GET 页自动重试，登录 POST 直接提示
                                 view?.evaluateJavascript(WAF_ERROR_CHECK_JS) { result ->
                                     val code = result?.trim('"')?.toIntOrNull() ?: 0

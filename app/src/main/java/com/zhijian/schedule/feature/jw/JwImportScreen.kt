@@ -77,6 +77,7 @@ import com.zhijian.schedule.core.ui.SecondaryTopBar
 import com.zhijian.schedule.core.ui.TapIconButton
 import com.zhijian.schedule.core.ui.TapTextButton
 import com.zhijian.schedule.core.ui.buttonFeedback
+import com.zhijian.schedule.core.ui.island.IslandHint
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -228,14 +229,6 @@ fun JwImportScreen(
                 }
             }
 
-            // 自动填充生效提示：条件判断与文案都在 CredentialFillHint 里，
-            // 这里只传数据。抽出去的直接收益是本函数的圈复杂度回到阈值内
-            CredentialFillHint(
-                fill = viewModel.credentialFill,
-                visible = viewModel.onLoginPage,
-                colors = colors,
-            )
-
             // 步骤进度 + 两行下一步提示（识别的教务类型挂在进度行右端）
             GuideBar(
                 colors = colors,
@@ -300,6 +293,7 @@ fun JwImportScreen(
                     credentialFill = viewModel.credentialFill,
                     onCredentialCandidate = viewModel::onCredentialCandidate,
                     onLoginSucceeded = viewModel::onLoginSucceeded,
+                    onCredentialFilled = viewModel::onCredentialFilled,
                     modifier = Modifier.fillMaxSize().clipToBounds(),
                 )
                 TopProgressBar(
@@ -319,6 +313,23 @@ fun JwImportScreen(
                     onDismiss = viewModel::dismissHttpError,
                     colors = colors,
                     modifier = Modifier.align(Alignment.TopCenter),
+                )
+                // 「已填入保存的教务账号」浮岛提示：浮在网页顶部，胶囊下方一条进度条，
+                // 走完自动收起。
+                //
+                // 为什么从常驻文字行改成这条限时浮岛：它说的是**刚刚发生的一件事**
+                // （页面一出现账密就填好了），用户扫一眼之后它就没有信息量了；
+                // 而这一屏的高度预算要全部还给教务网页，任何常驻行都在跟学校页面抢地盘。
+                // 进度条回答「我还有多久」，把「怎么突然没了」变成可预期的收起。
+                CredentialFillHintOverlay(
+                    notice = viewModel.credentialFillNotice,
+                    visible = viewModel.credentialFillNoticeVisible,
+                    onFinished = viewModel::dismissCredentialFillNotice,
+                    colors = colors,
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
                 )
                 // 「记住这次登录？」气泡：浮在网页底部。
                 // 放这里而不是页面根部，是为了让它贴着**网页**出现——
@@ -398,6 +409,35 @@ fun JwImportScreen(
             onApply = viewModel::applyPreview,
         )
     }
+}
+
+/**
+ * 「已填入保存的教务账号」浮岛提示的挂载点。
+ *
+ * 抽成独立函数而不是内联在 [JwImportScreen] 里：那一屏的圈复杂度贴着 detekt 阈值
+ * （20），而这里有两处可空取值（文案与重置令牌），内联等于凭空多两个分支——
+ * 上一版就是因为这个被 detekt 拦下。抽出来之后这一屏回到阈值内，判断也聚到了一处。
+ *
+ * [modifier] 由调用方给：胶囊要贴网页顶部居中，而 .align 只有 BoxScope 里有。
+ */
+@Composable
+private fun CredentialFillHintOverlay(
+    notice: JwCredentialFillNotice?,
+    visible: Boolean,
+    onFinished: () -> Unit,
+    colors: CourseColors,
+    modifier: Modifier = Modifier,
+) {
+    IslandHint(
+        visible = visible,
+        text = notice?.let { credentialFillHintText(it.username) }.orEmpty(),
+        // 令牌取「这一次填入的时刻」：同一个提示被再次触发时进度条要重新走，
+        // 而不是接着上一轮的余量（见 IslandHint 的 resetKey）
+        resetKey = notice?.filledAt,
+        onFinished = onFinished,
+        colors = colors,
+        modifier = modifier,
+    )
 }
 
 /** 未登录时的补救说明：页面名 + 该校特有注意事项，拼成一句给用户照做 */
