@@ -33,10 +33,18 @@ object DownloadSourceSet {
     const val CF_MIRROR_PREFIX: String = BuildConfig.UPDATE_CF_MIRROR_PREFIX
 
     /**
-     * 镜像常量表。2026-10-16 实测（PC 侧）：gh-proxy.com / ghproxy.net 可用，其余常见加速站
-     * 全部不可达或只回错误页；手机侧此前仅 gh-proxy.com 存活。
-     * 自建 R2 源（[CF_MIRROR_PREFIX] 非空时）排第一，公共镜像作为退路，全部只在直连
-     * 探测落后或失败时才被选中（[orderByProbe] 按实测延迟排序）。
+     * 镜像常量表。**2026-11-01 全量复测（PC 侧，逐个真拉 3 MB Range）**：
+     * 14 个候选里只有 gh-proxy.com 还活着（单连接 23 KB/s），ghproxy.net 名义 206 但只有 2 KB/s，
+     * 其余 ghfast.top / ghp.ci / ghproxy.cc / gh.llkk.cc / gh.api.99988866 / ghproxy.net.cn /
+     * github.moeyy.xyz / raw.kkgithub.com / hub.gitmirror.com 全部连接超时，
+     * moeyy.cn 404、ghproxy.homeboyc.cn 403、gh.ddlc.top 429。
+     *
+     * 因此 **ghproxy.net 已从候选表移除**：它 2 KB/s 的吞吐能通过 1 KB 连通探测，却会在真正下载时
+     * 把用户卡死等 watchdog —— 一条「看起来成功、实际卡住」的支路比直接失败更糟。
+     * 详见 docs/research/2026-11-01-update-distribution-channels.md。
+     *
+     * 自建 R2 源（[CF_MIRROR_PREFIX] 非空时）排第一；公共镜像只作为最后退路，
+     * 且只在直连探测落后或失败时才被选中（[orderByProbe] 按实测延迟排序）。
      */
     val MIRRORS: List<UpdateSource> =
         buildList {
@@ -44,9 +52,8 @@ object DownloadSourceSet {
             CF_MIRROR_PREFIX
                 .takeIf { it.isNotBlank() }
                 ?.let { add(UpdateSource(CF_MIRROR_ID, "镜像 R2", it.trimEnd('/') + "/")) }
-            // 公共镜像保留为退路（实测国内偶发不可达，仅当直连与自建源都失败才会用到）
+            // 唯一实测可用的公共镜像；ghproxy.net 因 2 KB/s 吞吐已移除（见上方说明）
             add(UpdateSource("gh-proxy", "镜像 gh-proxy.com", "https://gh-proxy.com/"))
-            add(UpdateSource("ghproxy-net", "镜像 ghproxy.net", "https://ghproxy.net/"))
         }
 
     /**

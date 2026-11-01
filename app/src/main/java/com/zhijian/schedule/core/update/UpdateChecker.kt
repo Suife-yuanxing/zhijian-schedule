@@ -32,6 +32,16 @@ class UpdateChecker
             /** assets[].digest（"sha256:..."）：下载完成后的完整性校验；旧 Release 可能没有 */
             val apkDigest: String?,
             val notes: String,
+            /**
+             * 增量清单（patch.json）的下载地址；null = 这个版本没有提供增量。
+             *
+             * 由发版流水线生成并作为 Release 资产上传（见 .github/workflows/release.yml 与
+             * scripts/make-apk-patch.py）。它的内容要到真正下载时才知道基线包对不对得上，
+             * 所以这里**只取地址、不预判可用性**；能不能走增量由 [DeltaPolicy] 决定。
+             */
+            val patchUrl: String? = null,
+            /** 增量数据文件（patch.bin）的地址；与 [patchUrl] 成对出现 */
+            val patchBinUrl: String? = null,
         )
 
         /** 最近一次成功检查的缓存（启动自动检查后，窗口打开时直接展示、不再重复请求） */
@@ -78,6 +88,17 @@ class UpdateChecker
                                 ?.firstOrNull { asset ->
                                     asset["name"]?.jsonPrimitive?.content?.endsWith(".apk", ignoreCase = true) == true
                                 }
+                        val assets =
+                            (root["assets"] as? JsonArray)
+                                ?.mapNotNull { it as? JsonObject }
+                                .orEmpty()
+
+                        fun assetUrl(name: String): String? =
+                            assets
+                                .firstOrNull { it["name"]?.jsonPrimitive?.content == name }
+                                ?.get("browser_download_url")
+                                ?.jsonPrimitive
+                                ?.content
                         val apkUrl = apkAsset?.get("browser_download_url")?.jsonPrimitive?.content
                         val apkSize = apkAsset?.get("size")?.jsonPrimitive?.longOrNull
                         val apkDigest = apkAsset?.get("digest")?.jsonPrimitive?.contentOrNull
@@ -89,6 +110,9 @@ class UpdateChecker
                                 apkSize = apkSize,
                                 apkDigest = apkDigest,
                                 notes = notes,
+                                // 两个资产都在才算「这个版本提供增量」；缺一个就当没有
+                                patchUrl = assetUrl(ASSET_PATCH_MANIFEST),
+                                patchBinUrl = assetUrl(ASSET_PATCH_BIN),
                             )
                         } else {
                             null
@@ -121,5 +145,11 @@ class UpdateChecker
 
             /** 成功检查结果的缓存有效期 */
             private const val CACHE_TTL_MS = 15 * 60_000L
+
+            /** 发版流水线生成的增量清单资产名（见 .github/workflows/release.yml） */
+            const val ASSET_PATCH_MANIFEST = "patch.json"
+
+            /** 增量数据资产名 */
+            const val ASSET_PATCH_BIN = "patch.bin"
         }
     }

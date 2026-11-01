@@ -29,6 +29,29 @@
 - fix(ui): 三处**对比度缺陷**，判定规则统一为「求解用的底色必须是绘制所在的底色」：保存气泡按页面底色求解却画在卡片上（金属亮档 5.19→3.73:1）、地址栏占位文字同病、页面错误遮罩按底色求解却压在 90% 蒙层上（最坏 4.55→3.63:1）。
 - fix(ui): 浮岛文案改为「·」分隔的短句——一句话说完发生了什么 + 用户下一步做什么。此前的长句在胶囊里换行两次，读作一段说明而不是一条提示。
 
+## [1.0.17] - 2026-11-01
+
+*提交区间：v1.0.16..v1.0.17 — 更新下发链路全面改造：瘦身包、自适应并发、条目级增量更新*
+
+### Changed
+
+- chore(release): 安装包**只打 ARM 架构**（`ndk { abiFilters }` 固定 `arm64-v8a` + `armeabi-v7a`）。MLKit 的两个 so 按 4 条 ABI 各打一份，其中 `lib/x86` + `lib/x86_64` 合计 33.71 MiB 只服务模拟器，真机永远是 ARM。实测 65.90 MiB → **32.10 MiB（-51.3%）**，安装内容一字未变；需要模拟器调试时用 `-PincludeX86=true` 单独出包。
+- feat(update): **并发放开曲线实测后改为自适应**。同一台机器复测 1/4/8/16 条并发是 503/629/586/582 KB/s —— 甜点在 4，8 条已回退。`MAX_CONNECTIONS` 从写死的 8 改为「起手 4、速率增长 >=12% 才 +1、上限 6、只增不降」；收缩要掐断在飞连接、那些分片的下半截白下，而多开两条的成本远低于重下。
+- feat(update): **分片大小随包体联动**（`chunkSizeFor`）。固定 4 MiB/片时，砍包后 31.84 MiB 只切成 8 片，8 个 worker 一次发完、并发名存实亡。改为让总分片数不少于并发数的 3 倍并夹在 1–8 MiB，两个改动必须同时生效。
+- feat(update): **源探测从「连通即可用」换成吞吐判据**。实测 `ghproxy.net` 的 1 KB Range 探测能通过（206 / 0.23 s），真拉 3 MB 只有 2 KB/s，用户会掉进「看起来成功、实际卡住」的支路等 25 秒 watchdog。改为读 256 KiB 样本、低于 20 KB/s 判不可用；`ghproxy.net` 同时从候选表移除（14 个候选里只有 `gh-proxy.com` 还活着）。
+- feat(update): **条目级增量更新链路**。v1.0.15 → v1.0.16 逐条目比对显示 94.3% 的字节没变，一次常规更新只需传 3.7 MiB 而不是 69 MB。实现分三层：服务端发版时用 `scripts/make-apk-patch.py` 把「新包每一段字节从哪来」算成区间表；客户端按表搬运（`ApkAssembler`），**绝不重新压缩** —— v2/v3 签名覆盖整个归档字节流，重压必然失效；最后仍过整包 sha256，对不上就回退全量。
+- feat(update): 增量基线包单独存在 `files/update-baseline/`，与应用启动时的下载缓存清理隔离。否则用户点「清理下载缓存」会把基线一起删掉，下次更新退化成全量。
+- chore(ci): 新增 `release.yml`：打 `v*` tag 时构建 APK、取上一个 Release 的 APK 当基线、生成并上传 `patch.json` + `patch.bin`。基线取不到就跳过增量，只发全量；增量资产最后传且允许失败，全量更新照常可用。
+
+### Fixed
+
+- fix(update): **`ghproxy.net` 从镜像候选表移除**。它 2 KB/s 的吞吐能通过原来的连通探测，却会在真正下载时把用户卡死；一条「看起来成功、实际卡住」的支路比直接失败更糟。
+- fix(update): **增量数据文件纳入启动清理判据**。`.patch.bin` 原来不在 `FILE_SUFFIXES` 里，一次增量下载失败就会永久留下几十 MB 残留。
+
+### Added
+
+- test(update): 新增 44 个单测，覆盖分片联动与自适应并发的边界、源探测吞吐判据、增量决策（无基线 / 摘要不符 / 增量过大 / 缺新包摘要四种回退）、区间表自检、真实字节拼装与清单解析。
+- docs: 新增 [渠道实测报告](docs/research/2026-11-01-update-distribution-channels.md)（15 条下发路线的实测数据）与 [ADR-0005](docs/adr/0005-slim-apk-and-entry-level-delta.md)（为什么做瘦包与条目级增量、为什么不做 bsdiff）。
 ## [Unreleased]
 
 ### Added
@@ -439,11 +462,13 @@ Android 侧 `versionName` 与 SemVer 对齐，`versionCode` 单调递增且与�
 | 1.0.13 | 14 | v1.0.13 |
 | 1.0.14 | 15 | v1.0.14 |
 | 1.0.15 | 16 | v1.0.15 |
-| 1.0.16 | 17 | v1.0.16（当前 versionName / versionCode，见 `app/build.gradle.kts`） |
+| 1.0.16 | 17 | v1.0.16 |
+| 1.0.17 | 18 | v1.0.17（当前 versionName / versionCode，见 `app/build.gradle.kts`） |
 
 发版流程见 [CONTRIBUTING.md](CONTRIBUTING.md#7-发版)。
 
-[Unreleased]: https://github.com/Suife-yuanxing/zhijian-schedule/compare/v1.0.16...HEAD
+[Unreleased]: https://github.com/Suife-yuanxing/zhijian-schedule/compare/v1.0.17...HEAD
+[1.0.17]: https://github.com/Suife-yuanxing/zhijian-schedule/compare/v1.0.16...v1.0.17
 [1.0.16]: https://github.com/Suife-yuanxing/zhijian-schedule/compare/v1.0.15...v1.0.16
 [1.0.15]: https://github.com/Suife-yuanxing/zhijian-schedule/compare/v1.0.14...v1.0.15
 [1.0.14]: https://github.com/Suife-yuanxing/zhijian-schedule/compare/v1.0.13...v1.0.14

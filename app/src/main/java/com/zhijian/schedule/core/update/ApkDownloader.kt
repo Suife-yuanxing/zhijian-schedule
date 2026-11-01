@@ -13,6 +13,7 @@ import okhttp3.OkHttpClient
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.coroutineContext
+import okhttp3.Request as OkHttpRequest
 
 /**
  * 更新下载的唯一事实来源与下载协程体。
@@ -51,12 +52,112 @@ class ApkDownloader
         private var lastPublishAt: Long = 0L
 
         /**
-         * 开始或继续下载：按磁盘现状决定「按分片续传」还是「单连接顺序续传」；
-         * 有多个候选源时一次尝试只用一个，失败且还有下一个就换源重试一次。
-         * 必须在调用方（前台服务）的 scope 中执行。
+         * 开始或继续下载。
+         *
+         * 两条路径：
+         *  · **增量**：本机留着的基线包与清单对得上、且增量确实更省时，只下几 MB 的 patch.bin
+         *    再本地拼装（[tryDelta]）。拼装结果仍要过整包 sha256，对不上就回退全量。
+         *  · **全量**：源链 + 分片并行（[downloadFull]）。
+         *
+         * 分流放在这一层而不是 UI：状态机、磁盘、基线三样都在这里，判断才有一致的依据。
          */
         suspend fun download(request: DownloadRequest) {
             session.reset()
+            if (tryDelta(request)) return
+            downloadFull(request)
+        }
+
+        /**
+         * 尝试增量路径。返回 true 表示已经处理完（成功或取消），调用方不要再走全量。
+         *
+         * 注意「失败也要回退全量」：任何一步不对就返回 false，让 [downloadFull] 接着跑。
+         * 用户看到的是「下载中」，不会因为增量不可用而多一次点击。
+         */
+        private suspend fun tryDelta(request: DownloadRequest): Boolean {
+            val patchUrl = request.patchUrl ?: return false
+            val descriptor = withContext(Dispatchers.IO) { fetchDescriptor(patchUrl) } ?: return false
+            val baselineVersion = withContext(Dispatchers.IO) { store.baselineVersion() }
+            val baselineBytes =
+                withContext(Dispatchers.IO) {
+                    baselineVersion
+                        ?.let { store.baselineFile(it) }
+                        ?.takeIf { it.isFile }
+                        ?.length()
+                }
+            val strategy =
+                DeltaPolicy.decide(
+                    descriptor = descriptor,
+                    baseApkBytes = baselineBytes,
+                    baseSha256 = computeBaselineDigest(baselineVersion),
+                    fullSize = request.sizeBytes,
+                )
+            if (strategy !is DownloadStrategy.Delta) {
+                UpdateTrace.log { "不走增量：" + strategy.reasonText }
+                return false
+            }
+            UpdateTrace.log {
+                "走增量：" + ResumableDownload.formatBytes(strategy.patchSize) +
+                    " / 全量 " + ResumableDownload.formatBytes(strategy.fullSize)
+            }
+            _state.value =
+                DownloadState.Running(
+                    version = request.version,
+                    downloadedBytes = 0L,
+                    totalBytes = strategy.patchSize,
+                    bytesPerSecond = 0L,
+                    etaSeconds = null,
+                    sourceLabel = "增量 " + ResumableDownload.formatBytes(strategy.patchSize),
+                )
+            val outcome =
+                withContext(Dispatchers.IO) {
+                    session.withSourceWatchdog(hasNextSource = false, attemptStartBytes = 0L) {
+                        session.runDeltaUpdate(request, strategy)
+                    }
+                }
+            return when (outcome) {
+                is DeltaOutcome.Cancelled -> {
+                    _state.value = paused(request.version)
+                    true
+                }
+                is DeltaOutcome.Fallback -> {
+                    UpdateTrace.log { "增量回退全量：" + outcome.reason }
+                    false
+                }
+                is DeltaOutcome.Ready -> {
+                    _state.value = DownloadState.Ready(request.version, outcome.apk, outcome.sizeBytes)
+                    true
+                }
+            }
+        }
+
+        /** 拉增量清单；拿不到就当这个版本没有增量 */
+        private suspend fun fetchDescriptor(patchUrl: String): PatchDescriptor? =
+            runCatching {
+                val req =
+                    OkHttpRequest
+                        .Builder()
+                        .url(patchUrl)
+                        .header("User-Agent", USER_AGENT)
+                        .build()
+                client.newCall(req).execute().use { response ->
+                    if (!response.isSuccessful) return null
+                    val text = response.body?.string().orEmpty()
+                    PatchManifest.parse(text, patchUrl)
+                }
+            }.getOrNull()
+
+        /** 基线包的 sha256；没有基线或读不出来都返回 null（[DeltaPolicy] 会据此回退全量） */
+        private suspend fun computeBaselineDigest(baselineVersion: String?): String? {
+            if (baselineVersion == null) return null
+            return withContext(Dispatchers.IO) {
+                val file = store.baselineFile(baselineVersion)
+                if (!file.isFile) return@withContext null
+                runCatching { UpdateDigest.sha256Of(file) }.getOrNull()
+            }
+        }
+
+        /** 全量路径：源链 + 分片并行（原来的 download() 主体） */
+        private suspend fun downloadFull(request: DownloadRequest) {
             // 源探测、换源可能要好几秒：先把「下载中」摆出来，页面不能在这段时间毫无反应
             val (initialBytes, initialTotal) =
                 withContext(Dispatchers.IO) {
@@ -162,6 +263,28 @@ class ApkDownloader
 
         /** 应用启动时清理「版本 <= 当前已安装版本」的残留，返回删除的文件数 */
         fun cleanupOutdated(currentVersion: String): Int = store.cleanupOutdated(currentVersion)
+
+        /**
+         * 把「当前已安装的这一版」留作增量基线。
+         *
+         * 调用方传入本应用自己的 APK 路径（[Context.getApplicationInfo] 的 sourceDir）。
+         * 这一步是增量更新能生效的前提：没有基线包，下次更新只能下全量。
+         *
+         * 幂等且便宜：基线已存在且大小一致时直接返回，不会每次启动都复制几十 MB。
+         * 失败（存储不足等）不抛出——退化成「下次更新走全量」而已，不该影响启动。
+         *
+         * @return true = 基线已就绪
+         */
+        fun ensureBaseline(
+            installedVersion: String,
+            installedApk: java.io.File?,
+        ): Boolean {
+            if (installedApk == null || !installedApk.isFile) return false
+            val existing = store.baselineFile(installedVersion)
+            if (existing.isFile && existing.length() == installedApk.length()) return true
+            // 只剩一份基线，换版本时旧的自然被清掉（见 UpdateStore.saveBaseline）
+            return store.saveBaseline(installedVersion, installedApk)
+        }
 
         /**
          * 检查到新版本后，用磁盘上已有的东西覆盖状态：已校验的 `.apk` → Ready，未完成的分片 → Paused。

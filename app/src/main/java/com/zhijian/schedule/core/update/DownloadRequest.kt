@@ -9,4 +9,11 @@ data class DownloadRequest(
     val digest: String?,
     /** 设置页的「镜像加速」开关；关闭时候选只有直连 */
     val mirrorsEnabled: Boolean = false,
+    /**
+     * 增量清单地址（Release 里的 patch.json）；null = 这个版本没有提供增量。
+     *
+     * 这里只带地址不带内容：清单要不要解析、能不能用，取决于本机基线包对不对得上，
+     * 那个判断发生在真正开始下载之后（见 [ApkDownloader.download]）。
+     */
+    val patchUrl: String? = null,
 )

@@ -65,8 +65,11 @@ sealed interface RangeDecision {
 }
 
 object ResumableDownload {
-    /** `.apk[.part|.meta]` 后缀；长的必须排在前面（判定要覆盖 `.apk.part` 而非 `.apk`） */
-    private val FILE_SUFFIXES = listOf(".apk.part", ".apk.meta", ".apk")
+    /**
+     * 本应用写下的更新文件后缀；长的必须排在前面（判定要覆盖 `.apk.part` 而非 `.apk`）。
+     * `.patch.bin` 是增量数据文件，必须列进来，否则启动清理会把它当陌生文件永久留下。
+     */
+    private val FILE_SUFFIXES = listOf(".apk.part", ".apk.meta", ".apk", ".patch.bin")
 
     private const val HEX = "0123456789abcdef"
 
@@ -153,10 +156,14 @@ object ResumableDownload {
     /**
      * 把整份文件切成固定大小的分片。`total` 未知 / 非正，或 `chunkSize` 非正时返回 null ——
      * 调用方一律退回单连接顺序路径。共享分片队列的调度策略也在这里定：只有分片数量 > 1 才值得并行。
+     *
+     * 默认分片大小**随包体联动**（[chunkSizeFor]），不写死 4 MiB：砍掉 x86 后包只有 31.84 MiB，
+     * 4 MiB 每片只剩 8 片，8 个 worker 一次发完，并发名存实亡。指定了 `chunkSize` 的调用方
+     * （续传时沿用 `.meta` 里记下的旧值）不受影响。
      */
     fun planChunks(
         totalBytes: Long,
-        chunkSize: Long = DEFAULT_CHUNK_BYTES,
+        chunkSize: Long = chunkSizeFor(totalBytes),
     ): ChunkPlan? {
         if (totalBytes <= 0L || chunkSize <= 0L) return null
         val count = ((totalBytes + chunkSize - 1L) / chunkSize).toInt()
@@ -201,10 +208,12 @@ object ResumableDownload {
         rawMeta: PartMeta?,
     ): ResumePoint {
         val meta = rawMeta?.takeIf { it.version == version }
+        val planTotal = totalBytes ?: meta?.totalBytes ?: 0L
         val plan =
             planChunks(
-                totalBytes = totalBytes ?: meta?.totalBytes ?: 0L,
-                chunkSize = meta?.chunkSize?.takeIf { it > 0L } ?: DEFAULT_CHUNK_BYTES,
+                totalBytes = planTotal,
+                // 续传必须沿用旧分片大小，否则已完成片与新计划对不上；新下载才按包体联动
+                chunkSize = meta?.chunkSize?.takeIf { it > 0L } ?: chunkSizeFor(planTotal),
             )
         if (partBytes <= 0L) return ResumePoint.Fresh(plan)
 
@@ -286,7 +295,7 @@ object ResumableDownload {
     ): PartMeta? {
         val meta = raw ?: return null
         if (meta.version != version) return null
-        val chunkSize = if (meta.chunkSize > 0L) meta.chunkSize else DEFAULT_CHUNK_BYTES
+        val chunkSize = if (meta.chunkSize > 0L) meta.chunkSize else chunkSizeFor(meta.totalBytes)
         return meta.copy(
             chunkSize = chunkSize,
             completedChunks = meta.completedChunks.distinct().sorted(),

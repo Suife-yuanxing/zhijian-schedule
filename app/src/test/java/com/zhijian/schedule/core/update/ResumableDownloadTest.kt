@@ -10,6 +10,7 @@ import com.zhijian.schedule.core.update.ReadVerdict
 import com.zhijian.schedule.core.update.ResumableDownload
 import com.zhijian.schedule.core.update.ResumePoint
 import com.zhijian.schedule.core.update.VerifyResult
+import com.zhijian.schedule.core.update.chunkSizeFor
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -404,8 +405,8 @@ class ResumableDownloadTest {
 
     @Test
     fun resumePointUpgradesV1PartFileByReplanningChunks() {
-        // v1 写的元数据没有 chunkSize/completedChunks（取默认值 0 与空表），分片大小归一化成 4 MiB。
-        // 这里用真实的 4 MiB 分片、只是把总长缩到 16 MiB —— 才是在测生产路径，而不是靠一个假的小分片。
+        // v1 写的元数据没有 chunkSize/completedChunks（取默认值 0 与空表），
+        // 分片大小归一化成 **按包体联动后的值**（chunkSizeFor，不再是写死的 4 MiB）。
         val total = 16L * 1024L * 1024L
         val meta =
             PartMeta(
@@ -413,16 +414,18 @@ class ResumableDownloadTest {
                 url = "https://example.com/a.apk",
                 totalBytes = total,
             )
-        val plan = ResumableDownload.planChunks(total)!!
+        val chunkSize = chunkSizeFor(total)
+        val plan = ResumableDownload.planChunks(total, chunkSize = chunkSize)!!
+        // 拿整整两片 + 半片的偏移，断言「只有整片算数、半截那片重下」
+        val partBytes = chunkSize * 2 + chunkSize / 2
         val point =
             ResumableDownload.resolveResumePoint(
                 version = "1.0.3",
                 url = "https://example.com/a.apk",
                 totalBytes = total,
-                partBytes = 10L * 1024L * 1024L,
+                partBytes = partBytes,
                 rawMeta = meta,
             )
-        // 10 MiB = 前 2 片（各 4 MiB）完整 + 第 3 片半截，只有整片算数，半截那片重下
         assertEquals(ResumePoint.Chunked(plan, listOf(0, 1)), point)
     }
 
@@ -466,15 +469,17 @@ class ResumableDownloadTest {
 
     @Test
     fun sparseMetaResumesInFlightChunksFromTheirOffsets() {
-        // 稀疏写的 .part 里第 0 片整片完成、第 1 片只写了 1 MiB：续传必须从 1 MiB 处接着写
+        // 稀疏写的 .part 里第 0 片整片完成、第 1 片只写了 1 MiB：续传必须从 1 MiB 处接着写。
+        // 分片大小沿用元数据里记下的值（续传不能换分片大小，否则已完成片与新计划对不上）。
         val total = 16L * 1024L * 1024L
-        val plan = ResumableDownload.planChunks(total)!!
+        val chunkSize = chunkSizeFor(total)
+        val plan = ResumableDownload.planChunks(total, chunkSize = chunkSize)!!
         val meta =
             PartMeta(
                 version = "1.0.3",
                 url = "https://example.com/a.apk",
                 totalBytes = total,
-                chunkSize = 4L * 1024L * 1024L,
+                chunkSize = chunkSize,
                 completedChunks = listOf(0),
                 partialChunks = mapOf(1 to 1024L * 1024L),
                 sparseChunks = true,
@@ -484,7 +489,7 @@ class ResumableDownloadTest {
                 version = "1.0.3",
                 url = "https://example.com/a.apk",
                 totalBytes = total,
-                partBytes = 12L * 1024L * 1024L,
+                partBytes = chunkSize + 1024L * 1024L,
                 rawMeta = meta,
             )
         assertEquals(ResumePoint.Chunked(plan, listOf(0), mapOf(1 to 1024L * 1024L)), point)
@@ -494,13 +499,14 @@ class ResumableDownloadTest {
     fun sparseMetaWithoutRecordsRestartsInsteadOfTrustingFileLength() {
         // 稀疏 .part 的长度是「最远写到的偏移」，不是已下字节；没记账就只能重下，不能把前 N 片当完成
         val total = 16L * 1024L * 1024L
-        val plan = ResumableDownload.planChunks(total)!!
+        val chunkSize = chunkSizeFor(total)
+        val plan = ResumableDownload.planChunks(total, chunkSize = chunkSize)!!
         val meta =
             PartMeta(
                 version = "1.0.3",
                 url = "https://example.com/a.apk",
                 totalBytes = total,
-                chunkSize = 4L * 1024L * 1024L,
+                chunkSize = chunkSize,
                 sparseChunks = true,
             )
         val point =
@@ -508,7 +514,7 @@ class ResumableDownloadTest {
                 version = "1.0.3",
                 url = "https://example.com/a.apk",
                 totalBytes = total,
-                partBytes = 12L * 1024L * 1024L,
+                partBytes = chunkSize * 3,
                 rawMeta = meta,
             )
         assertEquals(ResumePoint.Fresh(plan), point)
@@ -531,6 +537,16 @@ class ResumableDownloadTest {
         // 顺序路径的元数据没有稀疏标记，进度由 `.part` 长度说话
         assertEquals(0L, ResumableDownload.progressBytes(meta.copy(sparseChunks = false)))
         assertEquals(0L, ResumableDownload.progressBytes(null))
+    }
+
+    @Test
+    fun patchFileIsRecognizedByCleanup() {
+        // 增量数据文件也必须能被启动清理认出来，否则一次增量下载失败就会永久留下几十 MB
+        assertEquals("1.0.17", ResumableDownload.versionOf("1.0.17.patch.bin"))
+        assertTrue(ResumableDownload.shouldClean("1.0.17.patch.bin", "1.0.18"))
+        assertTrue(!ResumableDownload.shouldClean("1.0.19.patch.bin", "1.0.18"))
+        // 陌生文件名一律不碰
+        assertNull(ResumableDownload.versionOf("random.bin"))
     }
 
     @Test

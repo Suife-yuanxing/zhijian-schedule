@@ -28,10 +28,28 @@ android {
         applicationId = "com.zhijian.schedule"
         minSdk = 26
         targetSdk = 36
-        versionCode = 17
-        versionName = "1.0.16"
+        versionCode = 18
+        versionName = "1.0.17"
 
         resourceConfigurations += listOf("zh", "en")
+
+        // 只打真机架构。MLKit 的两个 so（libmlkit_google_ocr_pipeline.so / libbarhopper_v3.so）
+        // 按 CPU 架构各打一份，四条 ABI 合计 58.4 MiB —— 占整个 APK 的 89%。
+        // 而 lib/x86 + lib/x86_64 是模拟器架构（33.71 MiB），真机与平板永远是 ARM，留着纯浪费：
+        // 实测 2026-11-01，去掉后 65.55 MiB → 31.84 MiB（-51%），安装内容一字未变。
+        // 需要模拟器调试时用 -PincludeX86=true 单独开，不要让正式包背这份体积。
+        val includeX86 = (project.findProperty("includeX86") as String?)?.toBoolean() ?: false
+        ndk {
+            abiFilters +=
+                buildList {
+                    add("arm64-v8a")
+                    add("armeabi-v7a")
+                    if (includeX86) {
+                        add("x86")
+                        add("x86_64")
+                    }
+                }
+        }
 
         // 自建镜像前缀（路线 A：Cloudflare R2 + 自定义域名或 Worker）。
         // 形如 "https://dl.example.com/apk/" 或 "https://dl.example.com/"；留空表示不启用自建源。

@@ -36,6 +36,9 @@ class UpdateStore
 
         fun apkFile(version: String): File = File(dir, version + SUFFIX_APK)
 
+        /** 增量数据文件（patch.bin）的暂存位置 */
+        fun patchFile(version: String): File = File(dir, version + SUFFIX_PATCH)
+
         /** 已下载的分片字节数；没有分片时返回 0 */
         fun partBytes(version: String): Long = partFile(version).let { if (it.isFile) it.length() else 0L }
 
@@ -105,10 +108,72 @@ class UpdateStore
         fun freeSpaceBytes(): Long =
             runCatching { StatFs(dir.absolutePath).availableBytes }.getOrDefault(Long.MAX_VALUE)
 
+        // ---------- 增量更新的基线包 ----------
+
+        /**
+         * 增量更新用的基线包：把「当前已安装版本」的 APK 留一份在这里。
+         *
+         * 为什么需要它：条目级增量是「拿旧包的同位置字节 + 少量新字节拼出新包」，
+         * 没有与清单里 baseSha256 对得上的旧包，就只能老老实实下全量。
+         *
+         * 为什么单独放一个目录而不是复用 updates/：updates/ 是下载缓存，用户点「清理下载缓存」
+         * 或者应用启动清理旧版本残留时会被清掉；基线包必须活得更久，否则每次清理都会让下一次更新
+         * 退化回全量。
+         */
+        val baselineDir: File
+            get() = File(context.filesDir, DIR_BASELINE).apply { if (!isDirectory) mkdirs() }
+
+        fun baselineFile(version: String): File = File(baselineDir, version + SUFFIX_APK)
+
+        /** 当前留作基线的版本号；没有则返回 null */
+        fun baselineVersion(): String? =
+            baselineDir
+                .listFiles()
+                ?.filter { it.isFile && it.name.endsWith(SUFFIX_APK) }
+                ?.maxByOrNull { it.lastModified() }
+                ?.name
+                ?.removeSuffix(SUFFIX_APK)
+
+        /**
+         * 记录一份基线包。**只保留一份**：换版本后旧基线就没用了（新包的增量是相对新基线算的），
+         * 留着只会白占几十 MB。
+         *
+         * @param source 已安装版本的 APK 来源
+         */
+        fun saveBaseline(
+            version: String,
+            source: File,
+        ): Boolean =
+            runCatching {
+                if (!source.isFile) return false
+                clearBaseline(except = version)
+                val target = baselineFile(version)
+                if (target.isFile && target.length() == source.length()) return true
+                source.copyTo(target, overwrite = true)
+                true
+            }.getOrDefault(false)
+
+        /** 清掉除 [except] 之外的全部基线包 */
+        fun clearBaseline(except: String? = null) {
+            val keep = if (except == null) null else except + SUFFIX_APK
+            baselineDir.listFiles()?.forEach { file ->
+                if (file.isFile && file.name != keep) file.delete()
+            }
+        }
+
+        /** 基线包占用的字节数 */
+        fun baselineBytes(): Long = baselineDir.listFiles()?.sumOf { if (it.isFile) it.length() else 0L } ?: 0L
+
         private companion object {
             const val DIR = "updates"
+
+            /** 基线包目录：与下载缓存分开，清理缓存不会把它带走 */
+            const val DIR_BASELINE = "update-baseline"
             const val SUFFIX_PART = ".apk.part"
             const val SUFFIX_META = ".apk.meta"
             const val SUFFIX_APK = ".apk"
+
+            /** 增量数据文件后缀：与 .apk 区分，清理缓存时一并删除 */
+            const val SUFFIX_PATCH = ".patch.bin"
         }
     }

@@ -1,0 +1,150 @@
+name: Release
+
+# 打 tag（vX.Y.Z）时：构建 release APK → 生成条目级增量清单 → 建 Release 并上传资产。
+#
+# 为什么增量清单必须在发版时生成：
+#   客户端不能自己决定条目在 APK 里的位置 —— v2/v3 签名覆盖整个归档字节流，偏移一变签名就失效。
+#   所以区间表只能由「手上有新旧两个完整包」的服务端算出，客户端只按表搬运。
+#   详见 docs/adr/0005-slim-apk-and-entry-level-delta.md。
+#
+# 基线取上一个 Release 的 APK；取不到就跳过增量，只发全量 —— 更新链路照常可用。
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布的 tag（如 v1.0.17）'
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  release:
+    name: Build · Patch · Publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+
+      # secrets 不能直接出现在 if 条件里（Actions 不支持 secrets 上下文参与 if 求值），
+      # 所以先落到 env，再用 env 判断。没有密钥时回落到 debug 签名，构建不会失败。
+      - name: Prepare signing material
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "没有配置签名密钥，使用 debug 签名回落"
+            exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > keystore.jks
+          {
+            echo "storeFile=../keystore.jks"
+            echo "storePassword=$KEYSTORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > keystore.properties
+
+      - name: Build release APK
+        run: ./gradlew :app:assembleRelease --console=plain
+
+      - name: Collect APK metadata
+        id: apk
+        run: |
+          APK=$(find app/build/outputs/apk/release -maxdepth 1 -name '*.apk' | head -1)
+          if [ -z "$APK" ]; then echo "没有找到 release APK"; exit 1; fi
+          ASSET_NAME="PaperTimetable-${RELEASE_TAG}.apk"
+          echo "path=$APK" >> "$GITHUB_OUTPUT"
+          echo "asset=$ASSET_NAME" >> "$GITHUB_OUTPUT"
+          echo "size=$(stat -c%s "$APK")" >> "$GITHUB_OUTPUT"
+          sha256sum "$APK"
+
+      # 基线 = 上一个 Release 的 APK。失败是允许的（首次发版 / 上一版没带 APK）。
+      - name: Fetch previous APK as baseline
+        id: base
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PREV_TAG=$(gh release list --exclude-drafts --limit 10 --json tagName \
+            --jq "[.[] | select(.tagName != \"$RELEASE_TAG\")][0].tagName")
+          if [ -z "$PREV_TAG" ] || [ "$PREV_TAG" = "null" ]; then
+            echo "没有可用的上一个版本，跳过增量"; exit 1
+          fi
+          echo "基线版本: $PREV_TAG"
+          mkdir -p .patch/old
+          gh release download "$PREV_TAG" --pattern '*.apk' --dir .patch/old --clobber
+          OLD_APK=$(find .patch/old -name '*.apk' | head -1)
+          if [ -z "$OLD_APK" ]; then echo "上一个 Release 没有 APK"; exit 1; fi
+          echo "old=$OLD_APK" >> "$GITHUB_OUTPUT"
+
+      - name: Generate delta manifest
+        id: patch
+        if: steps.base.outcome == 'success'
+        continue-on-error: true
+        run: |
+          python3 scripts/make-apk-patch.py \
+            "${{ steps.base.outputs.old }}" \
+            "${{ steps.apk.outputs.path }}" \
+            .patch/out
+          ls -l .patch/out
+
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$RELEASE_TAG" >/dev/null 2>&1 \
+            || gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --generate-notes --latest
+          gh release upload "$RELEASE_TAG" \
+            "${{ steps.apk.outputs.path }}#${{ steps.apk.outputs.asset }}" --clobber
+
+      # 增量资产最后传，且允许失败：即使增量发不出去，全量更新依然可用。
+      - name: Upload delta assets
+        if: steps.patch.outcome == 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ ! -f .patch/out/patch.json ] || [ ! -f .patch/out/patch.bin ]; then
+            echo "增量产物缺失，跳过"; exit 0
+          fi
+          gh release upload "$RELEASE_TAG" \
+            .patch/out/patch.json#patch.json \
+            .patch/out/patch.bin#patch.bin \
+            --clobber
+
+      - name: Remove signing material
+        if: always()
+        run: rm -f keystore.jks keystore.properties
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Release $RELEASE_TAG" >> "$GITHUB_STEP_SUMMARY"
+          echo "- APK: ${{ steps.apk.outputs.asset }} (${{ steps.apk.outputs.size }} bytes)" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f .patch/out/patch.bin ]; then
+            echo "- 增量: $(stat -c%s .patch/out/patch.bin) bytes" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- 增量: 未生成（无基线或生成失败）" >> "$GITHUB_STEP_SUMMARY"
+          fi

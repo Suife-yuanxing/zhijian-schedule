@@ -2,21 +2,24 @@ package com.zhijian.schedule.core.update
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.Request
 import okhttp3.Response
 import java.io.InputStream
 import java.io.RandomAccessFile
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.coroutineContext
 
-/** 实测 8 并发把单连接吞吐提到 5.89 倍；单个常量，日后好调 */
-private const val MAX_CONNECTIONS = 8
-
 private const val MAX_CHUNK_ATTEMPTS = 3
+
+/** 自适应并发的调整周期：与 [SpeedMeter] 的 5 秒窗口对齐，太短会被噪声带着抖 */
+private const val ADAPT_INTERVAL_MS = 5_000L
 private const val RETRY_BASE_MILLIS = 500L
 
 /** 每写这么多字节刷新一次进度 */
@@ -26,8 +29,11 @@ private const val PROGRESS_STEP_BYTES = 64L * 1024L
  * 分片并行传输：一次源尝试的入口，以及并行路径本身。
  *
  * [ResumableDownload] 决定「从哪里接着写」；这里负责把分片真的写进 `.part`：
- * `min(8, chunkCount)` 个 worker 抢同一个分片队列，各写自己那一段。**不开分片文件、不需要事后
+ * 若干个 worker 抢同一个分片队列，各写自己那一段。**不开分片文件、不需要事后
  * 拼接**：所有 worker 共用同一个 `RandomAccessFile`，`seek` 到各自分片起点后顺序写。
+ *
+ * 并发数**不写死**：起手 [INITIAL_CONNECTIONS] 条，之后每 [ADAPT_INTERVAL_MS] 按实测速率
+ * 用 [adaptConnections] 增删（实测这条线路上 8 条已经开始回退，见 TransferTuning.kt 的说明）。
  * 每片写完的顺序是「`fd.sync()` → 记账 → 重写 `.meta`」：先落盘再记账，崩溃后才不会把没写完的片当成完成片。
  *
  * 服务端不认 Range（200）时改为单连接顺序路径，见 SequentialTransfer.kt；
@@ -206,6 +212,8 @@ private suspend fun DownloadSession.parallelDownload(
     val outcome =
         try {
             coroutineScope {
+                // 显式拿一个 scope 引用：worker 是在运行期按需 launch 的，不能只靠静态的 async/awaitAll
+                val scope = this
                 RandomAccessFile(part, "rw").use { file ->
                     // 只有什么都不保留时才截断：有 partial 偏移说明已落盘的字节还要接着写，
                     // 截成 0 会把它们抹成空洞
@@ -214,55 +222,114 @@ private suspend fun DownloadSession.parallelDownload(
                         kotlinx.coroutines.channels.Channel<Int>(
                             kotlinx.coroutines.channels.Channel.UNLIMITED,
                         )
-                    (0 until plan.chunkCount).filter { it !in completed }.forEach { queue.trySend(it) }
+                    val pending = (0 until plan.chunkCount).filter { it !in completed }
+                    pending.forEach { queue.trySend(it) }
                     queue.close()
+                    // 还没被任何 worker 领走的分片数：决定「要不要再加一条连接」时看它，
+                    // 队列本身已经 close 过、不能再用来判空
+                    val remaining = AtomicInteger(pending.size)
 
-                    val workers =
-                        List(minOf(MAX_CONNECTIONS, plan.chunkCount)) {
-                            // 显式钉住 async 的返回类型，且循环用 break 收尾：协程体的末表达式必须是
-                            // ChunkOutcome，否则下面按 ChunkOutcome 分派的 when 会因类型是 Any 而不再穷尽
-                            async<ChunkOutcome>(Dispatchers.IO) {
-                                try {
-                                    while (true) {
-                                        coroutineContext.ensureActive()
-                                        if (cancelRequested.get()) return@async ChunkOutcome.Cancelled
-                                        if (sourceAbort.get()) return@async ChunkOutcome.Aborted
-                                        val index = queue.tryReceive().getOrNull() ?: break
-                                        val result =
-                                            downloadChunk(
-                                                request,
-                                                source,
-                                                plan,
-                                                index,
-                                                file,
-                                                written,
-                                                plan.chunkCount,
-                                                done,
-                                                lock,
-                                                meter,
-                                            )
-                                        // 某片发现服务端不认 Range 就没必要把剩下的片也拉下来，立刻收手
-                                        if (result !is ChunkOutcome.Completed) return@async result
-                                    }
-                                    // 队列被抢空：这个 worker 正常收工
-                                    ChunkOutcome.Completed
-                                } catch (e: Exception) {
-                                    // 防御纵深：writeChunk 已按裁决兜住读取期 IOException，这里是最后一道闸 ——
-                                    // 任何漏网异常（close 期 IO、分派竞态）都不允许穿出 async 炸掉 coroutineScope
-                                    // 把前台服务拖闪退（真机回归 2026-10-16）。CancellationException 必须原样上抛，
-                                    // 否则结构化并发的取消语义被破坏。
-                                    if (e is CancellationException) throw e
-                                    if (cancelRequested.get()) {
-                                        ChunkOutcome.Cancelled
-                                    } else {
-                                        ChunkOutcome.Error("网络中断（${e.message ?: e::class.simpleName ?: "IO 错误"}），可继续下载")
-                                    }
+                    // 伸缩 worker 池：起手 INITIAL_CONNECTIONS 条，之后每 ADAPT_INTERVAL_MS 按实测速率
+                    // 用 adaptConnections 决定要不要再补一条。**只增不降**——收缩要掐断在飞连接，那些
+                    // 分片的下半截白下；上限只比初始多 2 条，多开的成本远低于掐断重下
+                    // （取舍见 TransferTuning.kt）。队列抢空后 worker 自然收工，不需要收缩状态机。
+                    val target = AtomicInteger(minOf(INITIAL_CONNECTIONS, plan.chunkCount))
+                    // 每个 worker 完成时把结果投进这个通道，主协程按条数收敛
+                    val results = Channel<ChunkOutcome>(Channel.UNLIMITED)
+                    val live = AtomicInteger(0)
+                    // 记下所有 worker 的 Job：提前收手时必须先取消并等它们真的退出，
+                    // 否则 RandomAccessFile 先被 use 块关掉，还在飞的 worker 会往已关闭的 fd 上写
+                    val workers = mutableListOf<Job>()
+
+                    // 一个 worker 的完整工作：抢一片、下完、再抢；队列空了就正常收工
+                    suspend fun runWorker(): ChunkOutcome {
+                        while (true) {
+                            coroutineContext.ensureActive()
+                            // 两个中止标志合并成一次判断：逻辑不变，同时把 return 数量压在 detekt 上限内
+                            val abort =
+                                when {
+                                    cancelRequested.get() -> ChunkOutcome.Cancelled
+                                    sourceAbort.get() -> ChunkOutcome.Aborted
+                                    else -> null
                                 }
-                            }
+                            if (abort != null) return abort
+                            val index = queue.tryReceive().getOrNull() ?: return ChunkOutcome.Completed
+                            remaining.decrementAndGet()
+                            val result =
+                                downloadChunk(
+                                    request,
+                                    source,
+                                    plan,
+                                    index,
+                                    file,
+                                    written,
+                                    plan.chunkCount,
+                                    done,
+                                    lock,
+                                    meter,
+                                )
+                            // 某片发现服务端不认 Range 就没必要把剩下的片也拉下来，立刻收手
+                            if (result !is ChunkOutcome.Completed) return result
                         }
-                    // awaitAll 让所有 worker 收尾；只要有一个非 Completed 就取它
-                    val results = workers.awaitAll()
-                    results.firstOrNull { it !is ChunkOutcome.Completed } ?: ChunkOutcome.Completed
+                    }
+
+                    fun launchWorker() {
+                        live.incrementAndGet()
+                        workers +=
+                            scope.launch(Dispatchers.IO) {
+                                val outcome =
+                                    try {
+                                        runWorker()
+                                    } catch (e: Exception) {
+                                        // 防御纵深：writeChunk 已按裁决兜住读取期 IOException，这里是最后一道闸 ——
+                                        // 任何漏网异常都不允许穿出协程炸掉 coroutineScope 把前台服务拖闪退
+                                        // （真机回归 2026-10-16）。CancellationException 必须原样上抛。
+                                        if (e is CancellationException) throw e
+                                        if (cancelRequested.get()) {
+                                            ChunkOutcome.Cancelled
+                                        } else {
+                                            ChunkOutcome.Error(
+                                                "网络中断（${e.message ?: e::class.simpleName ?: "IO 错误"}），可继续下载",
+                                            )
+                                        }
+                                    }
+                                results.send(outcome)
+                            }
+                    }
+
+                    repeat(target.get()) { launchWorker() }
+
+                    var previousBps: Long? = null
+                    var finalOutcome: ChunkOutcome = ChunkOutcome.Completed
+                    while (live.get() > 0) {
+                        // 等一个 worker 收工；超时就说明这一窗口没人收工，正好做一次并发评估
+                        val outcome = withTimeoutOrNull(ADAPT_INTERVAL_MS) { results.receive() }
+                        if (outcome == null) {
+                            val latest = meter.bytesPerSecond()
+                            val next = adaptConnections(target.get(), previousBps, latest)
+                            // 只在这一轮确实还有活可分时才加人：分片全被领走后加 worker 只是白起协程
+                            if (next != target.get() && remaining.get() > 0) {
+                                UpdateTrace.log {
+                                    "并发 ${target.get()} → $next（${previousBps ?: 0} → ${latest ?: 0} B/s）"
+                                }
+                                repeat(next - target.get()) { launchWorker() }
+                                target.set(next)
+                            }
+                            previousBps = latest
+                            continue
+                        }
+                        live.decrementAndGet()
+                        if (outcome !is ChunkOutcome.Completed) {
+                            // 有 worker 报错/取消/降级：收手，先取消其余 worker 并等它们退出，
+                            // 再交给上层按 ChunkOutcome 分派（此时文件仍开着，不会写坏已关闭的 fd）
+                            finalOutcome = outcome
+                            break
+                        }
+                    }
+                    // 无论正常收工还是中途收手，都在关闭文件前把 worker 全部收干净
+                    workers.forEach { it.cancel() }
+                    workers.forEach { runCatching { it.join() } }
+                    finalOutcome
                 }
             }
         } catch (e: CancellationException) {

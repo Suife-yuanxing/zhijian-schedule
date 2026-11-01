@@ -59,6 +59,13 @@ class ZhiJianApp :
         appScope.launch {
             // 「版本 <= 当前已安装版本」的更新残留（含待安装 APK 与断点）已经没用了
             runCatching { apkDownloader.cleanupOutdated(BuildConfig.VERSION_NAME) }
+            // 把当前这一版留作增量基线：没有它，下次更新只能下整包（条目级增量的前提）
+            runCatching {
+                apkDownloader.ensureBaseline(
+                    installedVersion = BuildConfig.VERSION_NAME,
+                    installedApk = java.io.File(applicationInfo.sourceDir),
+                )
+            }
             // 旧版本的镜像开关默认关闭；升级后一次性打开，保证直连不可用时能自动换源
             runCatching { settingsStore.migrateIfNeeded() }
             // 学校目录（选校自动填 URL + 域名兜底识别）在后台解一次，避免首开弹层空转

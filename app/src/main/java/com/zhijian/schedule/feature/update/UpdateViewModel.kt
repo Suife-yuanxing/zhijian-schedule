@@ -177,6 +177,8 @@ class UpdateViewModel
                             digest = info.apkDigest,
                             // 没有官方摘要时一律禁用镜像候选，代码层不给自己留后门
                             mirrorsEnabled = mirrorsAllowed,
+                            // 增量能不能用由 ApkDownloader 按本机基线决定，这里只负责把地址带过去
+                            patchUrl = info.patchUrl,
                         ),
                     )
                 }.isSuccess
