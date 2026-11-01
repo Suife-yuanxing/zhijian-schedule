@@ -12,6 +12,29 @@
 
 ## [Unreleased]
 
+### Added
+
+- feat(jw): **教务账号密码记忆与自动填充**（入口：我的 → 高级设置 → 教务账号密码）。首次在教务页登录成功后**弹气泡问一句「记住这次登录？」**，点「记住」才落库；下次打开登录页直接填进输入框。四层设计：①**捕获**在登录表单 submit / 登录按钮 click / 回车三处挂监听，取可见密码框与同表单的账号框；②**落库时机**放在「页面自己判定已经进入教务系统」之后，不打错密码就落库——教务登录失败率不低（验证码错、账号锁、WAF 拦校外），提交即保存等于把打错的密码存下来，下次填充就是拿错密码撞锁；③**回填**只填值不自动提交（教务登录页普遍带验证码，自动提交会把验证码框变成已经输错过的死状态），并按 origin 严格比对；④**确认**由用户按下「记住」才写盘，拒绝一次不留任何隐藏状态（下次登录照问）。
+- feat(jw): 确认气泡 `CredentialSaveBubble` 浮在网页底部，不是 `AlertDialog`——用户此刻在做「登录 → 进课表页 → 抓取」，对话框会打断这条路径，而这个决定**不阻塞**任何后续操作。气泡只显示打码账号 + 站点（`JwCredentialPrompt` 结构上不含密码字段），带关闭叉，叉与「不用」等价，都不写盘。
+- feat(core): `JwCredentialStore` + `CredentialCrypto` + `CredentialBlob`：密码以 **Android Keystore 里的 AES-256-GCM 密钥**加密后写入 noBackupFilesDir（不进全量备份、不进 adb backup、不进 `BackupManager.exportJson()` 的导出）。密文自带版本头与随机 IV，同一密码两次加密结果不同；改一个字节（GCM tag）即解不开，按「没存过」处理而不是解出垃圾。设置页只拿得到 `JwCredentialSummary`（**结构上不含密码字段**），账号在界面上打码显示。
+- feat(core): `JwCredentialPromptPolicy` + `JwCredentialMasking` 两个纯函数模块：前者决定「这次要不要问」，三条不问的情况（与已保存完全一致 / 候选不合法 / 提交页与教务不同源）；后者是设置页摘要与确认气泡共用的打码规则，短账号全遮（留首尾等于全露）。抽出来是为了能进本机单测——判错的两个方向都是事故：该问不问是悄悄存密码，不该问问是每次登录弹一次。
+- feat(settings): 高级设置新增「教务账号密码」分组：自动填充开关（默认关闭，首次保存成功后自动打开）、已保存账号摘要（打码）、站点、记住时间、一键清除。
+- feat(nav): 新增**二级页入场闸门** `SecondLevelEntrancePolicy` / `SecondLevelEntranceGate`：成绩 / 考试 / 设置三页的入场按**路由各播一次**，而不是每次推入都从 alpha=0 长一遍。根页 2026-10-30 就收成「冷启动首帧放行一次」，二级页一直没跟上——从卡片拉开的那 480ms 里容器一边张开、内容一边一块块浮现，两条时间轴不同步，读起来就是「打开这一页它刷新了一遍」。闸门挂在宿主才跨 back stack entry 与 Activity 重建生效：页面内自己用 rememberSaveable 记「已播」，返回再进就是新 entry、标记重新初始化，等于没记。
+
+### Fixed
+
+- fix(nav): 入口卡恢复**单飞**——`ProfileEntryNavigator` 把展开首帧前的第二次点击直接丢弃，并在每次导航前 `popUpTo(PROFILE)` 收栈。原先是五个回调各自 `navigate`，`launchSingleTop` 只合并同一路由的连续压栈，两张**不同**的卡在 30ms 内相继被点中会各压一层（真机 PKG110 复现：1 次返回停在「成绩查询」，2 次才回根页）。落位窗口按系统「动画时长」缩放折算（480ms × animatorScale），与切 tab 的落位窗口同一套折算。语义刻意与 `TabSwitchQueue` 相反：切 tab 合并成最后一次意图，入口卡只认第一次——两张卡是两件不同的事，把误触当意图会把人送到他没想打开的页面。
+- fix(nav): 停在二级页时切 tab 会把二级页一起存进 tab 子树（`popUpTo(graph.id) { saveState = true }` 存的是整颗子树），`restoreState` 后点底栏「我的」**直接落在成绩页**，而底栏只在根页显示——用户读到「一个没有底栏、只能靠左上角退出的页面」。`navigateToTab` 现在先 `popCurrentTabToRoot()` 收回到根页再存，让「点哪个 tab 就落在哪个 tab 的根页」成为确定性规则。
+- fix(ui): `StaggerIn` 默认撑满可用宽度（新增 `fillWidth`，嵌在 Row 里的标题 / 按钮显式关掉），上浮位移 20dp → 8dp。不撑宽时 Box 只有内容那么宽、又贴在左对齐的父容器里，叠上 20dp 位移与逐段淡入，整块内容读作「从左上角长出来」。
+- fix(update): **debug 包不再做启动自动检查更新**（`UpdatePromptViewModel.checkOnLaunch` 直接 return）。开发版版本名恒为「当前分支名 + -debug」，而线上 Release 已是同号或更高，于是每次冷启动都弹「发现新版本」——弹窗还盖住「我的」页入口卡，真机验收每次都要多点一下「关闭」。手动入口（我的 → 检查更新）不受影响。
+- fix(jw): 气泡挂着期间用户又登录了一次时，严禁拿旧问句保存新密码——`JwCredentialPrompt.candidateAt` 记录候选时刻，确认时若候选已变则这次不存并提示「这次登录的账号已变化」。另一处同类修正：`credentialNotice`（事后结果）与 `credentialPrompt`（待决定问句）拆成两个字段，此前共用一个，弹窗一关会把刚写好的结果提示一起抹掉。
+
+### Changed
+
+- refactor(nav): `animatorScaledBudgetMs` 拆出 `animatorScale(context)`，切 tab 与入口卡两道闸共用同一个缩放系数读取（读 `Settings.Global` 失败按 1 回落，个别 ROM 会拒绝这个读）。
+- test(jw): 新增 `CredentialBlobTest`（6）、`JwCredentialOriginTest`（6）、`JwCredentialMaskingTest`（5）、`JwCredentialPromptPolicyTest`（7）、`JwCredentialFillTest`（12）——覆盖换机恢复、文件被改坏、跨校回填、跳统一认证、密码里带引号与换行、气泡与候选错配等**不会抛异常、只会安静做错事**的分支。
+- test(nav): 新增 `SecondLevelEntrancePolicyTest`（8）与 `ProfileEntryNavigatorTest`（7）——钉住「按路由各播一次」「窗口内第二次请求必须丢弃而不是排队」「预算每次重新求值」三条。
+
 ## [1.0.15] - 2026-11-01
 
 *提交区间：v1.0.14..v1.0.15（40 个提交）— 水银镜面主题、根页切换重构、教务成绩抓取与五家新教务适配器*
