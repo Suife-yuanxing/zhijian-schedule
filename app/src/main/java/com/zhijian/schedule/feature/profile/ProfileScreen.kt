@@ -253,7 +253,7 @@ fun ProfileScreen(
                         GroupedEntryRow(
                             painter = rememberVectorPainter(Icons.Filled.Settings),
                             title = "高级设置",
-                            subtitle = "课表信息 / 作息时间 / 日历同步 / 备份",
+                            subtitle = "课表信息 / 作息时间 / 日历同步 / 账号密码 / 备份",
                             onClick = onOpenSettings,
                         )
                     }

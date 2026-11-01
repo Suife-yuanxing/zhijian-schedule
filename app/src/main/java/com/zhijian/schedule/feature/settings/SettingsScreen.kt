@@ -25,6 +25,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,10 +57,25 @@ import com.zhijian.schedule.core.ui.StaggerIn
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
+    /**
+     * 是否播放分组分段入场：本次进程里打开「设置」的**第一次**为 true（见 SecondLevelEntrancePolicy）。
+     *
+     * 之前这里 7 个 StaggerIn 完全没有闸门：每次推入都从 alpha=0 按阅读顺序长出来，
+     * 最后一块要等 216ms 才起步、整轮约 556ms。叠在入口卡展开（480ms）上，
+     * 读作「这一页打开时刷新了一遍」——与根页 2026-10-30 修掉的是同一个病。
+     */
+    playEntrance: Boolean = false,
+    /** 首帧入场已经开始：宿主据此关闸，之后再打开这一页不再重播 */
+    onEntranceShown: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val ui = viewModel.uiState
     val colors = LocalCourseColors.current
+    // 冻结成本次组合的常量：回调关闸后入参会变 false，但这一轮入场已经在跑，
+    // 不能中途把它按停（那会留下半透明的半张页面）。与三个根页同一写法。
+    val entranceOnce = remember { playEntrance }
+    LaunchedEffect(Unit) { if (entranceOnce) onEntranceShown() }
+    val skipEntrance = !entranceOnce
 
     // 从系统设置返回时刷新流体云放行 / 日历权限状态
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
@@ -135,7 +151,7 @@ fun SettingsScreen(
 
             // 课表信息
             ui.timetable?.let { t ->
-                StaggerIn(index = 0) {
+                StaggerIn(index = 0, skip = skipEntrance) {
                     TimetableInfoSection(
                         timetable = t,
                         onEdit = { editTimetable = true },
@@ -144,7 +160,7 @@ fun SettingsScreen(
             }
 
             // 作息时间
-            StaggerIn(index = 1) {
+            StaggerIn(index = 1, skip = skipEntrance) {
                 SectionTimesSection(
                     sections = ui.sections,
                     onEdit = { section -> editSection = section },
@@ -152,7 +168,7 @@ fun SettingsScreen(
             }
 
             // 提醒
-            StaggerIn(index = 2) {
+            StaggerIn(index = 2, skip = skipEntrance) {
                 ReminderSection(
                     exactAlarmOk = ui.exactAlarmOk,
                     onRefreshPermission = viewModel::refreshAlarmPermission,
@@ -160,7 +176,7 @@ fun SettingsScreen(
             }
 
             // 实时胶囊（Android 16 流体云 / Live Updates）
-            StaggerIn(index = 3) {
+            StaggerIn(index = 3, skip = skipEntrance) {
                 CapsuleSection(
                     ui = ui,
                     onToggleCapsule = viewModel::setCapsule,
@@ -169,7 +185,7 @@ fun SettingsScreen(
             }
 
             // 日历同步（方案 6.5）
-            StaggerIn(index = 4) {
+            StaggerIn(index = 4, skip = skipEntrance) {
                 CalendarSyncSection(
                     ui = ui,
                     onToggle = { checked ->
@@ -187,8 +203,20 @@ fun SettingsScreen(
                 )
             }
 
+            // 教务账号密码（自动填充）
+            StaggerIn(index = 5, skip = skipEntrance) {
+                // 自动填充/清除凭据：开启后 WebView 在登录页自动填入保存的账号密码
+                JwCredentialSection(
+                    enabled = ui.settings.jwUrl.isNotBlank(),
+                    autoFillEnabled = ui.settings.jwAutoFillEnabled,
+                    credential = ui.jwCredential,
+                    onToggleAutoFill = viewModel::setJwAutoFill,
+                    onClear = viewModel::clearJwCredential,
+                )
+            }
+
             // 备份与恢复
-            StaggerIn(index = 5) {
+            StaggerIn(index = 6, skip = skipEntrance) {
                 BackupSection(
                     onExport = { exportLauncher.launch("zhijian-backup.json") },
                     onImport = { importLauncher.launch(arrayOf("application/json", "*/*")) },

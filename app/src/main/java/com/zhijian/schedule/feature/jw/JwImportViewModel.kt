@@ -9,6 +9,11 @@ import androidx.lifecycle.viewModelScope
 import com.zhijian.schedule.core.data.prefs.SettingsStore
 import com.zhijian.schedule.core.jw.AdapterSteps
 import com.zhijian.schedule.core.jw.JwAdapterRegistry
+import com.zhijian.schedule.core.jw.credential.JwCredentialMasking
+import com.zhijian.schedule.core.jw.credential.JwCredentialOrigin
+import com.zhijian.schedule.core.jw.credential.JwCredentialPromptPolicy
+import com.zhijian.schedule.core.jw.credential.JwCredentialStore
+import com.zhijian.schedule.core.jw.credential.JwCredentialSummary
 import com.zhijian.schedule.core.jw.script.JwScriptOutput
 import com.zhijian.schedule.core.jw.script.ScriptCatalog
 import com.zhijian.schedule.core.jw.script.ScriptOption
@@ -20,14 +25,51 @@ import com.zhijian.schedule.core.sync.JwSyncManager
 import com.zhijian.schedule.core.sync.SyncScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 import javax.inject.Inject
 
 /** WebView 加载请求：nonce 变化即重新加载，即使 URL 与上次相同 */
 data class WebLoadRequest(
     val url: String,
     val nonce: Int = 0,
+)
+
+/**
+ * 页面上抓到、但还没被服务器证实的一对账号密码。
+ *
+ * [origin] 是提交那一刻页面的 origin：统一认证与教务常在不同域名，
+ * 拿它当落库前的同源校验的依据（用户配置的教务地址未必等于最终提交页）。
+ */
+private data class PendingCredential(
+    val origin: String,
+    val username: String,
+    val password: String,
+    val at: Long,
+)
+
+/**
+ * 「记住这次登录的账号密码？」——气泡要显示的全部内容。
+ *
+ * 刻意**不含密码字段**：气泡只需要让用户确认「是这个账号吗」，
+ * 把明文密码摆到屏幕上没有任何收益，反而多一处会被旁人看到的可能。
+ * 密码本身留在 [JwImportViewModel] 的私有字段里，确认后再写入。
+ */
+data class JwCredentialPrompt(
+    val origin: String,
+    val maskedUsername: String,
+    val siteLabel: String,
+    /**
+     * 这次问句对应的候选时间戳。
+     *
+     * 不是装饰：[pendingCredential] 在气泡挂着期间可能被**下一次登录**覆盖
+     * （用户不理气泡、直接又登了一次）。确认时若发现候选已经换了，
+     * 说明「用户看到的」和「准备存的」不是同一条，此时宁可不存，
+     * 也不能拿旧问句去保存新密码。
+     */
+    val candidateAt: Long,
 )
 
 @HiltViewModel
@@ -39,6 +81,7 @@ class JwImportViewModel
         private val settingsStore: SettingsStore,
         private val scheduler: SyncScheduler,
         private val catalog: ScriptCatalog,
+        private val credentialStore: JwCredentialStore,
         val assetCache: JwAssetCache,
     ) : ViewModel() {
         var url by mutableStateOf("")
@@ -72,6 +115,41 @@ class JwImportViewModel
 
         /** 脚本 warnings / 管理操作反馈（accent 色提示条） */
         var scriptNotice by mutableStateOf<String?>(null)
+            private set
+
+        /**
+         * 本次登录会自动填充的凭据；null = 没存过、已关闭或密钥失效。
+         *
+         * 只在内存里以明文存在，随 ViewModel 一起销毁；不参与任何日志、
+         * 不写进 SavedState、不经过 Compose 的 @Stable 快照（它是普通 data class，
+         * 但内容只被 WebViewBox 读一次就填进页面）。
+         */
+        var credentialFill by mutableStateOf<JwCredentialFill?>(null)
+            private set
+
+        /** 已保存凭据的摘要（设置页展示用，不含密码） */
+        val credentialSummary: StateFlow<JwCredentialSummary?> = credentialStore.summary
+
+        /**
+         * 本次会话抓到的候选账号密码：**提交时暂存，登录成功才落库**。
+         *
+         * 为什么不在桥回调里直接存：教务登录失败率不低（验证码错、账号锁、WAF 拦校外），
+         * 提交即落库会把打错的密码存进去，下次自动填充就是拿错密码去撞锁。
+         */
+        private var pendingCredential: PendingCredential? = null
+
+        /** 最近一次保存结果，供页面提示（"已记住本次登录的账号" / 失败原因） */
+        var credentialNotice by mutableStateOf<String?>(null)
+            private set
+
+        /**
+         * 待用户确认的「记住这次登录？」候选；null = 没有要问的。
+         *
+         * 与 [credentialNotice] 是两件事：notice 是**已经发生**的事后提示，
+         * 这个是**还没决定**的问句。分开之后，「问」和「说结果」不会互相覆盖——
+         * 之前两者共用一个字段，弹窗一关就会把刚写好的结果提示一起抹掉。
+         */
+        var credentialPrompt by mutableStateOf<JwCredentialPrompt?>(null)
             private set
 
         /**
@@ -153,7 +231,188 @@ class JwImportViewModel
                 }
                 autoSyncEnabled = s.autoSyncEnabled
                 lastSyncTime = s.lastSyncTime
+                autoFillOn = s.jwAutoFillEnabled
+                // 开关是异步读出来的：读完之后要再算一次，否则上面那次
+                // reloadCredentialFill 跑在默认值 false 上，永远算不出可回填的凭据
+                reloadCredentialFill()
             }
+            viewModelScope.launch { credentialStore.refresh() }
+        }
+
+        /**
+         * 把已保存的凭据读进内存，按当前教务地址决定要不要用。
+         *
+         * 只保留**明文字段的内存态**：不落盘、不进日志。地址换了学校（origin 变了）
+         * 就不再回填——把 A 校的密码灌进 B 校登录页是最糟的一种"方便"。
+         */
+        fun reloadCredentialFill() {
+            viewModelScope.launch {
+                if (!autoFillOn) {
+                    credentialFill = null
+                    return@launch
+                }
+                val saved = credentialStore.load()
+                if (saved == null) {
+                    credentialFill = null
+                    return@launch
+                }
+                val configured = JwCredentialOrigin.of(withScheme(url))
+                credentialFill =
+                    if (configured != null && configured.equals(saved.origin, ignoreCase = true)) {
+                        JwCredentialFill(origin = saved.origin, username = saved.username, password = saved.password)
+                    } else {
+                        null
+                    }
+            }
+        }
+
+        /**
+         * 自动填充开关的内存态（初值 false，等设置读出来再同步）。
+         *
+         * 属性名不带 "AutoFill" 前缀之外的 setter 语义：写操作统一走 [setAutoFillEnabled]，
+         * 那里会顺带清空内存里的明文并持久化，避免只改状态不落盘。
+         */
+        var autoFillOn by mutableStateOf(false)
+            private set
+
+        fun setAutoFillEnabled(enabled: Boolean) {
+            autoFillOn = enabled
+            if (!enabled) credentialFill = null else reloadCredentialFill()
+            viewModelScope.launch { settingsStore.setJwAutoFillEnabled(enabled) }
+        }
+
+        /**
+         * 桥回调：页面提交登录时抓到的一对候选。
+         *
+         * 这里**只暂存不落库**。字段一律按不可信处理：长度、空白、是否像账号密码都要过一遍，
+         * 因为任何被加载的页面（含学校页面上挂的第三方统计脚本）都能调用这条通道。
+         */
+        fun onCredentialCandidate(json: String) {
+            val parsed = parseCandidate(json) ?: return
+            // 回调来自 JavaBridge 线程：状态只在主线程写，避免与组合快照打架
+            viewModelScope.launch { if (isPlausibleCandidate(parsed)) pendingCredential = parsed }
+        }
+
+        private fun parseCandidate(json: String): PendingCredential? =
+            runCatching {
+                val obj = JSONObject(json)
+                PendingCredential(
+                    origin = obj.optString("origin").lowercase(),
+                    username = obj.optString("username").trim(),
+                    password = obj.optString("password"),
+                    at = obj.optLong("at"),
+                )
+            }.getOrNull()
+
+        /**
+         * 桥回调：页面自己判定「已经进了教务系统」。
+         *
+         * 时机仍然只是「服务器已经用这对账号密码换来了会话」，但现在**只提出问句，不写盘**。
+         * 真正的写入在用户按下 [confirmCredentialSave] 之后——保存密码是一次
+         * 影响下次登录的持久操作，用户有权知道并选择。
+         */
+        fun onLoginSucceeded() {
+            // 回调来自 WebView 的 JavaBridge 线程：先切回主线程再碰任何状态
+            viewModelScope.launch {
+                // 已经有问句挂着就不再叠加：一次登录可能触发多次跳转判定
+                if (credentialPrompt != null) return@launch
+                val candidate = pendingCredential ?: return@launch
+                val configured = JwCredentialOrigin.of(withScheme(url))
+                // 同源校验：只认「提交页 origin == 用户配置的教务 origin」。
+                // 走统一认证的学校会在这里被挡下——那套账号密码属于 authserver，
+                // 填回教务登录页未必有效，宁可不存也不要存错。
+                if (configured == null || !configured.equals(candidate.origin, ignoreCase = true)) {
+                    pendingCredential = null
+                    return@launch
+                }
+                if (!JwCredentialPromptPolicy.shouldAsk(
+                        origin = candidate.origin,
+                        username = candidate.username,
+                        password = candidate.password,
+                        saved = credentialStore.load(),
+                    )
+                ) {
+                    pendingCredential = null
+                    return@launch
+                }
+                credentialPrompt =
+                    JwCredentialPrompt(
+                        origin = candidate.origin,
+                        maskedUsername = JwCredentialMasking.mask(candidate.username),
+                        siteLabel = candidate.origin.substringAfter("://"),
+                        candidateAt = candidate.at,
+                    )
+            }
+        }
+
+        /**
+         * 气泡里点「记住」：此刻才真正写盘。
+         *
+         * 顺手把自动填充打开——用户既然选择记住，下次就该被填上；
+         * 否则「记住了但永远不填」是更奇怪的状态。
+         */
+        fun confirmCredentialSave() {
+            val prompt = credentialPrompt ?: return
+            credentialPrompt = null
+            viewModelScope.launch {
+                val candidate = pendingCredential
+                pendingCredential = null
+                // 候选在气泡挂着期间被下一次登录覆盖了：用户看到的是旧问句，
+                // 存下去的就是另一条。宁可这次不存，也不能错配
+                if (candidate == null || candidate.at != prompt.candidateAt) {
+                    credentialNotice = "没有保存：这次登录的账号已变化，请重新确认"
+                    return@launch
+                }
+                val ok = credentialStore.save(candidate.origin, candidate.username, candidate.password)
+                if (!ok) {
+                    credentialNotice = "记住登录失败：本机密钥不可用"
+                    return@launch
+                }
+                credentialFill =
+                    JwCredentialFill(
+                        origin = candidate.origin,
+                        username = candidate.username,
+                        password = candidate.password,
+                    )
+                autoFillOn = true
+                settingsStore.setJwAutoFillEnabled(true)
+                credentialNotice = "已记住 " + JwCredentialMasking.mask(candidate.username) + "，下次打开登录页自动填入"
+            }
+        }
+
+        /**
+         * 气泡里点「不用」：丢掉候选，**什么都不记**。
+         *
+         * 刻意不写「这次别再问我」的隐藏开关：拒绝一次不等于永久拒绝，
+         * 下次登录还会问。真不想被问的人去设置里关自动填充，那是一个看得见、能关掉的状态。
+         */
+        fun dismissCredentialPrompt() {
+            credentialPrompt = null
+            pendingCredential = null
+        }
+
+        fun dismissCredentialNotice() {
+            credentialNotice = null
+        }
+
+        /** 清空已保存的凭据（高级设置里手动清除，或换学校时） */
+        fun clearCredential() {
+            pendingCredential = null
+            credentialPrompt = null
+            credentialFill = null
+            viewModelScope.launch {
+                credentialStore.clear()
+                credentialNotice = "已清除保存的教务账号密码"
+            }
+        }
+
+        /** 候选的可信度门槛：短得离谱、长得离谱、带控制字符的一律丢 */
+        private fun isPlausibleCandidate(c: PendingCredential): Boolean {
+            val origin = JwCredentialOrigin.of(c.origin) ?: return false
+            if (!origin.equals(c.origin, ignoreCase = true)) return false
+            if (c.password.isEmpty() || c.password.length > MAX_CREDENTIAL_LENGTH) return false
+            if (c.username.length > MAX_CREDENTIAL_LENGTH) return false
+            return c.password.none { it.isISOControl() } && c.username.none { it.isISOControl() }
         }
 
         /** 用户可能只输入裸域名；WebView 需要完整 scheme 才能当网址加载 */
@@ -174,6 +433,11 @@ class JwImportViewModel
             url = value
         }
 
+        /** 地址栏改了：origin 可能变了，重新决定要不要回填（不立即写盘） */
+        fun onUrlCommitted() {
+            reloadCredentialFill()
+        }
+
         /** 「打开」：总是重新加载（含同 URL 重试）；有统一认证入口时优先走它 */
         fun reload() {
             val target = withScheme(url)
@@ -182,11 +446,17 @@ class JwImportViewModel
             pageError = null
             certNotice = null
             loadRequest = WebLoadRequest(preferredTarget(target), loadRequest.nonce + 1)
+            // 地址可能刚改过（换学校 / 换校区）：重新比对 origin 再决定回填
+            reloadCredentialFill()
         }
 
         fun onPageUrl(value: String) {
             pageUrl = value
             maybePrefetch()
+            // 原生侧兜底：有的学校登录页跳转后的 URL 特征在我们的名单里，页面内的
+            // loginProbeJs 未必能同时命中（比如整页被 WebVPN 包了一层）。
+            // 两条判定是「或」的关系，先到先落库，重复调用会被候选清空自然挡掉
+            if (isJwLoggedInPage(value)) onLoginSucceeded()
         }
 
         /**
@@ -339,5 +609,8 @@ class JwImportViewModel
         companion object {
             /** 未配置时的空白页；不再默认东莞职院，避免新用户被带到错误学校 */
             const val BLANK_PAGE = "about:blank"
+
+            /** 账号密码的长度上限：正常教务凭据远小于此值，超出的按伪造处理 */
+            private const val MAX_CREDENTIAL_LENGTH = 200
         }
     }

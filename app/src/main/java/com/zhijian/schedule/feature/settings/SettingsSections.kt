@@ -24,11 +24,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhijian.schedule.core.data.db.SectionTimeEntity
 import com.zhijian.schedule.core.data.db.TimetableEntity
+import com.zhijian.schedule.core.jw.credential.JwCredentialSummary
 import com.zhijian.schedule.core.theme.LocalCourseColors
+import com.zhijian.schedule.core.ui.JellySwitch
 import com.zhijian.schedule.core.ui.TapTextButton
 import com.zhijian.schedule.core.ui.buttonFeedback
 import com.zhijian.schedule.core.ui.metal.CardTone
 import com.zhijian.schedule.core.ui.metal.metalCard
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /*
  * 设置页的「本地数据」分组：课表信息、作息时间、备份与恢复。
@@ -129,6 +134,73 @@ internal fun SectionTimesSection(
             }
         }
     }
+}
+
+/** 教务账号密码：自动填充开关 + 已保存账号摘要 + 清除 */
+@Composable
+internal fun JwCredentialSection(
+    enabled: Boolean,
+    autoFillEnabled: Boolean,
+    credential: JwCredentialSummary?,
+    onToggleAutoFill: (Boolean) -> Unit,
+    onClear: () -> Unit,
+) {
+    val colors = LocalCourseColors.current
+    SettingsCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("教务账号密码", color = colors.text, fontWeight = FontWeight.SemiBold)
+                Text(
+                    text = "首次在教务页登录成功后自动记住，下次打开登录页自动填入",
+                    color = colors.textMuted,
+                    fontSize = 12.sp,
+                )
+            }
+            JellySwitch(
+                checked = autoFillEnabled,
+                enabled = enabled,
+                onCheckedChange = onToggleAutoFill,
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        when {
+            !enabled ->
+                Text(
+                    text = "先填写教务地址并成功登录一次，这里才会出现可记住的账号",
+                    color = colors.textMuted,
+                    fontSize = 12.sp,
+                )
+
+            credential == null ->
+                Text(
+                    text = "尚未保存：在「导入课表」里登录一次教务后自动记住",
+                    color = colors.textMuted,
+                    fontSize = 12.sp,
+                )
+
+            else -> {
+                InfoRow("账号", credential.maskedUsername)
+                InfoRow("站点", credential.origin.substringAfter("://"))
+                InfoRow("记住于", formatSavedAt(credential.savedAt))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "密码以 Keystore 加密保存在本机，不进备份、不随导出带走",
+                        color = colors.textMuted,
+                        fontSize = 12.sp,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TapTextButton(onClick = onClear) { Text("清除") }
+                }
+            }
+        }
+    }
+}
+
+/** 保存时间：只到「日期 时:分」，凭据的用途不需要更细的粒度 */
+private fun formatSavedAt(millis: Long): String {
+    if (millis <= 0L) return "未知"
+    val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+    return fmt.format(Date(millis))
 }
 
 /** 备份与恢复：导出为 JSON 文件 / 从 JSON 文件恢复 */

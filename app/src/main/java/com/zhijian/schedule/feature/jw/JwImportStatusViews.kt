@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,9 +18,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
@@ -28,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -38,8 +42,11 @@ import com.zhijian.schedule.core.theme.CourseColors
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.RippleLoader
 import com.zhijian.schedule.core.ui.TapButton
+import com.zhijian.schedule.core.ui.TapIconButton
 import com.zhijian.schedule.core.ui.TapTextButton
 import com.zhijian.schedule.core.ui.island.Contrast
+import com.zhijian.schedule.core.ui.metal.CardTone
+import com.zhijian.schedule.core.ui.metal.metalCard
 
 /** WCAG 2.1 AA 对正文（非大字）的对比度门槛：本页所有次要文字都按它求解 */
 private const val MIN_BODY_CONTRAST = 4.5
@@ -336,6 +343,152 @@ internal fun HttpErrorBanner(
                 modifier = Modifier.weight(1f),
             )
             TapTextButton(onClick = onDismiss) { Text("知道了", fontSize = 12.sp) }
+        }
+    }
+}
+
+/**
+ * HTTP 明文地址提示：只在地址以 http:// 开头时出现。
+ *
+ * 一句话说清「谁看得到」与「该怎么做」，不展开成安全说教——用户在登录页上，
+ * 再多的话也不会读。判断放在这里而不是调用点，是为了让 JwImportScreen 少一个分支
+ * （那一屏的圈复杂度本来就贴着阈值）。
+ */
+@Composable
+internal fun PlainHttpNotice(
+    url: String,
+    colors: CourseColors,
+) {
+    if (!url.trim().startsWith("http://", ignoreCase = true)) return
+    Text(
+        text = "该地址是 HTTP 明文，登录凭据可能被同一网络中的他人看到；学校支持时请改用 HTTPS",
+        color = colors.accent,
+        fontSize = 10.5.sp,
+        lineHeight = 15.sp,
+        maxLines = 2,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 2.dp),
+    )
+}
+
+/**
+ * 「已填入保存的教务账号」提示条。
+ *
+ * 只在**这一页确实有可回填的凭据、且当前停在登录页**时出现：凭据在、但已经进了课表页时
+ * 再说「已填入」是错的（那里没有输入框）。
+ *
+ * 文案只说用户当下看得到的那一件事——**不写「已为你保存密码」**：回填与保存是两件事，
+ * 保存要用户按气泡里的「记住」才发生，把两者说成一件事会让用户以为密码已经存好了。
+ */
+@Composable
+internal fun CredentialFillHint(
+    fill: JwCredentialFill?,
+    visible: Boolean,
+    colors: CourseColors,
+) {
+    if (fill == null || !visible) return
+    Text(
+        text = "已填入保存的教务账号（" + fill.username + "），确认无误后点登录",
+        color = colors.textMuted,
+        fontSize = 10.5.sp,
+        lineHeight = 15.sp,
+        maxLines = 2,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 2.dp),
+    )
+}
+
+/**
+ * 「记住这次登录？」确认气泡。
+ *
+ * ## 为什么是气泡不是对话框
+ * 用户此刻正在做的是「登录 → 进课表页 → 抓取」，弹出 [AlertDialog] 会打断这条路径，
+ * 而这个决定本身**不阻塞**任何后续操作。所以它贴着网页底部浮起来、随时可以不理它，
+ * 关掉也不影响抓课表——拒绝一次保存不该有后果。
+ *
+ * ## 为什么带关闭叉
+ * 气泡浮在网页上会盖住底部一小条，用户可能正要去点页面上的菜单。给一个能立刻消失的出口，
+ * 比"必须二选一"舒服；叉与「不用」等价，都不写盘。
+ *
+ * ## 为什么只显示打码账号、不显示密码
+ * 这个气泡要回答的是「记的是不是我这个号」。密码摆在屏幕上没有任何收益，
+ * 只是多一处会被旁人看到的可能——明文留在 ViewModel 的私有字段里，到写盘为止都不出内存。
+ *
+ * 位置与动效沿用本页浮层的一致语言：从底部滑入 + 淡入，[Motion] 的时长与曲线，
+ * 关闭动画比出现更短（快速消失读作"被打断了"，慢消失读作"还在考虑"）。
+ */
+@Composable
+internal fun CredentialSaveBubble(
+    prompt: JwCredentialPrompt?,
+    onSave: () -> Unit,
+    onDismiss: () -> Unit,
+    colors: CourseColors,
+    modifier: Modifier = Modifier,
+) {
+    AnimatedVisibility(
+        visible = prompt != null,
+        enter =
+            slideInVertically(
+                animationSpec = tween(durationMillis = Motion.DUR_MEDIUM, easing = Motion.EaseOut),
+            ) { it } + fadeIn(tween(durationMillis = Motion.DUR_MEDIUM)),
+        exit =
+            slideOutVertically(tween(durationMillis = Motion.DUR_FAST)) { it } +
+                fadeOut(tween(durationMillis = Motion.DUR_FAST)),
+        modifier = modifier,
+    ) {
+        val muted = jwMuted(colors)
+        val shape = RoundedCornerShape(16.dp)
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+                .clip(shape)
+                // RAISED：这是浮在网页之上、等着被处理的一张卡，读作"焦点"。
+                // 与设置页那些 SURFACE 档的分组卡拉开一档，用户一眼看出它是临时的
+                .metalCard(shape = shape, color = colors.surface, tone = CardTone.RAISED)
+                .padding(start = 14.dp, end = 10.dp, top = 10.dp, bottom = 8.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "记住这次登录？",
+                    color = colors.text,
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+                TapIconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = "不记住本次登录",
+                        tint = muted,
+                        modifier = Modifier.size(13.dp),
+                    )
+                }
+            }
+            Spacer(Modifier.height(2.dp))
+            Text(
+                // 账号打码 + 站点：够认出"是哪个号在哪所学校"，又不把学号原样摊在屏幕上
+                text = "账号 " + prompt?.maskedUsername.orEmpty() + " · " + prompt?.siteLabel.orEmpty(),
+                color = muted,
+                fontSize = 11.5.sp,
+                lineHeight = 16.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(4.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TapTextButton(onClick = onDismiss) { Text("不用", fontSize = 12.5.sp) }
+                Spacer(Modifier.width(4.dp))
+                TapButton(
+                    onClick = onSave,
+                    hapticType = HapticFeedbackType.Confirm,
+                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp),
+                ) {
+                    Text("记住", fontSize = 12.5.sp)
+                }
+            }
         }
     }
 }

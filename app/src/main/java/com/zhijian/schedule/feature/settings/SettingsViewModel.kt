@@ -17,6 +17,8 @@ import com.zhijian.schedule.core.data.db.SectionTimeEntity
 import com.zhijian.schedule.core.data.db.TimetableEntity
 import com.zhijian.schedule.core.data.prefs.AppSettings
 import com.zhijian.schedule.core.data.prefs.SettingsStore
+import com.zhijian.schedule.core.jw.credential.JwCredentialStore
+import com.zhijian.schedule.core.jw.credential.JwCredentialSummary
 import com.zhijian.schedule.core.notifications.AlarmScheduler
 import com.zhijian.schedule.core.repository.ScheduleRepository
 import com.zhijian.schedule.core.util.TimeUtils
@@ -45,9 +47,19 @@ data class SettingsUiState(
     val batteryOptimizationIgnored: Boolean = true,
     val busy: Boolean = false,
     val message: String? = null,
+    /** 已保存的教务账号摘要；null = 没存过或密钥失效读不出来。**永远不含密码** */
+    val jwCredential: JwCredentialSummary? = null,
 )
 
+/**
+ * 设置页的单一状态持有者：课表信息、作息、提醒、胶囊、日历同步、教务凭据、备份都在这一页。
+ *
+ * 构造参数 9 个，超过 detekt 的 8。这里不拆的理由：这些依赖全是 @Singleton 的领域服务，
+ * 拆成多个 ViewModel 后设置页要同时观察 3 个 state，而它们共享同一份 AppSettings 流——
+ * 分开反而要各自订阅、各自处理「另一个 VM 改了设置」的同步问题。
+ */
 @HiltViewModel
+@Suppress("LongParameterList")
 class SettingsViewModel
     @Inject
     constructor(
@@ -57,6 +69,7 @@ class SettingsViewModel
         private val calendarSyncManager: CalendarSyncManager,
         private val alarmScheduler: AlarmScheduler,
         private val capsuleCoordinator: CapsuleCoordinator,
+        private val credentialStore: JwCredentialStore,
         @ApplicationContext private val context: Context,
     ) : ViewModel() {
         var uiState by mutableStateOf(SettingsUiState())
@@ -71,6 +84,10 @@ class SettingsViewModel
                     calendarPermissionGranted = calendarSyncManager.hasPermission(),
                     calendarAvailable = calendarSyncManager.hasCalendarProvider(),
                 )
+            viewModelScope.launch {
+                credentialStore.refresh()
+                credentialStore.summary.collect { summary -> uiState = uiState.copy(jwCredential = summary) }
+            }
             viewModelScope.launch {
                 combine(
                     repository.settings,
@@ -332,5 +349,30 @@ class SettingsViewModel
 
         fun setCapsuleAlarmFallback(enabled: Boolean) {
             viewModelScope.launch { settingsStore.setCapsuleAlarmFallback(enabled) }
+        }
+
+        // ---------- 教务账号密码 ----------
+
+        /**
+         * 自动填充开关。
+         *
+         * 关掉时不动已保存的凭据（那是另一件事，得用户单独「清除」）：
+         * 「这次不想自动填」和「把密码删掉」是两个不同的意愿，不能合成一个开关。
+         */
+        fun setJwAutoFill(enabled: Boolean) {
+            viewModelScope.launch {
+                settingsStore.setJwAutoFillEnabled(enabled)
+                uiState =
+                    uiState.copy(
+                        message = if (enabled) "下次打开教务登录页会自动填入账号密码" else "已关闭自动填充，凭据仍保留",
+                    )
+            }
+        }
+
+        fun clearJwCredential() {
+            viewModelScope.launch {
+                credentialStore.clear()
+                uiState = uiState.copy(message = "已清除保存的教务账号密码")
+            }
         }
     }

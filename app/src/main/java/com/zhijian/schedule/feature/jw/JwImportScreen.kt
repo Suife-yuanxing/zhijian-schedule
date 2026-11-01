@@ -199,16 +199,7 @@ fun JwImportScreen(
             )
 
             // HTTP 明文提示：默认只在地址是 http:// 时出现，一行说清风险与做法
-            if (viewModel.url.trim().startsWith("http://", ignoreCase = true)) {
-                Text(
-                    text = "该地址是 HTTP 明文，登录凭据可能被同一网络中的他人看到；学校支持时请改用 HTTPS",
-                    color = colors.accent,
-                    fontSize = 10.5.sp,
-                    lineHeight = 15.sp,
-                    maxLines = 2,
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 2.dp),
-                )
-            }
+            PlainHttpNotice(url = viewModel.url, colors = colors)
 
             // 证书过期放行提示：不是失败（页面照常可用），但用户有权知道自己踩在一个
             // 过期证书上。用与上面 HTTP 提示同一档的字号，不额外占一整块版面。
@@ -236,6 +227,14 @@ fun JwImportScreen(
                     }
                 }
             }
+
+            // 自动填充生效提示：条件判断与文案都在 CredentialFillHint 里，
+            // 这里只传数据。抽出去的直接收益是本函数的圈复杂度回到阈值内
+            CredentialFillHint(
+                fill = viewModel.credentialFill,
+                visible = viewModel.onLoginPage,
+                colors = colors,
+            )
 
             // 步骤进度 + 两行下一步提示（识别的教务类型挂在进度行右端）
             GuideBar(
@@ -298,6 +297,9 @@ fun JwImportScreen(
                     onCertNotice = viewModel::onCertNotice,
                     onWebView = { webView = it },
                     assetCache = viewModel.assetCache,
+                    credentialFill = viewModel.credentialFill,
+                    onCredentialCandidate = viewModel::onCredentialCandidate,
+                    onLoginSucceeded = viewModel::onLoginSucceeded,
                     modifier = Modifier.fillMaxSize().clipToBounds(),
                 )
                 TopProgressBar(
@@ -318,6 +320,16 @@ fun JwImportScreen(
                     colors = colors,
                     modifier = Modifier.align(Alignment.TopCenter),
                 )
+                // 「记住这次登录？」气泡：浮在网页底部。
+                // 放这里而不是页面根部，是为了让它贴着**网页**出现——
+                // 它问的是"网页里这次登录"，不是"这个页面的某个设置"
+                CredentialSaveBubble(
+                    prompt = viewModel.credentialPrompt,
+                    onSave = viewModel::confirmCredentialSave,
+                    onDismiss = viewModel::dismissCredentialPrompt,
+                    colors = colors,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                )
             }
 
             // ---------- ③ 抓取：提示与底部工具条 ----------
@@ -328,8 +340,13 @@ fun JwImportScreen(
                 colors = colors,
                 notices =
                     JwFooterNotices(
-                        scriptNotice = viewModel.scriptNotice,
-                        onDismissNotice = viewModel::dismissScriptNotice,
+                        // 凭据提示与脚本提示共用同一条临时提示位：两者都是「刚刚发生了什么」，
+                        // 也都只在一次操作后出现，合成一条比在底部再堆一行更省版面
+                        scriptNotice = viewModel.credentialNotice ?: viewModel.scriptNotice,
+                        onDismissNotice = {
+                            viewModel.dismissCredentialNotice()
+                            viewModel.dismissScriptNotice()
+                        },
                         errorMessage = viewModel.errorMessage,
                         needsLoginNote = needsLoginNote(viewModel),
                     ),

@@ -18,10 +18,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import com.zhijian.schedule.core.jw.JwAdapterRegistry
+import com.zhijian.schedule.core.jw.credential.JwCredentialOrigin
+import com.zhijian.schedule.core.jw.credential.JwCredentialScripts
 import com.zhijian.schedule.core.jw.script.JwScriptRunner
 import com.zhijian.schedule.core.net.ExpiredCertTolerance
 import com.zhijian.schedule.core.net.JwAssetCache
@@ -254,9 +257,84 @@ private fun loadWhenSized(
     webView.addOnLayoutChangeListener(listener)
 }
 
+/**
+ * 账号密码相关的注入开关。
+ *
+ * 与上面几段「修页面」的脚本不同，这两段碰的是用户输入的明文，所以判定要收得更紧：
+ * 只有「页面 origin 与保存凭据时的 origin 完全一致」才回填，
+ * 只有「页面上确实存在可见的密码输入框」才装捕获监听——不在无关页面上摊开敏感逻辑。
+ */
+private const val CREDENTIAL_PROBE_JS = """
+(function () {
+  try {
+    var list = document.querySelectorAll('input[type=password]');
+    for (var i = 0; i < list.length; i++) {
+      var el = list[i];
+      if (el.disabled || el.readOnly) continue;
+      var r = el.getBoundingClientRect();
+      if (r.width < 8 || r.height < 8) continue;
+      var s = window.getComputedStyle(el);
+      if (s.display === 'none' || s.visibility === 'hidden' || Number(s.opacity) <= 0.1) continue;
+      return 'yes';
+    }
+    return '';
+  } catch (e) { return ''; }
+})()
+"""
+
+/**
+ * 这一次页面加载要不要把密码灌进输入框。
+ *
+ * 抽成纯函数是为了能进本机单测：它是「会不会把密码送到别的站点」的唯一开关。
+ * 三种情况一律不回填——没存过、地址还没有 scheme（未规范化）、origin 对不上。
+ */
+internal fun shouldAutoFill(
+    pageUrl: String,
+    fill: JwCredentialFill?,
+): Boolean {
+    if (fill == null) return false
+    if (fill.password.isEmpty()) return false
+    val origin = JwCredentialOrigin.of(pageUrl) ?: return false
+    return origin.equals(fill.origin, ignoreCase = true)
+}
+
 /** WAF 5xx 多为瞬时抖动：自动重试两次再交给用户，避免一进来就是错误页 */
 private const val WAF_MAX_RETRIES = 2
 private const val WAF_RETRY_DELAY_MS = 1500L
+
+/**
+ * 页面加载完成时挂上凭据相关的两段逻辑：回填 → 捕获 / 登录判定。
+ *
+ * ## 为什么顺序是这两步
+ * 1. **回填**先做：页面一出现密码框就把账号密码写进去，用户看到的是「已经填好的登录页」。
+ * 2. **捕获**后装：不依赖回填是否成功——用户手打密码也算一次可保存的登录。
+ *
+ * 登录成功的判定（`onLoggedIn`）与捕获装在同一个脚本里，由页面自己跳转后重新执行；
+ * 两段都是 fire-and-forget，任何一段失败都不影响页面本身：
+ * 凭据是附加能力，不能拖累导入。
+ */
+private fun applyCredentialScripts(
+    view: WebView,
+    url: String?,
+    fill: JwCredentialFill?,
+    filledOrigin: Array<String?>,
+) {
+    if (url.isNullOrBlank()) return
+    val origin = JwCredentialOrigin.of(url) ?: return
+    val pending = fill
+    if (filledOrigin[0] != origin && shouldAutoFill(url, pending) && pending != null) {
+        // 先探测页面上是否真有可见的密码框：没有就别把密码送进去，
+        // 也别记「这个 origin 已经填过」——下一帧页面可能才长出登录框
+        view.evaluateJavascript(CREDENTIAL_PROBE_JS) { raw ->
+            if (raw?.trim('"') != "yes") return@evaluateJavascript
+            filledOrigin[0] = origin
+            view.evaluateJavascript(JwCredentialScripts.fillJs(origin, pending.username, pending.password), null)
+        }
+    }
+    // 捕获 + 登录成功判定（页面内自带 `__zjCaptureInstalled` 幂等标记）
+    view.evaluateJavascript(JwCredentialScripts.captureJs, null)
+    view.evaluateJavascript(JwCredentialScripts.loginProbeJs, null)
+}
 
 /**
  * WebView 宿主：request.nonce 一变就重新加载（同 URL 重试也算新请求）；
@@ -273,16 +351,38 @@ internal fun WebViewBox(
     onCertNotice: (String) -> Unit = {},
     onWebView: (WebView?) -> Unit = {},
     assetCache: JwAssetCache? = null,
+    /** 保存过的教务凭据；null = 没存过或用户关掉了自动填充 */
+    credentialFill: JwCredentialFill? = null,
+    /** 页面在提交登录时抓到的一对候选账号密码（JSON 字符串，原生侧再解析校验并暂存） */
+    onCredentialCandidate: (String) -> Unit = {},
+    /** 页面自己判定「已经进入教务系统」：此刻暂存的候选才被服务器验证过，可以落库 */
+    onLoginSucceeded: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val lastLoaded = remember { mutableStateOf<WebLoadRequest?>(null) }
     // WAF 5xx 自动重试计数；每次新的加载请求归零
     val wafRetries = remember { IntArray(1) }
+    // 记录「上一次已经回填过哪个 origin」：教务页常见 onPageFinished 触发多次，
+    // 每次都灌一遍密码会覆盖用户手改的输入；但同一次加载里也可能先跳统一认证再回教务，
+    // 只按 nonce 记一个布尔会漏掉第二次进入登录页，所以按 origin 记账
+    val filledBox = remember(request.nonce) { arrayOfNulls<String>(1) }
+    // 同上：nonce 一变 remember 就换新数组，而 webViewClient 只创建一次，
+    // 必须经 rememberUpdatedState 才能让「本页已回填」的标记跟着重置
+    val filledOrigin = rememberUpdatedState(filledBox)
+    // 桥只注入一次（WebView 创建时），但回调每轮组合都可能换实例：
+    // 用 rememberUpdatedState 持有「最新那一个」，否则桥永远调用首帧的旧闭包
+    val candidateHandler = rememberUpdatedState(onCredentialCandidate)
+    val loginHandler = rememberUpdatedState(onLoginSucceeded)
+    // 同一个坑：凭据是 init 里异步从磁盘读出来的，首帧一定是 null。
+    // factory 与 webViewClient 只创建一次，直接闭包捕获会永远读到那个 null
+    val fillState = rememberUpdatedState(credentialFill)
     val ssoEntry =
         remember(request.url) {
             runCatching { JwAdapterRegistry.forUrl(request.url)?.ssoEntry(request.url) }.getOrNull()
         }
     val ssoJs = remember(ssoEntry) { ssoRecoverJs(ssoEntry) }
+    // ssoJs 同理：它随 request.url 变化，而 webViewClient 是首次组合时的那个实例
+    val ssoState = rememberUpdatedState(ssoJs)
     AndroidView(
         modifier = modifier,
         factory = { context ->
@@ -307,6 +407,15 @@ internal fun WebViewBox(
                     CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                     // 脚本执行桥：创建时永久注入（运行时注入对已加载页面不保证生效）
                     addJavascriptInterface(JwScriptRunner.PaperJavascriptBridge(), "PaperBridge")
+                    // 凭据桥：与脚本桥分开注入（见 JwCredentialBridge 的 KDoc）。
+                    // 回调来自 JavaBridge 线程，这里只转发，线程切换由 ViewModel 负责
+                    addJavascriptInterface(
+                        JwCredentialBridge(
+                            onCandidate = { json -> candidateHandler.value(json) },
+                            onLoggedIn = { loginHandler.value() },
+                        ),
+                        JwCredentialBridge.NAME,
+                    )
                     webChromeClient =
                         object : WebChromeClient() {
                             override fun onProgressChanged(
@@ -367,8 +476,11 @@ internal fun WebViewBox(
                                 // 先补视口高度：白屏页面在这里被救回来，后面的脚本才有可用的版面
                                 view?.evaluateJavascript(VIEWPORT_HEIGHT_REPAIR_JS, null)
                                 view?.evaluateJavascript(FIT_VIEWPORT_JS, null)
-                                if (ssoJs.isNotEmpty()) view?.evaluateJavascript(ssoJs, null)
+                                ssoState.value.takeIf { it.isNotEmpty() }?.let { js ->
+                                    view?.evaluateJavascript(js, null)
+                                }
                                 view?.evaluateJavascript(JW_SHELL_FIX_JS, null)
+                                view?.let { wv -> applyCredentialScripts(wv, url, fillState.value, filledOrigin.value) }
                                 // WAF 错误页可能以 200 返回：先查正文；GET 页自动重试，登录 POST 直接提示
                                 view?.evaluateJavascript(WAF_ERROR_CHECK_JS) { result ->
                                     val code = result?.trim('"')?.toIntOrNull() ?: 0

@@ -40,9 +40,20 @@ data class AppSettings(
     val jwScriptIndexUrl: String = "",
     /** 「镜像加速」开关；默认开启 —— GitHub 直连在国内经常不可用，镜像作为自动退路 */
     val mirrorsEnabled: Boolean = true,
+    /** 教务登录页自动填充已保存的账号密码；默认关闭，由用户在高级设置里显式打开 */
+    val jwAutoFillEnabled: Boolean = false,
 )
 
+/**
+ * 全应用的偏好读写门面：一个 key 一个 setter，没有逻辑、只有 dataStore.edit 一行。
+ *
+ * detekt 的 TooManyFunctions 在 20 个函数处触发。这里的取舍是**保持扁平**：
+ * 把 setter 拆成 ThemeSettings / JwSettings / SyncSettings 三个子门面，会多出三层
+ * 依赖注入与三处「到底该找哪个门面」的检索成本，而它们共享同一个 DataStore 实例——
+ * 扁平结构反而让「所有 key 都在一个文件里」这件事一直成立。
+ */
 @Singleton
+@Suppress("TooManyFunctions")
 class SettingsStore
     @Inject
     constructor(
@@ -70,6 +81,7 @@ class SettingsStore
             val MIRRORS = booleanPreferencesKey("update_mirrors_enabled")
             val CALENDAR_FINGERPRINT = stringPreferencesKey("calendar_sync_fingerprint")
             val SETTINGS_SCHEMA = intPreferencesKey("settings_schema")
+            val JW_AUTOFILL = booleanPreferencesKey("jw_autofill_enabled")
         }
 
         val settings: Flow<AppSettings> =
@@ -94,6 +106,7 @@ class SettingsStore
                     holidayFetchedAt = p[Keys.HOLIDAY_FETCHED] ?: 0L,
                     jwScriptIndexUrl = p[Keys.JW_SCRIPT_INDEX] ?: "",
                     mirrorsEnabled = p[Keys.MIRRORS] ?: true,
+                    jwAutoFillEnabled = p[Keys.JW_AUTOFILL] ?: false,
                 )
             }
 
@@ -139,6 +152,9 @@ class SettingsStore
         suspend fun setHolidayFetchedAt(time: Long) = dataStore.edit { it[Keys.HOLIDAY_FETCHED] = time }
 
         suspend fun setMirrorsEnabled(enabled: Boolean) = dataStore.edit { it[Keys.MIRRORS] = enabled }
+
+        /** 教务账号密码自动填充开关（凭据本体另有 Keystore 加密存储，见 JwCredentialStore） */
+        suspend fun setJwAutoFillEnabled(enabled: Boolean) = dataStore.edit { it[Keys.JW_AUTOFILL] = enabled }
 
         suspend fun setJwScriptIndexUrl(url: String) = dataStore.edit { it[Keys.JW_SCRIPT_INDEX] = url.trim() }
 
