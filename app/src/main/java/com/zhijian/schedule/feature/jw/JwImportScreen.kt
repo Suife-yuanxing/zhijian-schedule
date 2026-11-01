@@ -65,6 +65,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.zhijian.schedule.BuildConfig
 import com.zhijian.schedule.core.jw.script.JwScriptRunner
 import com.zhijian.schedule.core.jw.script.ScriptOption
 import com.zhijian.schedule.core.theme.CourseColors
@@ -77,6 +78,7 @@ import com.zhijian.schedule.core.ui.SecondaryTopBar
 import com.zhijian.schedule.core.ui.TapIconButton
 import com.zhijian.schedule.core.ui.TapTextButton
 import com.zhijian.schedule.core.ui.buttonFeedback
+import com.zhijian.schedule.core.ui.debug.DebugTapTitle
 import com.zhijian.schedule.core.ui.island.IslandHint
 import com.zhijian.schedule.core.ui.island.IslandHintTone
 import kotlinx.coroutines.launch
@@ -128,6 +130,9 @@ fun JwImportScreen(
     var webView by remember { mutableStateOf<WebView?>(null) }
     var showScriptPicker by remember { mutableStateOf(false) }
     var showSchoolPicker by remember { mutableStateOf(false) }
+    // 隐藏调试面板：只有连点标题凑满次数才会置 true（见 DebugTapGate）。
+    // 正式包里它恒为 false——那个分支连同触发它的点击语义一起被 R8 删掉
+    var showDebug by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     fun runScript(option: ScriptOption) {
@@ -168,6 +173,10 @@ fun JwImportScreen(
         topBar = {
             SecondaryTopBar(
                 title = "教务系统导入",
+                // 标题在 debug 包里变成隐藏调试入口的触发区（连点 7 次）。
+                // BuildConfig.DEBUG 是编译期常量，R8 会把正式包里用不到的分支整个删掉，
+                // 连点击语义都不会进正式包
+                titleContent = debugTitleSlot { showDebug = true },
                 onBack = onBack,
                 actions = {
                     // 选校 = 填地址的快捷入口，与脚本管理同级放在顶栏，不占正文宽度
@@ -393,6 +402,17 @@ fun JwImportScreen(
         )
     }
 
+    // 隐藏调试面板的挂载：抽成独立函数，是为了让这一屏的圈复杂度留在 detekt 阈值内
+    // （这个 if 会让它 +1，而它本来就贴着 20 的线）
+    JwDebugHost(
+        visible = showDebug,
+        onDismiss = { showDebug = false },
+        onShow = { tone, message ->
+            showDebug = false
+            viewModel.showDebugHint(tone, message)
+        },
+    )
+
     if (showSchoolPicker) {
         SchoolPickerDialog(
             onDismiss = { showSchoolPicker = false },
@@ -411,6 +431,42 @@ fun JwImportScreen(
             onApply = viewModel::applyPreview,
         )
     }
+}
+
+/**
+ * 顶栏标题插槽：debug 包里是隐藏调试入口的触发区，正式包返回 null（标题退化为纯文本）。
+ *
+ * 抽成普通函数（不是 @Composable）有两个好处：
+ * 1. 把 `if (BuildConfig.DEBUG)` 这个分支搬出 [JwImportScreen]——那一屏的圈复杂度
+ *    正贴着 detekt 阈值，多一个分支就红；
+ * 2. [BuildConfig.DEBUG] 是编译期常量，R8 会把正式包里永远走不到的那半边整个删掉，
+ *    于是连 `DebugTapTitle` 的点击语义都不会进正式包。
+ *
+ * 返回的 lambda 本身是 @Composable：它要在组合期读当前主题色。
+ */
+private fun debugTitleSlot(onUnlock: () -> Unit): (@Composable () -> Unit)? =
+    if (BuildConfig.DEBUG) {
+        { DebugTapTitle(title = "教务系统导入", onUnlock = onUnlock, colors = LocalCourseColors.current) }
+    } else {
+        null
+    }
+
+/**
+ * 隐藏调试面板的挂载点：不可见时不进组合。
+ *
+ * 抽成函数而不是直接内联 [JwDebugSheet]：判空分支会给 [JwImportScreen] 增加一个
+ * 圈复杂度，而那一屏正贴着 detekt 阈值（20），多一个就红。
+ *
+ * @param visible 是否展开；false 时整个面板不参与组合，连 sheet 的 state 都不会被建
+ */
+@Composable
+private fun JwDebugHost(
+    visible: Boolean,
+    onDismiss: () -> Unit,
+    onShow: (IslandHintTone, String) -> Unit,
+) {
+    if (!visible) return
+    JwDebugSheet(onDismiss = onDismiss, onShow = onShow)
 }
 
 /**

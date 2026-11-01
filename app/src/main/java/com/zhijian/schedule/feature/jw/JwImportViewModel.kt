@@ -17,13 +17,13 @@ import com.zhijian.schedule.core.jw.credential.JwCredentialSummary
 import com.zhijian.schedule.core.jw.script.JwScriptOutput
 import com.zhijian.schedule.core.jw.script.ScriptCatalog
 import com.zhijian.schedule.core.jw.script.ScriptOption
-import com.zhijian.schedule.core.ui.island.IslandHintTone
 import com.zhijian.schedule.core.model.ImportPreview
 import com.zhijian.schedule.core.model.ImportSource
 import com.zhijian.schedule.core.net.JwAssetCache
 import com.zhijian.schedule.core.repository.ScheduleRepository
 import com.zhijian.schedule.core.sync.JwSyncManager
 import com.zhijian.schedule.core.sync.SyncScheduler
+import com.zhijian.schedule.core.ui.island.IslandHintTone
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
@@ -484,6 +484,23 @@ class JwImportViewModel
         /** 浮岛提示的进度条走完：收起它（数据留着，退场动画才有内容可演） */
         fun dismissCredentialFillNotice() {
             credentialFillNoticeVisible = false
+        }
+
+        /**
+         * 隐藏调试入口：手动弹一条指定语气的浮岛提示。
+         *
+         * 走的是与线上完全相同的 [postFillNotice]，所以位置、时长、进度条、
+         * 抖动与震动一个都不少——调试面板里看到的就是用户真会看到的那一条。
+         * 若这里另走一条捷径（例如直接改 [credentialFillNotice]），
+         * 调试出来的东西就不再代表线上行为。
+         *
+         * 只由 [JwDebugSheet] 调用；面板本身受 BuildConfig.DEBUG 保护，见 [JwImportScreen]。
+         */
+        fun showDebugHint(
+            tone: IslandHintTone,
+            message: String,
+        ) {
+            postFillNotice(tone, message)
         }
 
         /** 清空已保存的凭据（高级设置里手动清除，或换学校时） */

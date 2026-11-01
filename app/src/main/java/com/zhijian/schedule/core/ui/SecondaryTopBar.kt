@@ -19,19 +19,35 @@ import com.zhijian.schedule.core.theme.LocalCoursePreset
 import com.zhijian.schedule.core.ui.metal.LocalMetalClock
 import com.zhijian.schedule.core.ui.metal.metalSurface
 
-/** 二级页面统一顶栏：18sp 半粗标题 + 返回箭头 + 可选操作区 */
+/**
+ * 二级页面统一顶栏：18sp 半粗标题 + 返回箭头 + 可选操作区。
+ *
+ * [titleContent] 是可选插槽：给那些**标题本身需要行为**的页面用（目前只有教务导入页的
+ * 隐藏调试入口——连点标题若干次调出调试面板）。默认 null 时标题就是一段纯文字，
+ * 其余调用点的行为与外观一字不变。
+ *
+ * 为什么不直接把 [title] 改成 `@Composable () -> Unit`：所有调用点都要跟着包一层 lambda，
+ * 而真正需要这个能力的只有一个页面。加一个默认 null 的插槽，改动面最小。
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SecondaryTopBar(
     title: String,
     onBack: () -> Unit,
     actions: @Composable RowScope.() -> Unit = {},
+    titleContent: (@Composable () -> Unit)? = null,
 ) {
     val colors = LocalCourseColors.current
     val metal = LocalCoursePreset.current.metal
     val metalClock = LocalMetalClock.current
     TopAppBar(
-        title = { Text(title, fontWeight = FontWeight.SemiBold, fontSize = 18.sp) },
+        title = {
+            if (titleContent != null) {
+                titleContent()
+            } else {
+                Text(title, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
+            }
+        },
         navigationIcon = {
             TapIconButton(onClick = onBack) {
                 Icon(
