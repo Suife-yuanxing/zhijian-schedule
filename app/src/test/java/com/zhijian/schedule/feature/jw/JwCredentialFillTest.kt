@@ -117,4 +117,29 @@ class JwCredentialFillTest {
         assertFalse(a == b)
         assertEquals(a.copy(), a.copy())
     }
+
+    /**
+     * 桥的构造参数名不能与 @JavascriptInterface 的方法名相同。
+     *
+     * 这条断言对应一次真机事故（PKG110 / 2026-11-01）：两者同名时，
+     * `fun onLoggedIn() { onLoggedIn() }` 里的调用被解析成它自己，
+     * 页面每回调一次就 StackOverflowError（连续 297 帧同一行），
+     * 而页面侧只看到「Java exception」，气泡永远不出现 —— 不崩溃、不报错，
+     * 功能从头到尾没工作过。
+     *
+     * 用反射读构造参数的**名字**，是因为这个 bug 编译期完全合法、运行期才炸，
+     * 常规单测碰不到；而只要名字不同，这个坑就不可能再踩。
+     */
+    @Test
+    fun bridgeCallbacksAreNotNamedLikeJsMethods() {
+        val jsMethods = setOf("onCandidate", "onLoggedIn")
+        val paramNames =
+            JwCredentialBridge::class.java.declaredConstructors
+                .flatMap { it.parameters.map { p -> p.name } }
+                .toSet()
+        assertTrue(
+            "构造参数 $paramNames 与 JS 方法名 $jsMethods 冲突，会无限递归",
+            paramNames.intersect(jsMethods).isEmpty(),
+        )
+    }
 }

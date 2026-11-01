@@ -19,19 +19,29 @@ import com.zhijian.schedule.core.jw.credential.JwCredentialScripts
  * 回调跑在 WebView 的 JavaBridge 线程，切线程由 ViewModel 负责。
  */
 internal class JwCredentialBridge(
-    private val onCandidate: (String) -> Unit,
-    private val onLoggedIn: () -> Unit,
+    // 回调参数名**必须**与下面 @JavascriptInterface 的方法名不同。
+    //
+    // 曾经两个都叫 onLoggedIn / onCandidate，于是 onLoggedIn() 方法体里的
+    // onLoggedIn() 被 Kotlin 解析成**调用自己**（函数优先于同名属性的 invoke），
+    // 直接无限递归。真机日志（PKG110 / 2026-11-01）：
+    //     java.lang.StackOverflowError: stack size 4109KB
+    //     at JwCredentialBridge.onLoggedIn(JwCredentialBridge.kt:34)   ← 连续 297 帧同一行
+    // 也就是说：这个功能从写出来那天起就没工作过，而且**不报错、不崩溃**——
+    // 页面侧只收到一个 Java exception，气泡永远不出现。
+    // 名字带 Sink 后缀，让「要调用的回调」与「被 JS 调用的入口」一眼可分。
+    private val candidateSink: (String) -> Unit,
+    private val loggedInSink: () -> Unit,
 ) {
     @JavascriptInterface
     fun onCandidate(json: String?) {
         if (json.isNullOrBlank()) return
-        onCandidate(json)
+        candidateSink(json)
     }
 
     /** 页面自己判定「已经进了教务系统」：此刻暂存的账号密码才算被服务器验证过 */
     @JavascriptInterface
     fun onLoggedIn() {
-        onLoggedIn()
+        loggedInSink()
     }
 
     companion object {

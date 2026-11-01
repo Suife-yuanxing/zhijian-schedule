@@ -411,8 +411,8 @@ internal fun WebViewBox(
                     // 回调来自 JavaBridge 线程，这里只转发，线程切换由 ViewModel 负责
                     addJavascriptInterface(
                         JwCredentialBridge(
-                            onCandidate = { json -> candidateHandler.value(json) },
-                            onLoggedIn = { loginHandler.value() },
+                            candidateSink = { json -> candidateHandler.value(json) },
+                            loggedInSink = { loginHandler.value() },
                         ),
                         JwCredentialBridge.NAME,
                     )

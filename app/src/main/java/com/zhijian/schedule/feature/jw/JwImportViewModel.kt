@@ -256,9 +256,12 @@ class JwImportViewModel
                     credentialFill = null
                     return@launch
                 }
-                val configured = JwCredentialOrigin.of(withScheme(url))
+                // 与 onLoginSucceeded 同一条规则：同一注册域即可。
+                // 存下来的是**提交页**的 origin（统一认证学校是 authserver），
+                // 而用户配置的是教务地址，二者本来就不同 host，严格比会把凭据判成「不该用」。
+                // 真正回填时仍然只填 saved.origin 那一页（见 shouldAutoFill），不会串站。
                 credentialFill =
-                    if (configured != null && configured.equals(saved.origin, ignoreCase = true)) {
+                    if (JwCredentialOrigin.isTrustedSubmit(saved.origin, withScheme(url))) {
                         JwCredentialFill(origin = saved.origin, username = saved.username, password = saved.password)
                     } else {
                         null
@@ -317,11 +320,13 @@ class JwImportViewModel
                 // 已经有问句挂着就不再叠加：一次登录可能触发多次跳转判定
                 if (credentialPrompt != null) return@launch
                 val candidate = pendingCredential ?: return@launch
-                val configured = JwCredentialOrigin.of(withScheme(url))
-                // 同源校验：只认「提交页 origin == 用户配置的教务 origin」。
-                // 走统一认证的学校会在这里被挡下——那套账号密码属于 authserver，
-                // 填回教务登录页未必有效，宁可不存也不要存错。
-                if (configured == null || !configured.equals(candidate.origin, ignoreCase = true)) {
+                // 提交页是否可信：同一注册域即可，不要求严格同 host。
+                //
+                // 真机实测（东莞职院 2026-11-01）逼出这一条：配置的是 jw.dgpt.edu.cn，
+                // 学校 302 到 authserver.dgpt.edu.cn，密码是在后者那页提交的。
+                // 原先要求 origin 严格相等，于是统一认证学校的候选被全部丢弃——
+                // 功能对这类学校 100% 不工作，而且**没有任何报错**（气泡只是不出现）。
+                if (!JwCredentialOrigin.isTrustedSubmit(candidate.origin, withScheme(url))) {
                     pendingCredential = null
                     return@launch
                 }
