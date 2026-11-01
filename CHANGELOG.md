@@ -10,6 +10,25 @@
 >
 > 每个版本段下的 *提交区间* 给出该版的起止 tag 与提交数，可用 `git log --oneline <起>..<止>` 复核。
 
+## [1.0.16] - 2026-11-01
+
+*提交区间：v1.0.15..v1.0.16 — 浮岛胶囊视觉统一、排版标尺，以及设置页凭据显示修复*
+
+### Added
+
+- feat(ui): **浮岛胶囊视觉统一**。教务凭据回填提示此前只有成功态走胶囊，失败态是另一套位置的文字行；颜色、字号、停留时长三处都不统一，用户要分别学着认。现在两种结局收进同一个组件，只差图标与颜色：成功带对勾，失败带叉号 + 45ms 短震。两者共用一套几何，不额外抢位置。
+- feat(ui): 浮岛补**进度条轨道**。原来只有填充色，空态下整条不可见，用户不知道还剩多久。补一条 1.54:1 的轨道（原为 1.00:1，等于没有）。填充与轨道的关系按 3.0:1 图形对比度求解，两种色调解到同一阈值，免得失败态读起来比成功态「更严重」。
+- feat(ui): 新增 `Typography.kt` —— `TypeScale` 十一档字号 + CJK 分段行策略。此前字号散落在各文件（10.5 / 11 / 11.5 / 12 / 13 / 13.5 / 14 / 16sp），同一视觉层级在不同页面大小不一。行高改为按 1.4 倍整数派生，中文不再被压扁；换行策略统一用 HighQuality + Strict + Phrase 分段。
+- feat(ui): 新增 `OverlayMotion.kt` —— 浮层的进场/退场位移与投影收敛到一处，避免 WAF 提示条、保存气泡、浮岛各写一套。
+- test(ui): 新增 `JwSurfaceContrastTest`（4 例）与 `IslandHintTest` 扩充到 11 例。前者刻意保留「按错误底色求解会不达标」的断言——它证明对比度修正是换了正确的底色，而不是把阈值调松。
+
+### Fixed
+
+- fix(settings): **设置页不显示已保存的教务账号，地址被空值抹掉**。真机取证（PKG110 / Android 16）：密码其实存住了（`no_backup/jw-credential.bin` 216 字节、信封头 `ZJC1` v1、明文估长 129 字节），卡住的是显示条件与落盘时机。三处根因：①显示顺序反了——旧代码先判「教务地址填没填」、再判「有没有凭据」，地址为空就直接走第一支，摘要一条都不渲染；②`fetchNow()` 无条件 `setJw(trimmed)`，地址栏被清空后点抓取就会把 `jw_url` 写成空串；③地址只在抓取时才落盘，而用户真实动作是「填地址 → 打开 → 登录」，抓取可以不按。修法：抽出 `jwCredentialPlaceholder()`（凭据优先、地址其次；判定顺序本身就是那个 bug，所以做成纯函数并逐格枚举四个布尔组合）、空地址绝不写盘、「打开」即记下地址、有凭据时开关不再锁死。
+- fix(ui): 浮岛**退场方向改为向上**。胶囊从网页顶部出现，就该从来的方向回去；原来的向下滑出会越过网页正文，读作「掉下去了」。真机用 10 倍动画缩放逐帧比对，确认顶边 675→696px 同时高度 135→92px，是升起并收拢。
+- fix(ui): 三处**对比度缺陷**，判定规则统一为「求解用的底色必须是绘制所在的底色」：保存气泡按页面底色求解却画在卡片上（金属亮档 5.19→3.73:1）、地址栏占位文字同病、页面错误遮罩按底色求解却压在 90% 蒙层上（最坏 4.55→3.63:1）。
+- fix(ui): 浮岛文案改为「·」分隔的短句——一句话说完发生了什么 + 用户下一步做什么。此前的长句在胶囊里换行两次，读作一段说明而不是一条提示。
+
 ## [Unreleased]
 
 ### Added
@@ -419,11 +438,13 @@ Android 侧 `versionName` 与 SemVer 对齐，`versionCode` 单调递增且与�
 | 1.0.12 | 13 | v1.0.12 |
 | 1.0.13 | 14 | v1.0.13 |
 | 1.0.14 | 15 | v1.0.14 |
-| 1.0.15 | 16 | v1.0.15（当前 versionName / versionCode，见 `app/build.gradle.kts`） |
+| 1.0.15 | 16 | v1.0.15 |
+| 1.0.16 | 17 | v1.0.16（当前 versionName / versionCode，见 `app/build.gradle.kts`） |
 
 发版流程见 [CONTRIBUTING.md](CONTRIBUTING.md#7-发版)。
 
-[Unreleased]: https://github.com/Suife-yuanxing/zhijian-schedule/compare/v1.0.15...HEAD
+[Unreleased]: https://github.com/Suife-yuanxing/zhijian-schedule/compare/v1.0.16...HEAD
+[1.0.16]: https://github.com/Suife-yuanxing/zhijian-schedule/compare/v1.0.15...v1.0.16
 [1.0.15]: https://github.com/Suife-yuanxing/zhijian-schedule/compare/v1.0.14...v1.0.15
 [1.0.14]: https://github.com/Suife-yuanxing/zhijian-schedule/compare/v1.0.13...v1.0.14
 [1.0.13]: https://github.com/Suife-yuanxing/zhijian-schedule/compare/v1.0.12...v1.0.13

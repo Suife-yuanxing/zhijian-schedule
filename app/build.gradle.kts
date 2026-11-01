@@ -28,8 +28,8 @@ android {
         applicationId = "com.zhijian.schedule"
         minSdk = 26
         targetSdk = 36
-        versionCode = 16
-        versionName = "1.0.15"
+        versionCode = 17
+        versionName = "1.0.16"
 
         resourceConfigurations += listOf("zh", "en")
 
