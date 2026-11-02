@@ -96,7 +96,7 @@ object UrpAdapter : JwAdapter {
                 if (isLoginPage(body)) throw JwException.NeedsLogin()
                 val drafts = parseBody(body, totalWeeks)
                 if (drafts.isNotEmpty()) {
-                    return@withContext JwFetchResult(drafts, SectionTimes.fromHtml(body))
+                    return@withContext JwFetchResult(drafts, SectionTimes.fromHtml(body), metaOf(body, totalWeeks))
                 }
                 lastError = "未解析到课程：$target"
             }
@@ -104,6 +104,19 @@ object UrpAdapter : JwAdapter {
                 "URP 未返回课表：${lastError ?: "请先在网页中进入「本学期课表」再导入"}",
             )
         }
+
+    /**
+     * 学期元数据：URP 课表页同样只给周次不给日期，靠页面上的「当前第 N 周」反推。
+     * 推不出返回 null（本地值原样保留），理由见 `QingGuoAdapter.metaOf`。
+     */
+    internal fun metaOf(
+        body: String,
+        totalWeeks: Int,
+    ): JwMeta? {
+        val currentWeek = JwCurrentWeekParser.parse(body) ?: return null
+        val startDate = JwCurrentWeekInference.infer(currentWeek, totalWeeks) ?: return null
+        return JwMeta(startDate = startDate)
+    }
 
     /** 已经停在课表页时直接请求该页；否则退回候选路径 */
     private fun targetsOf(baseUrl: String): List<String> {

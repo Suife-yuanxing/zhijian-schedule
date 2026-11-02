@@ -61,6 +61,26 @@ globalThis.__paperScheduleScript = {
     }
   },
 
+  /**
+   * 读课表页上的「当前第 N 周」。
+   *
+   * 强智课表页顶部有个周次下拉（`#zc` / `select[name=zc]`），当前项就是本周。
+   * 拿不到就返回 0，让调用方按「没有这条线索」处理——不猜。
+   *
+   * 这是「周历页不可用」时的退路，不是主路径：周历页给的是权威日期，
+   * 这里推出来的只是它的反解。
+   */
+  readCurrentWeek: function () {
+    var selectors = ['select#zc option[selected]', 'select[name=zc] option[selected]'];
+    for (var i = 0; i < selectors.length; i++) {
+      var el = document.querySelector(selectors[i]);
+      if (!el) continue;
+      var n = parseInt((el.getAttribute('value') || el.textContent || '').trim(), 10);
+      if (!isNaN(n) && n >= 1 && n <= 30) return n;
+    }
+    return 0;
+  },
+
   fetchSchedule: async function (ctx) {
     var warnings = [];
     var table = document.getElementById('kbtable') || document.querySelector('table.kbtable');
@@ -200,6 +220,15 @@ globalThis.__paperScheduleScript = {
     if (calendar) {
       envelope.totalWeeks = calendar.totalWeeks;
       envelope.startDate = calendar.startDate;
+    } else {
+      // 退路：周历页没开放（菜单权限 / 空数据）时，课表页自己往往写着「当前第 N 周」
+      // （那个下拉本来是给用户切周用的）。今天是已知的，N 是已知的，
+      // 第 1 周周一就是唯一解——比留一个建表日当开学日强得多。
+      var currentWeek = globalThis.__paperScheduleScript.readCurrentWeek();
+      if (currentWeek) {
+        envelope.currentWeek = currentWeek;
+        warnings.push('教学周历不可用，已按页面「第 ' + currentWeek + ' 周」推算开学日期');
+      }
     }
     return envelope;
   }

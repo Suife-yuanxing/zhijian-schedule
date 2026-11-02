@@ -77,7 +77,7 @@ object QingGuoAdapter : JwAdapter {
                 val page = resolveFrames(client, html, url, referer)
                 val drafts = HtmlTableScheduleParser.parse(page, totalWeeks)
                 if (drafts.isNotEmpty()) {
-                    return@withContext JwFetchResult(drafts, SectionTimes.fromHtml(page))
+                    return@withContext JwFetchResult(drafts, SectionTimes.fromHtml(page), metaOf(page, totalWeeks))
                 }
                 lastError = "未找到课表表格：$url"
             }
@@ -85,6 +85,21 @@ object QingGuoAdapter : JwAdapter {
                 "青果未返回课表：${lastError ?: "请先在网页中进入个人课表页再导入"}",
             )
         }
+
+    /**
+     * 学期元数据：青果课表接口不含日期，只能靠页面上的「当前第 N 周」反推。
+     *
+     * 推不出就返回 null（本地值原样保留）——留一个错的开学日期比留建表日更糟，
+     * 因为错的日期不会被察觉，而建表日至少会在预览里被 `TimetableMetaHint` 点名。
+     */
+    internal fun metaOf(
+        page: String,
+        totalWeeks: Int,
+    ): JwMeta? {
+        val currentWeek = JwCurrentWeekParser.parse(page) ?: return null
+        val startDate = JwCurrentWeekInference.infer(currentWeek, totalWeeks) ?: return null
+        return JwMeta(startDate = startDate)
+    }
 
     override val gradeFetchSupported = true
 

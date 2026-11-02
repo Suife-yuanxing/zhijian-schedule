@@ -1,5 +1,6 @@
 package com.zhijian.schedule.core.jw.script
 
+import com.zhijian.schedule.core.jw.JwCurrentWeekInference
 import com.zhijian.schedule.core.jw.JwMeta
 import com.zhijian.schedule.core.jw.SectionTimeDraft
 import com.zhijian.schedule.core.jw.SectionTimes
@@ -43,6 +44,14 @@ object JwScriptOutput {
              * 现成的——能同步一个字段就少让用户手填一个。
              */
             val semester: String? = null,
+            /**
+             * 脚本可选返回的「页面写着当前第 N 周」。
+             *
+             * 课表接口不给日期时，这是唯一能反推第 1 周周一的线索：今天是已知的，
+             * N 是已知的，起点就是唯一解（见 [JwCurrentWeekInference]）。
+             * 与 [startDate] 并存时以 [startDate] 为准——前者是权威、后者是反解。
+             */
+            val currentWeek: Int? = null,
         ) : ParseResult {
             /**
              * 这次解析能同步的学期元数据；两样都没给时返回 null（本地值原样保留）。
@@ -51,13 +60,23 @@ object JwScriptOutput {
              * 不该重复判断 totalWeeks 的区间与 startDate 的格式——那两件事已经校验过了。
              */
             fun metaOrNull(): JwMeta? {
-                if (totalWeeks == null && startDate == null && semester == null) return null
+                val inferred = startDateOrInferred()
+                if (totalWeeks == null && inferred == null && semester == null) return null
                 return JwMeta(
                     semester = semester.orEmpty(),
-                    startDate = startDate.orEmpty(),
+                    startDate = inferred.orEmpty(),
                     totalWeeks = totalWeeks ?: 0,
                 )
             }
+
+            /**
+             * 开学日期的最终取值：脚本直接给了就用它（权威），否则用「当前第 N 周」反推。
+             *
+             * 反推放在这里而不是解析处，是为了让 [metaOrNull] 成为唯一出口——
+             * 调用方不该知道「这个日期是读来的还是推来的」。
+             */
+            private fun startDateOrInferred(): String? =
+                startDate ?: currentWeek?.let { JwCurrentWeekInference.infer(it, totalWeeks ?: 0) }
         }
 
         data class Invalid(
@@ -68,6 +87,9 @@ object JwScriptOutput {
     private val json = Json { ignoreUnknownKeys = true }
     private const val MAX_HOUR = 23
     private const val MAX_MINUTE = 59
+
+    /** 与 `TimetableMetaPlan.MAX_WEEKS` 同口径：超出的周次按脏数据丢弃 */
+    private const val MAX_WEEKS = 30
 
     /** 分钟允许一位：脚本作者常写 "9:5"，等同于 "09:05" */
     private val CLOCK = Regex("""^(\d{1,2})\s*[:：]\s*(\d{1,2})$""")
@@ -122,6 +144,7 @@ object JwScriptOutput {
             sectionTimes = sectionTimesOf(root, warnings),
             startDate = startDateOf(root, warnings),
             semester = semesterOf(root),
+            currentWeek = currentWeekOf(root, declaredWeeks ?: 0),
         )
     }
 
@@ -131,6 +154,22 @@ object JwScriptOutput {
      * 强行归一反而会把学校自己的叫法改掉。空白视为没给。
      */
     private fun semesterOf(root: JsonObject): String? = root.str("semester").trim().takeIf { it.isNotEmpty() }
+
+    /**
+     * 脚本可选字段 `currentWeek`（页面写着当前第 N 周）。
+     *
+     * 超出 1..30 或超过声明的总周数时丢弃并计 warning：教务页面缓存 / 跨学期残留
+     * 都会让这个数字不可信，而它一旦错了，反推出的开学日期会整学期偏。
+     */
+    private fun currentWeekOf(
+        root: JsonObject,
+        totalWeeks: Int,
+    ): Int? {
+        val raw = (root["currentWeek"] as? JsonPrimitive)?.intOrNull ?: return null
+        if (raw !in 1..MAX_WEEKS) return null
+        if (totalWeeks > 0 && raw > totalWeeks) return null
+        return raw
+    }
 
     /**
      * 脚本可选字段 `sectionTimes: [{section, start, end}]`：逐条校验后使用，
