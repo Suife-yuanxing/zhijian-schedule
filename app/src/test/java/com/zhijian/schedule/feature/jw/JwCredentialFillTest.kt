@@ -268,4 +268,69 @@ class JwCredentialFillTest {
             paramNames.intersect(jsMethods).isEmpty(),
         )
     }
+
+    /**
+     * 捕获脚本与登录探针必须**无条件**注入，不能被「有没有存过凭据」挡在前面。
+     *
+     * 这条钉的是 97c68c9 引入、在 main 上活了一天多的自举死锁：
+     * `if (pending == null || !shouldAutoFill(url, pending)) return` 写在两行注入之前，
+     * 于是新装用户（fill 恒为 null）永远装不上捕获 → 候选永远为空 →
+     * 登录成功也弹不出气泡 → 存不下凭据。不报错、不崩溃、界面毫无反应。
+     *
+     * 断言用**位置**而不是"包含"：包含关系在 bug 版本里同样成立（两行都还在文件里，
+     * 只是永远执行不到），只有"出现在第一个 return 之前"才能区分开。
+     * 这正是上一版 20 条单测全部通过却没拦住这个 bug 的原因——它们钉的是脚本内容，
+     * 没有一条钉调用点。
+     */
+    @Test
+    fun captureScriptsAreInjectedBeforeAnyEarlyReturn() {
+        val src = readSource("app/src/main/java/com/zhijian/schedule/feature/jw/JwImportWebView.kt")
+        assertTrue("读不到 JwImportWebView.kt，源码断言失效", src.isNotEmpty())
+
+        val bodyStart = src.indexOf("private fun applyCredentialScripts(")
+        assertTrue("找不到 applyCredentialScripts，函数被改名或移动了", bodyStart >= 0)
+        // 函数体到下一个顶层注释块（PROBE_RETRY_DELAY_MS 的 KDoc）为止
+        val bodyEnd = src.indexOf("PROBE_RETRY_DELAY_MS", bodyStart)
+        assertTrue("找不到 applyCredentialScripts 的结束锚点", bodyEnd > bodyStart)
+        val body = src.substring(bodyStart, bodyEnd)
+
+        // 锚点是「凭据闸门」而不是"第一个 return"：函数开头的 url 空 / origin 解析失败
+        // 是正当的守卫，捕获注入本来就该在它们之后。真正不能越过的是这一道——
+        // 它把「有没有存过凭据」变成了捕获的前提。
+        val gateAt = body.indexOf("val pending = fill")
+        assertTrue("找不到凭据闸门（val pending = fill），锚点失效", gateAt >= 0)
+        val captureAt = body.indexOf("JwCredentialScripts.captureJs")
+        val probeAt = body.indexOf("JwCredentialScripts.loginProbeJs")
+
+        assertTrue("捕获脚本根本没被注入", captureAt >= 0)
+        assertTrue("登录探针根本没被注入", probeAt >= 0)
+        assertTrue(
+            "captureJs 注入点位于凭据闸门之后，新装用户永远装不上捕获（自举死锁）",
+            captureAt < gateAt,
+        )
+        assertTrue(
+            "loginProbeJs 注入点位于凭据闸门之后，登录成功判定永远不触发",
+            probeAt < gateAt,
+        )
+    }
+
+    /**
+     * 回填的闸门不能被顺手放宽：捕获放开之后，回填仍必须严格同 origin。
+     *
+     * 两条约束在同一个函数里，改一处很容易顺手改另一处。捕获放开的是"要不要听页面说话"，
+     * 回填放开的是"要不要把明文密码交给这一页"——后者永远不能松。
+     */
+    @Test
+    fun autofillStillGatedBehindStrictOrigin() {
+        val src = readSource("app/src/main/java/com/zhijian/schedule/feature/jw/JwImportWebView.kt")
+        val bodyStart = src.indexOf("private fun applyCredentialScripts(")
+        val bodyEnd = src.indexOf("PROBE_RETRY_DELAY_MS", bodyStart)
+        val body = src.substring(bodyStart, bodyEnd)
+        val fillGate = body.indexOf("shouldAutoFill(url, pending)")
+        assertTrue("回填前的 shouldAutoFill 闸门不见了", fillGate >= 0)
+        assertTrue(
+            "回填闸门必须位于 captureJs 注入之后（先听页面，再决定要不要填）",
+            fillGate > body.indexOf("JwCredentialScripts.captureJs"),
+        )
+    }
 }

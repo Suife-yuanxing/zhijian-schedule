@@ -303,14 +303,21 @@ private const val WAF_MAX_RETRIES = 2
 private const val WAF_RETRY_DELAY_MS = 1500L
 
 /**
- * 页面加载完成时挂上凭据相关的两段逻辑：回填 → 捕获 / 登录判定。
+ * 页面加载完成时挂上凭据相关的两段逻辑：捕获 / 登录判定 → 回填。
  *
- * ## 为什么顺序是这两步
- * 1. **回填**先做：页面一出现密码框就把账号密码写进去，用户看到的是「已经填好的登录页」。
- * 2. **捕获**后装：不依赖回填是否成功——用户手打密码也算一次可保存的登录。
+ * ## 为什么捕获与登录判定必须**无条件**注入
+ * 这两段脚本是「第一次凭据从哪来」的唯一来源，而回填的前提是**已经存过**凭据。
+ * 曾经把它们写在 `fill != null` 的判断之后（97c68c9 引入），于是形成自举死锁：
+ * 没存过 → fill 为 null → 早返回 → 捕获没装 → 候选永远为空 → 气泡不出现 → 存不下。
+ * 新装用户 100% 走不出第一步，且不报错、不崩溃、界面毫无反应。
+ * 所以顺序反过来：**先装捕获，再谈回填**，两者之间没有任何前置依赖。
  *
- * 登录成功的判定（`onLoggedIn`）与捕获装在同一个脚本里，由页面自己跳转后重新执行；
- * 两段都是 fire-and-forget，任何一段失败都不影响页面本身：
+ * ## 为什么回填仍然要过两道闸
+ * 1. [shouldAutoFill]：页面 origin 与凭据 origin 严格一致，防止把 A 校密码灌进 B 校页面；
+ * 2. `filledOrigin`：同一 origin 一次加载内只填一次，避免 onPageFinished 多次触发时
+ *    覆盖用户手改的输入、并让浮岛提示重复走一遍进度条。
+ *
+ * 三段都是 fire-and-forget，任何一段失败都不影响页面本身：
  * 凭据是附加能力，不能拖累导入。
  */
 private fun applyCredentialScripts(
@@ -323,17 +330,18 @@ private fun applyCredentialScripts(
 ) {
     if (url.isNullOrBlank()) return
     val origin = JwCredentialOrigin.of(url) ?: return
-    val pending = fill
+    // 捕获 + 登录成功判定（页面内自带 `__zjCaptureInstalled` 幂等标记）。
+    // 与「有没有存过凭据」完全无关：任何一页的登录都值得记下来，第一次尤其如此。
+    view.evaluateJavascript(JwCredentialScripts.captureJs, null)
+    view.evaluateJavascript(JwCredentialScripts.loginProbeJs, null)
     // 没有可回填的凭据就不该报任何失败：新用户第一次打开登录页时 fill 恒为 null，
     // 那不是「填失败了」，那是「还没存过东西」——把它做成红叉等于每次开页都骂一句
-    if (pending == null || !shouldAutoFill(url, pending)) return
+    val pending = fill ?: return
+    if (!shouldAutoFill(url, pending)) return
     if (filledOrigin[0] == origin) return
     // 先探测页面上是否真有可见的密码框：没有就别把密码送进去，
     // 也别记「这个 origin 已经填过」——下一帧页面可能才长出登录框
     probeAndFill(view, url, origin, pending, filledOrigin, onFilled, onFillFailed)
-    // 捕获 + 登录成功判定（页面内自带 `__zjCaptureInstalled` 幂等标记）
-    view.evaluateJavascript(JwCredentialScripts.captureJs, null)
-    view.evaluateJavascript(JwCredentialScripts.loginProbeJs, null)
 }
 
 /** 探测不到密码框时，隔多久再看一眼；到这个次数还没有，才判定为 [JwCredentialFillFailure.NoInput] */
