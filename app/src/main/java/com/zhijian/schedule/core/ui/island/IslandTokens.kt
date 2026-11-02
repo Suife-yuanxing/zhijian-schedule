@@ -293,7 +293,10 @@ fun rememberIslandTone(tone: IslandHintTone): Color {
     val isDark = LocalIsDark.current
     return remember(tone, colors, metal, isDark) {
         when (tone) {
-            IslandHintTone.Done -> IslandTokens.doneOn(colors, isDark, metal)
+            // 待办与成功共用同一支强调色：它说的是「顺路去做一下」，不是「出事了」。
+            // 给它单独一支颜色会让同一屏上出现第三种语义色，而三者的轻重差别
+            // 读不出来（见 IslandHintTone 的类注释）
+            IslandHintTone.Done, IslandHintTone.Pending -> IslandTokens.doneOn(colors, isDark, metal)
             IslandHintTone.Failed -> IslandTokens.dangerOn(colors, isDark, metal)
         }
     }

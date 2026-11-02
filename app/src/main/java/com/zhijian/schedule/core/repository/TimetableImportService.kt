@@ -86,13 +86,18 @@ internal class TimetableImportService(
             } else {
                 null
             }
+        // 补全放在这里而不是各个适配器里：「有没有权威开学日期」与「哪一家教务」无关，
+        // 记过一次就该对所有厂家生效。必须在算提示**之前**补——否则明明能用记忆里的
+        // 日期，预览里还会说「开学日期未同步，建议去核对」，等于让用户白填一遍
+        val resolved = withRememberedStartDate(meta, tableId)
+        val reused = resolved != null && meta != null && meta.startDate.isBlank() && resolved.startDate.isNotBlank()
         val infoHint =
             when {
                 source != ImportSource.JW -> null
-                meta != null -> metaHint(tableId, meta)
+                resolved != null -> metaHint(tableId, resolved, reused)
                 else -> auditInfo(tableId)
             }
-        return ImportPreview(source, changes, warning, sectionTimes, meta, infoHint)
+        return ImportPreview(source, changes, warning, sectionTimes, resolved, infoHint)
     }
 
     /**
@@ -105,6 +110,7 @@ internal class TimetableImportService(
     private suspend fun metaHint(
         tableId: Long,
         meta: JwMeta,
+        reusedFromMemory: Boolean,
     ): String? {
         val table = db.timetableDao().getById(tableId) ?: return null
         val planned = TimetableMetaPlan.apply(table, meta)
@@ -115,7 +121,37 @@ internal class TimetableImportService(
             )
         val missing = TimetableMetaHint.missingHint(meta)
         val sync = if (parts.isEmpty()) "" else "课表信息将随抓取同步：" + parts.joinToString("，")
-        return listOf(sync, missing.orEmpty()).filter { it.isNotEmpty() }.joinToString("；").ifEmpty { null }
+        // 记忆补上来的日期要说清来源：用户看到「第 1 周 2026-08-31」会自动以为这是
+        // 教务给的，而它其实是上次自己填的——万一学校换过校历，这条提示是他唯一的线索
+        val reused = if (reusedFromMemory) "开学日期沿用「" + meta.semester + "」记住的值" else null
+        // 缺日期时把「怎么办」一并给出：只说「周次可能不准」等于把问题丢给用户。
+        // 两句分别来自 TimetableMetaHint（后果）与 SemesterStartDateMemory（出路），
+        // 各自只讲一件事，拼起来才是一条完整的说明
+        val fix = if (missing != null) SemesterStartDateMemory.missingPrompt(meta.semester) else null
+        return listOf(sync, reused.orEmpty(), missing.orEmpty(), fix.orEmpty())
+            .filter { it.isNotEmpty() }
+            .joinToString("；")
+            .ifEmpty { null }
+    }
+
+    /**
+     * 来源没给开学日期时，用「这个学期记住的那一个」补上。
+     *
+     * 只在来源**没给**时才补：给了就以来源为准，否则换过校历的学校永远同步不到新日期。
+     */
+    private suspend fun withRememberedStartDate(
+        meta: JwMeta?,
+        tableId: Long,
+    ): JwMeta? {
+        if (meta == null || meta.startDate.isNotBlank()) return meta
+        val remembered = settingsStore.settings.first().semesterStartDates
+        val localSemester =
+            db
+                .timetableDao()
+                .getById(tableId)
+                ?.semester
+                .orEmpty()
+        return SemesterStartDateMemory.resolve(meta, remembered, fallbackSemester = localSemester)
     }
 
     private fun TimetableEntity.toLocalMeta() =
@@ -248,6 +284,11 @@ internal class TimetableImportService(
         if (meta == null) return
         val table = db.timetableDao().getById(tableId) ?: return
         val planned = TimetableMetaPlan.apply(table, meta)
+        // 教务这次**真的给了**开学日期才记下来（按学期）。口径必须与建表当天那个
+        // 猜测值分开：把猜出来的日期也记进记忆表，等于给一个错答案盖上「已确认」
+        if (meta.startDate.isNotBlank()) {
+            settingsStore.rememberSemesterStartDate(planned.semester, meta.startDate)
+        }
         if (planned == table) return
         db.timetableDao().update(planned)
         if (planned.totalWeeks != table.totalWeeks) {

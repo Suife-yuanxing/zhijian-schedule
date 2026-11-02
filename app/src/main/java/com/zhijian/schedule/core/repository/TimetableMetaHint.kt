@@ -15,12 +15,24 @@ import com.zhijian.schedule.core.jw.JwMeta
  * 2. **还缺什么**：来源只声明了一部分（比如只有学期名、没有开学日期）时，
  *    没声明的那部分会**安静地保留旧值**——旧值若来自建表当天，周次映射就是错的，
  *    而这正是「学期第 10 周显示成第 1 周」的成因。所以缺项要单独提醒（[missingHint]）。
+ *    具体「该怎么做」由 [SemesterStartDateMemory] 给，这里只说后果——一处一句，
+ *    免得同一条提示里出现两句意思相近的话。
  *
  * 纯逻辑、不碰 Android API（项目约定，见 CONTRIBUTING 第 3 节）。
  */
 object TimetableMetaHint {
-    /** 缺开学日期时的提醒；比「去高级设置看看」具体，直接说清后果 */
-    private const val MISSING_START_DATE = "开学日期未同步，学期周次可能不准，建议在高级设置里核对"
+    /**
+     * 缺开学日期时的提醒。
+     *
+     * ## 为什么不再自己写一句「开学日期未同步」
+     * 那句话与 [com.zhijian.schedule.core.repository.SemesterStartDateMemory.prompt]
+     * 说的是同一件事，而后者还多给了一条可执行的出路（去「课表信息」填一次，之后
+     * 按学期复用）。两句并排出现在预览里，读起来像两个不同的问题。
+     *
+     * 现在这里只保留「后果」这一半——它说清为什么值得在意，而怎么做由那边给。
+     * 两句拼在一条提示里：先讲会变什么，再讲后果，最后讲怎么办。
+     */
+    private const val MISSING_START_DATE = "周次可能不准"
 
     /**
      * 这次导入真正会改的字段说明（只列会变的）。

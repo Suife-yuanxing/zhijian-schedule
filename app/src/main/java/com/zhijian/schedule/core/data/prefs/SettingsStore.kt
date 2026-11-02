@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.zhijian.schedule.core.repository.SemesterStartDateMemory
 import com.zhijian.schedule.core.theme.GridStyles
 import com.zhijian.schedule.core.theme.ThemeIds
 import kotlinx.coroutines.flow.Flow
@@ -42,6 +43,14 @@ data class AppSettings(
     val mirrorsEnabled: Boolean = true,
     /** 教务登录页自动填充已保存的账号密码；默认关闭，由用户在高级设置里显式打开 */
     val jwAutoFillEnabled: Boolean = false,
+    /**
+     * 按学期记住的开学日期：学期名 → 第 1 周周一（ISO）。
+     *
+     * 十二家教务里只有强智能读到校历，其余只能给「第 N 周上什么课」，而本地那个
+     * startDate 来自建表当天。既然取不到，就让用户填一次、按学期记住，
+     * 判断与淘汰规则见 [com.zhijian.schedule.core.repository.SemesterStartDateMemory]。
+     */
+    val semesterStartDates: Map<String, String> = emptyMap(),
 )
 
 /**
@@ -82,6 +91,7 @@ class SettingsStore
             val CALENDAR_FINGERPRINT = stringPreferencesKey("calendar_sync_fingerprint")
             val SETTINGS_SCHEMA = intPreferencesKey("settings_schema")
             val JW_AUTOFILL = booleanPreferencesKey("jw_autofill_enabled")
+            val SEMESTER_START_DATES = stringPreferencesKey("semester_start_dates")
         }
 
         val settings: Flow<AppSettings> =
@@ -107,6 +117,7 @@ class SettingsStore
                     jwScriptIndexUrl = p[Keys.JW_SCRIPT_INDEX] ?: "",
                     mirrorsEnabled = p[Keys.MIRRORS] ?: true,
                     jwAutoFillEnabled = p[Keys.JW_AUTOFILL] ?: false,
+                    semesterStartDates = SemesterStartDateMemory.decode(p[Keys.SEMESTER_START_DATES].orEmpty()),
                 )
             }
 
@@ -157,6 +168,22 @@ class SettingsStore
         suspend fun setJwAutoFillEnabled(enabled: Boolean) = dataStore.edit { it[Keys.JW_AUTOFILL] = enabled }
 
         suspend fun setJwScriptIndexUrl(url: String) = dataStore.edit { it[Keys.JW_SCRIPT_INDEX] = url.trim() }
+
+        /**
+         * 记住某个学期的开学日期（用户手填一次之后按学期复用）。
+         *
+         * 整表读改写而不是只写当前学期：淘汰按插入顺序进行，而插入顺序存在
+         * 这个字符串里——只写一条会让其余记录的位置信息丢失。
+         */
+        suspend fun rememberSemesterStartDate(
+            semester: String,
+            startDate: String,
+        ) = dataStore.edit { prefs ->
+            val key = Keys.SEMESTER_START_DATES
+            val current = SemesterStartDateMemory.decode(prefs[key].orEmpty())
+            val next = SemesterStartDateMemory.remember(semester, startDate, current)
+            prefs[key] = SemesterStartDateMemory.encode(next)
+        }
 
         /**
          * v1.0.6 及以前的镜像开关默认关闭，升级用户在直连不可用时完全无法下载更新。

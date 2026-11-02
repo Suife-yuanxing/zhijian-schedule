@@ -21,6 +21,7 @@ import com.zhijian.schedule.core.model.ImportPreview
 import com.zhijian.schedule.core.model.ImportSource
 import com.zhijian.schedule.core.net.JwAssetCache
 import com.zhijian.schedule.core.repository.ScheduleRepository
+import com.zhijian.schedule.core.repository.SemesterStartDateMemory
 import com.zhijian.schedule.core.sync.JwSyncManager
 import com.zhijian.schedule.core.sync.SyncScheduler
 import com.zhijian.schedule.core.ui.island.IslandHintTone
@@ -662,12 +663,12 @@ class JwImportViewModel
                 if (ready != null) {
                     prefetched = null
                     prefetchReady = false
-                    preview = ready.preview
+                    preview = ready.preview.withMissingInfo()
                 } else {
                     // WebView 已停在课表页时（URP / 树维 带学期参数），优先用它抓，而不是地址栏
                     val effective = pageUrl.takeIf { isSameHost(it, trimmed) }
                     when (val result = syncManager.fetchForPreview(effective)) {
-                        is JwSyncManager.FetchResult.Success -> preview = result.preview
+                        is JwSyncManager.FetchResult.Success -> preview = result.preview.withMissingInfo()
                         is JwSyncManager.FetchResult.Failed -> {
                             errorMessage = result.message
                             needsLogin = result.needsLogin
@@ -677,6 +678,52 @@ class JwImportViewModel
                 }
                 loading = false
             }
+        }
+
+        /**
+         * 抓完了，可这次抓回来的课表**说不清学期或开学日期**：在页面上提醒一句。
+         *
+         * ## 为什么走预览面板的提示行，而不是浮岛
+         * 这一刻预览弹层正盖住整个页面下半屏，浮岛在它下面——用户根本看不到（本喵在
+         * 真机上就是这么验的：抓完只看得到弹层）。预览面板里本来就有一条「课表信息」
+         * 提示行（`ImportPreview.infoHint`），它讲的是同一件事，位置也正是用户读
+         * 变更清单的地方。
+         *
+         * ## 为什么用待办档语气而不是错误
+         * 这不是失败：课表抓到了、课也进了。缺的是一项用户顺手就能补的输入。
+         * 所以文案写成「在『课表信息』里填一次」，不写成「抓取失败」。
+         */
+        private suspend fun missingInfoOf(imported: ImportPreview): String? {
+            val meta = imported.meta
+            // meta 为 null 表示这次抓取**什么都没声明**（没有学期名、也没有日期）：
+            // 这正是最该提醒的情况，不能直接 return——所以学期名回落到本地课表的那个，
+            // 因为用户此刻看到的课表显然属于某个学期
+            val remembered = settingsStore.settings.first().semesterStartDates
+            val localSemester =
+                repository
+                    .activeTimetable
+                    .first()
+                    ?.semester
+                    .orEmpty()
+            return SemesterStartDateMemory.missingInfoPrompt(
+                semester = meta?.semester.orEmpty().ifBlank { localSemester },
+                fetchedStartDate = meta?.startDate.orEmpty(),
+                entries = remembered,
+            )
+        }
+
+        /**
+         * 把「还缺什么」并进预览里的那条提示行。
+         *
+         * 与仓储层算出来的 `infoHint`（会改哪些字段 / 开学日期未同步）**拼在一起**
+         * 而不是互相覆盖：那是两件事——一条说「将要发生什么」，一条说「还差什么」，
+         * 用户都需要。用「；」连接，与 [com.zhijian.schedule.core.repository.TimetableMetaHint]
+         * 内部的分句规则一致。
+         */
+        private suspend fun ImportPreview.withMissingInfo(): ImportPreview {
+            val extra = missingInfoOf(this) ?: return this
+            val merged = listOfNotNull(infoHint?.takeIf { it.isNotBlank() }, extra).joinToString("；")
+            return copy(infoHint = merged)
         }
 
         fun dismissPreview() {

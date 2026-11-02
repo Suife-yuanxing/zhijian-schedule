@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -64,8 +65,18 @@ const val ISLAND_HINT_HOLD_MS: Int = 5_000
 /**
  * 浮岛提示的语气：决定图标、强调色、进度条颜色，以及要不要震一下。
  *
- * 只有两档，不是三档：这条通道说的事情只有「成了」和「没成」两种结局。
- * 再加一档「提醒」会让三者的差别退化成颜色深浅，而颜色深浅读不出轻重。
+ * ## 为什么是三档
+ * 这条通道原本只有「成了」和「没成」两档，理由是「再加一档会让三者的差别退化成
+ * 颜色深浅」。那条理由仍然成立——所以第三档 [Pending] **不带新颜色**：它与 [Done]
+ * 共用同一支强调色，靠图标（问号状的 i / 对勾）分开。
+ *
+ * 但它确实必须存在。2026-11 起这条通道要送一条**待办**：「这个学期的开学日期还没有
+ * 来源，去设置页填一次」。它既不是成功（没做成任何事），也不是失败（不是用户的错，
+ * 也不该每次进设置页都红叉加震动训他一遍）——硬塞进 [Failed] 会让一条只需要读一次的
+ * 说明变成每次都被惊动的告警，塞进 [Done] 则会给它打上一个对勾。
+ *
+ * 三档共用同一套几何、时长与进度条：同一条通道上的三种结局，换了形状用户就得
+ * 重新学一遍「这玩意儿会自己消失吗」。
  */
 enum class IslandHintTone {
     /**
@@ -90,6 +101,15 @@ enum class IslandHintTone {
      * 即使把屏幕调成灰度、即使色觉不同，两者依然一眼可分（WCAG 2.1 1.4.1）。
      */
     Failed,
+
+    /**
+     * 待办：有事等用户去做，但**现在没坏**。
+     *
+     * 与 [Done] 同一支强调色、同一个 i 字图标，不震也不抖——它说的是「顺路去做一下」，
+     * 不是「出事了」。真正把三档分开的仍然是**图标**（对勾 / 叉号 / 信息）
+     * 与文案，颜色这一层只负责让它们都够醒目（WCAG 2.1 1.4.1）。
+     */
+    Pending,
 }
 
 /** 失败态那一下横向抖动的总时长：够被看见，又不至于让人等它停 */
@@ -227,6 +247,9 @@ internal fun defaultIcon(tone: IslandHintTone): ImageVector =
     when (tone) {
         IslandHintTone.Done -> Icons.Filled.Check
         IslandHintTone.Failed -> Icons.Filled.Close
+        // 信息而不是 Warning：这一档说的不是「出错了」，是一个还没做过的事项。
+        // 三角感叹号会把它读成告警，而它每次进设置页都可能再出现一次。
+        IslandHintTone.Pending -> Icons.Filled.Info
     }
 
 /**

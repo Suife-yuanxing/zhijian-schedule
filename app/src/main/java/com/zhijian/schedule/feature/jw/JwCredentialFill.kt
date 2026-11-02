@@ -1,7 +1,5 @@
 package com.zhijian.schedule.feature.jw
 
-import com.zhijian.schedule.core.ui.island.IslandHintTone
-
 /**
  * 「这次页面加载要回填的凭据」。
  *
@@ -17,35 +15,18 @@ data class JwCredentialFill(
 )
 
 /**
- * 浮岛提示要显示的一件事：**刚刚发生了什么**。
+ * 教务回填专用的浮岛提示 = 通用的 [com.zhijian.schedule.core.ui.island.IslandNotice]。
  *
- * 与 [JwCredentialFill] 的区别是时态：那个是「下次打开登录页要填什么」，一直躺在内存里；
- * 这个是「刚才那一下的结局」，只活五秒（见 [com.zhijian.schedule.core.ui.island.IslandHint]）
- * 随后就该消失。
+ * ## 为什么它变成了别名而不是自己的数据类
+ * 这条通道原本专属于「回填保存的教务账号」，于是类型也就跟着叫了这个名字。但浮岛
+ * 本身没有凭据语义——它是全站唯一一条「说完就收」的提示通道。第二个使用者
+ * （开学日期缺来源的提醒，见 `SettingsViewModel`）出现时，若照着抄一个平行的类型，
+ * 同一条通道就会有两套位置、两套时长、两套动效。
  *
- * ## 为什么成功与失败共用一条通道
- * 「填进去了」和「没填进去」是同一件事的两种结局。分成两条提示通道，用户会看到
- * 两套位置、两套时长、两套动效，然后要分别学着认——而同一条通道上只差图标与颜色，
- * 一眼就知道「哦，这次没成」。
- *
- * ## 为什么不带密码
- * 提示只需要说清「填的是哪个号」。密码摆到屏幕上没有任何收益，
- * 只是多一处会被旁人看到的可能。
+ * 保留这个名字是为了让 [JwImportViewModel] 与它那批单测继续读得懂：
+ * 「教务回填的那条浮岛提示」仍然是这个名字，只是它现在与别的提示**同源**。
  */
-data class JwCredentialFillNotice(
-    /** 这一次提示的身份与重置令牌，见 [at] */
-    val tone: IslandHintTone,
-    /** 一行说明，直接上屏；由 [credentialFillHintText] 同一族函数生成 */
-    val message: String,
-    /**
-     * 这一次结局发生的时刻（[System.currentTimeMillis]）。
-     *
-     * 它同时充当两件事：**身份**与**重新计时的令牌**。用户清掉 cookie、重新打开登录页，
-     * 我们会再填一次——此时浮岛提示必须从头开始走进度条，而不是接着上一轮的余量。
-     * 用时间戳而不是布尔值，是因为「又发生了一次」和「还挂着上一轮」在布尔值上不会变。
-     */
-    val at: Long,
-)
+typealias JwCredentialFillNotice = com.zhijian.schedule.core.ui.island.IslandNotice
 
 /**
  * 回填成功的那句话：说清「填的是哪个号」，并提醒用户还差最后一步。
