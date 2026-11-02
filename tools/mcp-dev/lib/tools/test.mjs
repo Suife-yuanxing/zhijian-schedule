@@ -209,6 +209,8 @@ export const testTool = {
             runs.push({ channel: 'direct', skipped: true, reason: direct.reason });
             return fail('两条测试通道都不可用', { runs });
         }
+        // 解析必须用原始全文：JUnitCore 把 "OK (N tests)" 打在**开头**，
+        // 而展示用的 trimForDisplay 会裁掉头尾中间段 —— 先裁剪再解析就会解析成 0 条。
         const counts = parseJUnitCore(direct.result.output || '');
         runs.push({
             channel: 'direct',

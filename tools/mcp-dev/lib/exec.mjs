@@ -23,11 +23,23 @@ class OutputBuffer {
         this.bytes = 0;
         this.lines = 0;
         this.dropped = 0;
+        /** 尚未遇到换行的残余片段（跨 chunk 拼接用） */
+        this.pending = '';
     }
 
+    /**
+     * 追加一段 stdout/stderr。
+     *
+     * 必须跨 chunk 拼行：子进程的输出边界与行边界无关（JUnit 的点号进度就是一个 chunk 一个点），
+     * 若每个 chunk 各自 split，就会把「半行」当成完整行推进缓冲 —— 长输出下真正有内容的那一行
+     * （例如 "OK (865 tests)"）会落进被丢弃的中间段，解析器于是拿到 0 条结果。
+     */
     push(chunk) {
         this.bytes += Buffer.byteLength(chunk, 'utf8');
-        const parts = String(chunk).split(/\r?\n/);
+        this.pending += String(chunk);
+        const parts = this.pending.split(/\r?\n/);
+        // 最后一段可能不完整，留在 pending 里等下一个 chunk
+        this.pending = parts.pop();
         for (const line of parts) {
             this.lines += 1;
             if (this.head.length < this.headLines) {
@@ -38,6 +50,24 @@ class OutputBuffer {
             if (this.tail.length > this.tailLines) {
                 this.tail.shift();
                 this.dropped += 1;
+            }
+        }
+    }
+
+    /** 收尾：把没有换行结尾的残余内容补成最后一行。 */
+    finish() {
+        if (this.pending.length > 0) {
+            const line = this.pending;
+            this.pending = '';
+            this.lines += 1;
+            if (this.head.length < this.headLines) {
+                this.head.push(line);
+            } else {
+                this.tail.push(line);
+                if (this.tail.length > this.tailLines) {
+                    this.tail.shift();
+                    this.dropped += 1;
+                }
             }
         }
     }
@@ -168,6 +198,8 @@ export function run(options) {
 
         child.on('close', (code, signal) => {
             clearTimeout(timer);
+            out.finish();
+            err.finish();
             const stdout = out.toString();
             const stderr = err.toString();
             resolve({
