@@ -182,6 +182,45 @@ class JwScriptOutputTest {
         assertNull(r.metaOrNull())
     }
 
+    /** 正方 / 青果没有校历可读，但学期名拿得到——不回传等于让用户白填一个字段 */
+    @Test
+    fun declaredSemesterGoesIntoMeta() {
+        val json =
+            """
+            {"courses":[{"name":"高等数学","day":1,"startSection":1,"endSection":2,"weeks":"1-8周"}],
+             "semester":"2026-2027学年第二学期"}
+            """.trimIndent()
+        val r = JwScriptOutput.parse(json, 20) as JwScriptOutput.ParseResult.Ok
+        assertEquals("2026-2027学年第二学期", r.metaOrNull()?.semester)
+        // 只给学期名时其余字段保持「未声明」，不能顺手写成 0 周 / 空日期以外的值
+        assertEquals("", r.metaOrNull()?.startDate)
+        assertEquals(0, r.metaOrNull()?.totalWeeks)
+    }
+
+    /** 空白的 semester 视为没给，否则会用空串把库里的学期名清掉 */
+    @Test
+    fun blankSemesterIsNotDeclared() {
+        val json =
+            """
+            {"courses":[{"name":"高等数学","day":1,"startSection":1,"endSection":2,"weeks":"1-8周"}],
+             "semester":"   "}
+            """.trimIndent()
+        val r = JwScriptOutput.parse(json, 20) as JwScriptOutput.ParseResult.Ok
+        assertNull(r.metaOrNull())
+    }
+
+    /** 学期名是给人看的字符串，各校写法不同，原样收下不做归一 */
+    @Test
+    fun semesterIsKeptVerbatim() {
+        val json =
+            """
+            {"courses":[{"name":"高等数学","day":1,"startSection":1,"endSection":2,"weeks":"1-8周"}],
+             "semester":"2026-2027-1"}
+            """.trimIndent()
+        val r = JwScriptOutput.parse(json, 20) as JwScriptOutput.ParseResult.Ok
+        assertEquals("2026-2027-1", r.metaOrNull()?.semester)
+    }
+
     @Test
     fun mergesSplitRowsBySameKey() {
         val json =

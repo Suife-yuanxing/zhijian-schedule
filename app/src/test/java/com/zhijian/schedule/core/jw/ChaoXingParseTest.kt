@@ -67,6 +67,16 @@ class ChaoXingParseTest {
         assertEquals("11111111000000000000", pe.weekMask)
     }
 
+    /**
+     * 学期码 `2026-2027-1` 不该原样落库：用户看到的是「2026-2027学年第一学期」。
+     * 这条走 fetch 级路径太重，直接验 metaOf 的翻译口径（它是唯一出口）。
+     */
+    @Test
+    fun `semester code is translated to human label`() {
+        assertEquals("2026-2027学年第一学期", JwSemesterLabel.of("2026-2027", "1"))
+        assertEquals("2026-2027学年第二学期", JwSemesterLabel.of("2026-2027", "2"))
+    }
+
     @Test
     fun `broken timetable json parses to nothing`() {
         assertEquals(0, ChaoXingAdapter.parseTimetable("not json", 20).size)

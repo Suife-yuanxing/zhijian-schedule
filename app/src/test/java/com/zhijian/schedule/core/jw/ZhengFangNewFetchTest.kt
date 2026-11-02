@@ -64,4 +64,57 @@ class ZhengFangNewFetchTest {
             assertTrue(postRequest.path.orEmpty().startsWith("/jwglxt/kbcx/xskbcx_cxXsKb.html"))
             assertEquals("xnm=2025-2026&xqm=3&kzlx=ck", postRequest.body.readUtf8())
         }
+
+    /**
+     * 学期名要跟着抓取同步：正方页面本来就有 xnm/xqm，不翻译成人话等于白读。
+     * 学期名与开学日期是两件事——kbList 不含日期，所以这里只断言 semester。
+     */
+    @Test
+    fun `fetch reports semester name from selected term`() =
+        runBlocking {
+            server.enqueue(MockResponse().setBody(indexPage("2026-2027", "12")))
+            server.enqueue(MockResponse().setBody(KB_JSON).setHeader("Content-Type", "application/json"))
+
+            val result = ZhengFangNewAdapter.fetchSchedule(client, server.url("/jwglxt/").toString(), 20)
+
+            assertEquals("2026-2027学年第二学期", result.meta?.semester)
+            // kbList 无日期：宁可留空让本地值保留，也不能编一个开学日期出来
+            assertEquals("", result.meta?.startDate.orEmpty())
+            assertEquals(0, result.meta?.totalWeeks)
+        }
+
+    /** 兜底候选（按月份推断）不该被当成学期名——只有真正返回课程的那次才算数 */
+    @Test
+    fun `fallback candidate does not overwrite semester`() =
+        runBlocking {
+            // 页面没有 selected 项 → 走 termCandidates 兜底；首个候选返回空课表，第二个才命中
+            server.enqueue(MockResponse().setBody("<html><body>无下拉</body></html>"))
+            server.enqueue(MockResponse().setBody("""{"kbList":[]}""").setHeader("Content-Type", "application/json"))
+            server.enqueue(MockResponse().setBody("""{"kbList":[]}""").setHeader("Content-Type", "application/json"))
+            server.enqueue(MockResponse().setBody(KB_JSON).setHeader("Content-Type", "application/json"))
+
+            val result = ZhengFangNewAdapter.fetchSchedule(client, server.url("/jwglxt/").toString(), 20)
+
+            assertEquals(1, result.courses.size)
+            // 学期名必须出自那次命中，而不是循环里第一个兜底候选。兜底顺序随当前月份变，
+            // 所以期望值从 termCandidates 现算，不写死「第一学期」——否则测试只在一半的月份成立。
+            val hit = ZhengFangNewAdapter.termCandidates()[1]
+            assertEquals(JwSemesterLabel.of(hit.first, hit.second), result.meta?.semester)
+        }
+
+    private fun indexPage(
+        xnm: String,
+        xqm: String,
+    ): String =
+        """
+        <html><body>
+          <select id="xnm"><option value="$xnm" selected>$xnm</option></select>
+          <select id="xqm"><option value="$xqm" selected>学期</option></select>
+        </body></html>
+        """.trimIndent()
+
+    private companion object {
+        const val KB_JSON =
+            """{"kbList":[{"kcmc":"高等数学","xm":"王五","cdmc":"理A401","xqj":"1","jc":"1-2节","zcd":"1-16周"}]}"""
+    }
 }
