@@ -1,19 +1,36 @@
-﻿package com.zhijian.schedule.core.jw
+package com.zhijian.schedule.core.jw
 
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okio.Buffer
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import java.nio.charset.Charset
 
 /** 正方旧版（ASP/GBK）：地址指纹、xh 提取、课表/成绩全链路 */
 class ZhengFangOldParseTest {
     private val client = OkHttpClient()
+
+    /**
+     * 成绩全链路跑在 MockWebServer 上，入口会先过 [JwUrlGuard]。
+     * MockWebServer 的 hostName 由机器 hostname 决定（本机与 CI 不同），
+     * 所以显式放行回环，避免测试结果随机器漂移。
+     */
+    @Before
+    fun allowLoopbackForMockServer() {
+        JwUrlGuard.testAllowedHosts += setOf("127.0.0.1", "localhost", "::1")
+    }
+
+    @After
+    fun clearLoopbackAllowance() {
+        JwUrlGuard.testAllowedHosts.clear()
+    }
 
     @Test
     fun `old zf pages match exactly`() {

@@ -35,10 +35,25 @@ object JwUrlGuard {
     private const val V6_GLOBAL_MASK = 0xE000u
     private const val V6_GLOBAL_PREFIX = 0x2000u
 
+    /**
+     * 单测专用：显式放行的主机（默认空）。
+     *
+     * 为什么需要这个口子：成绩抓取链路会先过 [safeHttpUrl]，而单测用 MockWebServer 起在
+     * 本机回环上。MockWebServer 的 hostName 取自 InetAddress.getLocalHost().hostName，
+     * **由机器 hostname 决定**（本机解析成 www.bandisoft.com，CI 上是别的值）—— 同一份测试
+     * 在本地能过、在 CI 上被守卫拦成空列表（症状：expected:<3> but was:<0>）。
+     *
+     * 所以测试必须自己把「本次允许回环」说清楚，而不是碰运气依赖机器 hostname。
+     * 生产代码永远不写这个集合，它只在测试的 @Before/@After 里被赋值。
+     */
+    internal val testAllowedHosts: MutableSet<String> = mutableSetOf()
+
     /** 校验并返回可安全请求的 URL；不合规返回 null */
     fun safeHttpUrl(raw: String): HttpUrl? {
-        val parsed = raw.toHttpUrlOrNull()
-        return parsed?.takeIf { isHttpScheme(it) && isPublicHost(it.host.lowercase()) }
+        val parsed = raw.toHttpUrlOrNull() ?: return null
+        val host = parsed.host.lowercase()
+        if (host in testAllowedHosts) return parsed
+        return parsed.takeIf { isHttpScheme(it) && isPublicHost(host) }
     }
 
     private fun isHttpScheme(url: HttpUrl): Boolean = url.scheme.lowercase() in setOf(SCHEME_HTTP, SCHEME_HTTPS)

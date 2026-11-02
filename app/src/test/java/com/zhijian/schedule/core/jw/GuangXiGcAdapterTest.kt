@@ -5,6 +5,7 @@ import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -23,6 +24,24 @@ class GuangXiGcAdapterTest {
     private val client = OkHttpClient.Builder().readTimeout(5, TimeUnit.SECONDS).build()
 
     private val portal = "https://zhxy.gxgcedu.com/login"
+
+    /**
+     * 成绩/课表全链路用例跑在 MockWebServer 上，而抓取入口会先过 [JwUrlGuard]。
+     *
+     * MockWebServer 的 hostName 取自 InetAddress.getLocalHost().hostName —— **由机器
+     * hostname 决定**：本机解析成 www.bandisoft.com（能过守卫），CI runner 上是别的值
+     * （被守卫拦下 → 抓取返回空列表 → expected:<3> but was:<0>）。所以这里显式把
+     * 回环主机加进放行集，测试结果不再取决于跑在谁的机器上。
+     */
+    @Before
+    fun allowLoopbackForMockServer() {
+        JwUrlGuard.testAllowedHosts += setOf("127.0.0.1", "localhost", "::1")
+    }
+
+    @After
+    fun clearLoopbackAllowance() {
+        JwUrlGuard.testAllowedHosts.clear()
+    }
 
     /** 「钟点接口为空」的记忆是 object 级状态：每个用例前清掉，测试顺序才无关 */
     @Before

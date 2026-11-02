@@ -30,9 +30,15 @@ import { repoRoot, repoPath, gradlewPath, artifactInfo, appVersion } from '../pr
  */
 const REPAIRABLE = [
     {
-        pattern: /Storage corrupted|symbolLookups.*lookups\.tab/i,
-        label: 'KSP 增量缓存损坏',
+        // 三种表现都指向同一件事：kspCaches 目录与守护进程持有的句柄不一致。
+        //  · "Storage corrupted ... lookups.tab_i"      —— 缓存文件损坏
+        //  · "Storage ... is already registered"        —— 守护进程还握着旧句柄
+        //  · "symbols (系统找不到指定的路径)"            —— 目录被外部删掉，守护进程仍按旧路径写
+        // 共同修法：停守护进程（否则句柄不放）+ 删缓存目录 + 重跑。
+        pattern: /Storage corrupted|lookups\.tab|is already registered|kspCaches.*(not found|找不到)/i,
+        label: 'KSP 增量缓存失效',
         clean: ['app', 'build', 'kspCaches'],
+        stopDaemon: true,
     },
     {
         pattern: /Could not delete|Unable to delete directory|Directory not empty/i,
@@ -133,8 +139,19 @@ export const buildTool = {
         if (!result.ok) {
             for (const rule of REPAIRABLE) {
                 if (!rule.pattern.test(result.output || '')) continue;
+                // 必须先停守护进程：它持有 kspCaches 的文件句柄，只删目录会在下次写入时
+                // 报「系统找不到指定的路径」或「already registered」—— 清了等于没清。
+                if (rule.stopDaemon) {
+                    await run({ command: gradlew, args: ['--stop'], cwd: repoRoot(), timeoutMs: 120000 });
+                }
                 const cleaned = cleanDir(rule.clean);
-                repairs.push({ fault: rule.label, path: rule.clean.join('/'), cleaned: cleaned.cleaned, reason: cleaned.reason || null });
+                repairs.push({
+                    fault: rule.label,
+                    path: rule.clean.join('/'),
+                    stoppedDaemon: rule.stopDaemon === true,
+                    cleaned: cleaned.cleaned,
+                    reason: cleaned.reason || null,
+                });
                 if (cleaned.cleaned) {
                     result = await run({ command: gradlew, args: gradleArgs, cwd: repoRoot(), timeoutMs });
                 }
