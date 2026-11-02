@@ -34,12 +34,32 @@ const KB_LIST = [
   },
 ];
 
+/**
+ * 登录页：带**真实表单**（账号 + 密码 + submit）。
+ *
+ * ## 为什么必须有密码框
+ * App 的凭据捕获（JwCredentialScripts.captureJs）挂在 `submit` / `click` / `keydown`
+ * 三处事件上，并且只认「可见且非空的 input[type=password]」。一个只有链接的登录页
+ * 永远产生不了候选，于是「登录成功 → 气泡 → 记住 → 下次自动回填」这条链路
+ * 在 mock 上根本无法验证——过去只能临时另搭一个页面。
+ *
+ * ## 为什么 POST 回同一个路径
+ * 真实正方就是 `POST login_slogin.html` 后 302 回主框架；这里照抄这个形状，
+ * 让「提交页 origin == 配置的 origin」这条同源判定走的是真实分支，
+ * 而不是被测试环境简化掉。
+ */
 const loginPage = `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><title>模拟正方登录</title></head>
 <body>
   <h1>模拟正方教务（本地假数据）</h1>
   <p>本页只用于验证 App 的 WebView 会话与抓取链路，不连接任何真实学校。</p>
-  <p><a href="/jwglxt/xtgl/index_initMenu.html">进入模拟教务首页</a></p>
+  <!--ERROR-->
+  <form id="loginForm" method="post" action="/jwglxt/xtgl/login_slogin.html">
+    <p><label>学号 <input type="text" name="username" id="username" autocomplete="username"></label></p>
+    <p><label>密码 <input type="password" name="password" id="password" autocomplete="current-password"></label></p>
+    <p><button type="submit" id="loginBtn">登 录</button></p>
+  </form>
+  <p><a href="/jwglxt/xtgl/index_initMenu.html">跳过登录，直接进入模拟教务首页</a></p>
 </body></html>`;
 
 const indexPage = `<!doctype html>
@@ -210,6 +230,43 @@ function send(res, status, contentType, body, headers = {}) {
   res.end(body);
 }
 
+/** 读完整个请求体（表单很小，不需要流式处理） */
+function readBody(req) {
+  return new Promise((resolve) => {
+    let body = '';
+    req.on('data', (chunk) => { body += chunk; });
+    req.on('end', () => resolve(body));
+  });
+}
+
+/**
+ * 登录页渲染：把 `<!--ERROR-->` 占位换成一行错误提示。
+ *
+ * 用占位符而不是字符串拼接，是因为错误文案要插在表单**之前**，
+ * 而 `replace` 一个唯一标记比切字符串更不容易在改动模板时错位。
+ */
+function renderLoginPage(errorText = '') {
+  const slot = errorText
+    ? `<p style="color:#c0392b">${errorText}</p>`
+    : '';
+  return loginPage.replace('<!--ERROR-->', slot);
+}
+
+/**
+ * 模拟登录校验。
+ *
+ * 默认**任何非空账号密码都放行**——mock 的职责是让链路跑通，不是做鉴权。
+ * 但保留一条失败分支：密码等于 `wrong` 时回登录页并显示错误，
+ * 用来验证「登录没成功就不该弹记住气泡」（候选暂存了，但没有 onLoggedIn）。
+ */
+function checkLogin(form) {
+  const username = (form.get('username') || '').trim();
+  const password = form.get('password') || '';
+  if (!username || !password) return { ok: false, reason: '学号与密码都不能为空' };
+  if (password === 'wrong') return { ok: false, reason: '学号或密码错误（mock 故意失败，用于验证不弹气泡）' };
+  return { ok: true, username, password };
+}
+
 const server = createServer((req, res) => {
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
   const path = url.pathname;
@@ -219,8 +276,31 @@ const server = createServer((req, res) => {
     return;
   }
 
+  // 登录页：GET 渲染表单，POST 校验后 302 回主框架。
+  //
+  // 这里同时是「凭据捕获」的验证入口：表单带真实 password 输入框，
+  // 提交时 App 注入的 captureJs 才会派发 onCandidate；302 到
+  // /index_initMenu.html 后没有密码框，loginProbeJs 判定为已登录 → onLoggedIn。
   if (path === '/jwglxt/xtgl/login_slogin.html') {
-    send(res, 200, 'text/html; charset=utf-8', loginPage, {
+    if (req.method === 'POST') {
+      readBody(req).then((raw) => {
+        const form = new URLSearchParams(raw);
+        const result = checkLogin(form);
+        if (!result.ok) {
+          // 登录失败：回登录页并显示原因。此时没有 302，也没有新 Cookie，
+          // 页面仍停在有密码框的状态 —— App 那边不该弹「记住这次登录」
+          send(res, 200, 'text/html; charset=utf-8', renderLoginPage(result.reason));
+          return;
+        }
+        // 登录成功：设会话 Cookie 并跳到主框架（与真实正方同形状）
+        send(res, 302, 'text/html; charset=utf-8', '', {
+          Location: '/jwglxt/xtgl/index_initMenu.html',
+          'Set-Cookie': 'JSESSIONID=mock-zf-session; Path=/',
+        });
+      });
+      return;
+    }
+    send(res, 200, 'text/html; charset=utf-8', renderLoginPage(), {
       // 模拟登录成功后的会话 Cookie；App 的 WebView 与 OkHttp 共享它
       'Set-Cookie': 'JSESSIONID=mock-zf-session; Path=/',
     });
@@ -317,6 +397,7 @@ const server = createServer((req, res) => {
 
 server.listen(port, '0.0.0.0', () => {
   console.log(`mock 正方教务已启动：http://127.0.0.1:${port}/jwglxt/xtgl/login_slogin.html`);
+  console.log('  · 登录页带真实表单（学号/密码）；密码填 wrong 可验证「登录失败不弹记住气泡」');
   console.log('模拟器访问：http://10.0.2.2:' + port + '/jwglxt/xtgl/login_slogin.html');
   console.log(`mock 强智 jsxsd（考试安排）：http://127.0.0.1:${port}/jsxsd/framework/xsMain.jsp`);
   console.log(`mock 强智 jsxsd（课表页·脚本导入）：http://127.0.0.1:${port}/jsxsd/xskb/xskb_list.do`);
