@@ -209,9 +209,24 @@ object HtmlTableScheduleParser {
         return drafts
     }
 
-    /** 先按 <hr> 切块，再按 <br> 切行 */
+    /**
+     * 先按 `<hr>` 切块，再按行切分。
+     *
+     * 行分隔有两种来源，缺一不可：
+     * - `<br>`：青果 / URP / 强智的单元格用换行标签分行；
+     * - **块级 `div` 边界**：树维把课程名 / 教师 / 教室 / 周次写成相邻的同级 `div`
+     *   （`div.course-name` 等），**中间没有 `<br>`**。只认 `<br>` 时整格会被读成一行
+     *   「高等数学张三A1011-16周」，进而被 isWeekLine 判成周次行、isCourseName 判否，
+     *   整格课程全部丢失（实测 count=0）。
+     *
+     * 把 `div` 开标签统一换成 `<br>` 再按 br 切，两种形态就统一了；行内 `span` / `a`
+     * 等内联标签保持原样，不会被误切。
+     */
     private fun splitBlocks(raw: String): List<List<String>> {
-        val marked = raw.replace(Regex("(?i)<hr[^>]*>"), "<br>@@SPLIT@@<br>")
+        val marked =
+            raw
+                .replace(Regex("(?i)<hr[^>]*>"), "<br>@@SPLIT@@<br>")
+                .replace(Regex("(?i)<div\\b[^>]*>"), "<br>")
         val body = Jsoup.parseBodyFragment(marked).body().html()
         val blocks = mutableListOf<List<String>>()
         for (part in body.split("@@SPLIT@@")) {

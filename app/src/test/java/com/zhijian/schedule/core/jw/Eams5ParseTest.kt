@@ -35,6 +35,30 @@ class Eams5ParseTest {
         assertEquals("数据结构", drafts.first().name)
     }
 
+    /**
+     * eams5 部分部署的 print-data 用 div 分层而非 <br> 分行（与树维 classic 同构）。
+     * 这类形态曾整格丢失——课程名、教师、教室全糊成一行被判成周次行。
+     */
+    @Test
+    fun `div layered cell is parsed like br separated`() {
+        val divHtml =
+            """
+            <table class="courseTable">
+              <tr><th>节次</th><th>星期一</th><th>星期二</th><th>星期三</th></tr>
+              <tr><td>1</td><td rowspan="2">
+                <div>数据结构</div><div>1-16周</div><div>张三</div><div>A301</div>
+              </td><td></td><td></td></tr>
+              <tr><td>2</td><td></td><td></td></tr>
+            </table>
+            """.trimIndent()
+        val drafts = Eams5Adapter.parsePayload(divHtml, 20)
+        assertEquals(1, drafts.size)
+        assertEquals("数据结构", drafts.first().name)
+        assertEquals("张三", drafts.first().teacher)
+        assertEquals("A301", drafts.first().room)
+        assertEquals(16, drafts.first().weekMask.count { it == '1' })
+    }
+
     /** 认不出的 JSON 结构必须返回空，由调用方继续下一条路，不能按猜的字段拼课 */
     @Test
     fun `unknown json shape yields nothing`() {

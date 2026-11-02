@@ -104,4 +104,64 @@ class ShuWeiClassicParseTest {
             ShuWeiClassicAdapter.normalizeBase("https://jw.example.edu.cn/"),
         )
     }
+
+    /**
+     * 树维真实形态：课程名 / 教师 / 教室 / 周次是**相邻的同级 div**，中间没有 <br>。
+     *
+     * 只按 <br> 切行时整格会被读成一行「高等数学张三A1011-16周」，被 isWeekLine 判成
+     * 周次行、isCourseName 判否，整格课程全部丢失（修前实测 count=0）。
+     * 同理 eams5 的 print-data / datum 内嵌 HTML 也是这个结构。
+     */
+    @Test
+    fun `adjacent divs become separate lines`() {
+        val divOnly =
+            """
+            <table id="manualArrangeCourseTable">
+              <thead><tr><th>节次</th><th>星期一</th><th>星期二</th><th>星期三</th></tr></thead>
+              <tbody><tr><td>1</td>
+                <td>
+                  <div class="course-name">高等数学</div>
+                  <div class="course-teacher">张三</div>
+                  <div class="course-room">A101</div>
+                  <div class="course-week">1-16周</div>
+                </td>
+                <td></td><td></td></tr></tbody>
+            </table>
+            """.trimIndent()
+        val drafts = HtmlTableScheduleParser.parse(divOnly, 20)
+        assertEquals(1, drafts.size)
+        val course = drafts.first()
+        assertEquals("高等数学", course.name)
+        assertEquals("张三", course.teacher)
+        assertEquals("A101", course.room)
+        assertEquals(16, course.weekMask.count { it == '1' })
+    }
+
+    /** 一格多门课：树维用 hr 分隔，切块后各自成课，不能被并成一条 */
+    @Test
+    fun `hr separated courses in one cell stay separate`() {
+        val twoCourses =
+            """
+            <table id="manualArrangeCourseTable">
+              <thead><tr><th>节次</th><th>星期一</th><th>星期二</th><th>星期三</th></tr></thead>
+              <tbody><tr><td>1</td>
+                <td>
+                  <div class="course-name">高等数学</div>
+                  <div class="course-teacher">张三</div>
+                  <div class="course-week">1-8周</div>
+                  <hr/>
+                  <div class="course-name">大学英语</div>
+                  <div class="course-teacher">李四</div>
+                  <div class="course-week">9-16周</div>
+                </td>
+                <td></td><td></td></tr></tbody>
+            </table>
+            """.trimIndent()
+        val drafts = HtmlTableScheduleParser.parse(twoCourses, 20)
+        assertEquals(2, drafts.size)
+        // 顺序即单元格里的出现次序；不 sorted——中文按码位排会把「大」排到「高」前面
+        assertEquals(listOf("高等数学", "大学英语"), drafts.map { it.name })
+        assertEquals(8, drafts[0].weekMask.count { it == '1' })
+        assertEquals(8, drafts[1].weekMask.count { it == '1' })
+    }
 }
