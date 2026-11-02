@@ -1,10 +1,34 @@
-﻿package com.zhijian.schedule.core.jw
+package com.zhijian.schedule.core.jw
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /** 金智教务：TaskActivity JS 解析、semesterCalendar、/eams/ 指纹与树维的区分 */
 class JinZhiParseTest {
+    /**
+     * 金智真实位图是 **53 位**（NUAA 源码原文：「53 个 01 组成的字符串，代表了一年的 53 周」），
+     * 不是本项目示例里的 20 位。这条钉住超长位图也能正确读出周次，
+     * 并且超出 totalWeeks 的部分由 WeekMask 截断而不是报错。
+     */
+    @Test
+    fun `53 bit bitmap yields the expected weeks`() {
+        val weeks = "0" + "1".repeat(16) + "0".repeat(36)
+        assertEquals(53, weeks.length)
+        val html =
+            """
+            var unitCount = 12;
+            activity = new TaskActivity(1, "张三", "8340", "信息检索与利用", "548",
+                "10302(将军路)", "$weeks", "", null, "", "", "", "");
+            index = 0 * unitCount + 8;
+            """.trimIndent()
+        val drafts = JinZhiAdapter.parsePage(html, 20)
+        assertEquals(1, drafts.size)
+        assertEquals("信息检索与利用", drafts[0].name)
+        assertEquals("10302(将军路)", drafts[0].room)
+        // 位图里第 1-16 周为 1，落库掩码长度跟 totalWeeks=20 走
+        assertEquals(16, drafts[0].weekMask.count { it == '1' })
+    }
+
     /** 页面嵌 JS 的经典形态：actTeachers join 表达式 + 位图周次 + 连续 index */
     @Test
     fun `task activity blocks parse to courses`() {

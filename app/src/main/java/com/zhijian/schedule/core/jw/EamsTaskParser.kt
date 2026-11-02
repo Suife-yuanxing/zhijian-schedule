@@ -234,7 +234,17 @@ internal object EamsTaskParser {
         return back % 2 == 1
     }
 
-    /** 位图 → 周列表；下标 0 占位，i=1 即第 i 周；超长位图按整数位掩码展开 */
+    /**
+     * 位图 → 周列表；下标 0 占位，i = 1 即第 i 周。
+     *
+     * 两种历史形态要分开读：
+     * - **二进制串**（金智主流，NUAA 源码写明是「53 个 01 组成的字符串」）：逐位取 1；
+     * - **十进制位掩码**（超长学期部署）：整个串是一个整数，按 bit 展开。
+     *
+     * 判据用「长度 > 20 且含 8/9」：这个条件是**安全的**，因为二进制串只可能由 0/1
+     * 组成，永远不含 8/9 —— 所以纯位图绝不会被误当成整数。反过来，含 8/9 的串不可能是
+     * 位图，按整数读才对。实测 20/24/40/53/60 位纯位图的 has89 恒为 false。
+     */
     private fun bitmapToWeeks(bitmap: String): List<Int> {
         val raw = bitmap.trim()
         val wide = raw.length > WIDE_BITMAP && raw.any { it == '8' || it == '9' }

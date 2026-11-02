@@ -123,9 +123,15 @@ object JinZhiAdapter : JwAdapter {
     }
 
     /**
-     * semesterCalendar → 当前学期名。响应是内嵌 JS：`semesters: {...}`
+     * semesterCalendar → 学年学期名列表。响应是内嵌 JS：`semesters: {...}`
      * 按学年分组的数组（`schoolYear` + `name`）。取「离今天最近的一档」没有
-     * 现成字段，这里只解析出学年学期文本列表供测试与元数据兜底使用。
+     * 现成字段，这里只解析出文本列表。
+     *
+     * **当前没有生产调用方**：本类从未请求过校历页，这条只在单测里被覆盖。之所以留着
+     * 不删，是因为学期名的确只可能从这里来（`TaskActivity` 的 13 个参数没有学期字段，
+     * 已逐个核对；金智官方校历 OpenAPI 需要 appId + accessToken 网关鉴权，学生端会话
+     * 拿不到）。要接通它必须先实测到该校部署的校历页路径——各校差异大，没实证之前不写
+     * 死一个有可能是错的常量，否则会在 59 所学校上静默发出无效请求。
      */
     internal fun parseSemesterNames(body: String): List<String> {
         val years = Regex("""schoolYear\s*:\s*"(\d{4}-\d{4})"""").findAll(body).map { it.groupValues[1] }.toList()
