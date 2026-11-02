@@ -88,7 +88,20 @@ function send(message) {
     );
 }
 
-/** tools/call 的执行体。 */
+/**
+ * tools/call 的执行体。
+ *
+ * isError 的语义必须卡死：它表示「工具没能执行」，而不是「执行成功但结论是否定」。
+ * 因为 DSH 的 mcp-client 拿到 isError=true 会直接 throw（见其 lib/index.js：
+ * "if (result.isError === true) throw new Error(text)"），一旦把业务失败
+ * （ok:false，例如「lint 有 45 条违规」「发版清单缺一项」）也标成 isError，
+ * 结构化 data 就会连同异常一起被丢掉，调用方拿不到可解析的明细。
+ *
+ * 所以：
+ *   · 未知工具 / 未捕获异常  → isError=true（真的没执行成功）
+ *   · 工具返回 ok:false      → 正常返回，isError 不设，让 structuredContent 原样送到
+ *   · 工具返回 ok:true       → 正常返回
+ */
 async function callTool(params) {
     const name = params && params.name;
     const tool = TOOL_MAP.get(name);
@@ -109,7 +122,6 @@ async function callTool(params) {
         return {
             content: [{ type: 'text', text }],
             structuredContent: value,
-            isError: value && value.ok === false ? true : undefined,
         };
     } catch (error) {
         const message = error && error.stack ? error.stack : String(error);

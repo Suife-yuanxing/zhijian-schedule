@@ -213,6 +213,11 @@ async function main() {
             if (!structured || typeof structured.ok !== 'boolean') {
                 problems.push(name + ' 未返回 { ok, summary, data } 信封');
             }
+            // 业务失败（ok:false）绝不能标成 isError：DSH 的 mcp-client 会把 isError 直接
+            // throw 出去，structuredContent 随之丢失，调用方拿不到可解析的明细。
+            if (structured && structured.ok === false && result.isError === true) {
+                problems.push(name + ' 业务失败被标成 isError（structuredContent 会被桥丢弃）');
+            }
         }
         // 未知工具应报错而不是崩溃
         const unknown = await server.request('tools/call', { name: 'no_such_tool', arguments: {} });
