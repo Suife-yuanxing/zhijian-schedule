@@ -72,6 +72,9 @@
 - fix(jw): 气泡挂着期间用户又登录了一次时，严禁拿旧问句保存新密码——`JwCredentialPrompt.candidateAt` 记录候选时刻，确认时若候选已变则这次不存并提示「这次登录的账号已变化」。另一处同类修正：`credentialNotice`（事后结果）与 `credentialPrompt`（待决定问句）拆成两个字段，此前共用一个，弹窗一关会把刚写好的结果提示一起抹掉。
 - fix(jw): **学期第 10 周显示成第 1 周**。周次公式 `floorDiv(DAYS.between(开学日, 今天), 7) + 1` 本身没错，错在喂给它的起点：`startDate` 来自首启建表时的 `LocalDate.now().with(DayOfWeek.MONDAY)`（今天建表就是今天那周一），而课表页 `xskb_list.do` **只给「第 N 周上什么课」，不给第 1 周是哪一天**——`QiangZhiAdapter.fetchCourses()` 返回的 `JwFetchResult` 第三个参数 `meta` 一直没传，`TimetableMetaPlan.apply(null)` 什么都不改，于是整学期恒等于第 1 周。修法：新增 `JwWeekCalendar` 解析同源「教学周历」页（`jxzl/jxzl_query`，首列周次、日期藏在单元格 `title='2026年08月31'` 里，正文只有「31」缺年月不能用），抓课表成功后顺带取回第 1 周周一与总周数，随 `JwMeta` 落库。真机实测（东莞职院）：修前 `startDate=2026-11-02`，修后 `2026-08-31`，顶栏从「本周 · 第 1 周」变「本周 · 第 10 周」，课表网格同步正确（`6-10周`、`2-19周`、`9-14周`、`10-17周` 四门课全部出现）。
 - fix(jw): **脚本导入只同步总周数、不同步开学日期**。`JwScriptOutput` 的信封只有 `totalWeeks`，同样的病在脚本那条路上重演一遍。现在 `startDate` 与 `totalWeeks` 一起校验（非 ISO 写法 `2026/8/31` 归一化，非法值丢弃并计 warning，绝不把错日期写进库），由 `Ok.metaOrNull()` 统一收口——调用方不再各拼一遍区间与格式判断。
+- fix(jw): **正方新版抓到了学年学期却不落库**。`ZhengFangNewAdapter` 一直把课表页 `select#xnm` / `select#xqm` 读出来当查询参数用，却从不回传给 `JwMeta`——学期名这一项对 783 所学校（目录占比 40.5%）等于白读。现在按「真正返回了课程的那一次」的 `xnm/xqm` 拼学期名，兜底候选（按月份推断的那两条）不参与：拿它拼会把错的学期写进库。
+- fix(jw): **超星的学期码被原样落库**。`ChaoXingAdapter` 把课表接口的 `xnxq`（`2026-2027-1`）直接塞进 `JwMeta.semester`，设置页与「我的」页会显示成 `2026-2027-1` 而不是「2026-2027学年第一学期」。现在翻成人话再落库，认不出则不带该字段（保留本地值）。
+- fix(jw): **同步了学期名反而更容易漏掉开学日期**。上面两处修好后，正方 / 青果那 900 多所学校会看到「学期」正确、而「开学日期」仍是建表当天——顶栏照样错，且比修之前更难察觉（学期对了会让人以为整块信息都对）。`TimetableMetaHint` 现在把「会变什么」与「还缺什么」分成两个判断：缺开学日期时预览里明确点名「开学日期未同步，学期周次可能不准」。开学日期错了会让整个学期的周次整体平移，而界面上没有任何一处会显得不对劲，这是它必须被单独说出来的理由。
 
 ### Changed
 
@@ -79,6 +82,9 @@
 - test(jw): 新增 `CredentialBlobTest`（6）、`JwCredentialOriginTest`（6）、`JwCredentialMaskingTest`（5）、`JwCredentialPromptPolicyTest`（7）、`JwCredentialFillTest`（12）——覆盖换机恢复、文件被改坏、跨校回填、跳统一认证、密码里带引号与换行、气泡与候选错配等**不会抛异常、只会安静做错事**的分支。
 - test(nav): 新增 `SecondLevelEntrancePolicyTest`（8）与 `ProfileEntryNavigatorTest`（7）——钉住「按路由各播一次」「窗口内第二次请求必须丢弃而不是排队」「预算每次重新求值」三条。
 - test(jw): 新增 `JwWeekCalendarTest`（9）——含一份**真机实抓的整页夹具**（`src/test/resources/jw/jsxsd-jxzl-2026-11-02.html`，16 KB，20 周 × 9 列，内联进 Kotlin 既读不下去也改不动）。钉住四件事：第 1 周周一取该行最左日期、总周数取**最大周次而不是行数**（缺项周历不会把后面的周吃掉）、学期码 `-1/-3` 都映射到第一学期、以及「2026-11-02 落在第 10 周」这条正是用户报障当天的断言。`JwScriptOutputTest` 加 5 条覆盖脚本侧 `startDate`。
+- test(jw): 新增 `JwSemesterLabelTest`（9）——学年 + 学期码 → 学期名的唯一出口。钉住「正方 3/12 与强智 1/2 两套编码都要认」「只给起始年时补成完整学年」「`2026-2025` 这种脏跨度按起始年重算」「认不出返回空串（不覆盖本地值）」四条。`JwSemesterLabel` 同时收编了 `JwWeekCalendar.semesterName` 里重复的那份映射，改一处全生效。
+- test(jw): `ZhengFangNewFetchTest` 加 2 条抓取级断言——学期名确实写进 `meta.semester`，且出自**命中课表的那次**候选而非循环里第一个兜底候选（期望值从 `termCandidates()` 现算，不写死「第一学期」，否则测试只在一半的月份成立）。`JwScriptOutputTest` 再加 3 条覆盖脚本侧 `semester`（含空白不覆盖、各校写法原样保留）。
+- test(jw): 新增 `TimetableMetaHintTest`（6）——把原来长在 `TimetableImportService.metaHint` 里、与数据库读取缠在一起的两个判断抽成纯函数后逐格枚举：只列会变的字段、开学日期与总周数分开报、缺开学日期必须点名、有 `startDate` 时不打扰、无 meta 不打扰。
 
 
 ## [1.0.15] - 2026-11-01
