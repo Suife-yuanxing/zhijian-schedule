@@ -137,7 +137,13 @@ object QiangZhiAdapter : JwAdapter {
                 if (isLoginPage(html)) throw JwException.NeedsLogin()
                 val drafts = parse(html, totalWeeks)
                 if (drafts.isNotEmpty()) {
-                    return@withContext JwFetchResult(drafts, SectionTimes.fromHtml(html))
+                    // 周历决定「第 1 周是哪天」：课表页只给周次不给日期，缺了它本地那个
+                    // 建表日就会被当成开学日，第 10 周永远显示成第 1 周（见 JwWeekCalendar）
+                    return@withContext JwFetchResult(
+                        drafts,
+                        SectionTimes.fromHtml(html),
+                        JwWeekCalendar.fetch(base) { get(client, it, referer) },
+                    )
                 }
                 lastError = "未在页面中找到课表数据"
             }

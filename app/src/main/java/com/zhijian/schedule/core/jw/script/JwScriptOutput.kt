@@ -1,5 +1,6 @@
 package com.zhijian.schedule.core.jw.script
 
+import com.zhijian.schedule.core.jw.JwMeta
 import com.zhijian.schedule.core.jw.SectionTimeDraft
 import com.zhijian.schedule.core.jw.SectionTimes
 import com.zhijian.schedule.core.jw.ZhengFangNewAdapter
@@ -13,6 +14,8 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 /**
  * 脚本输出信封校验（spec §1.3）：逐条校验、非法条目丢弃并计 warning；
@@ -26,7 +29,25 @@ object JwScriptOutput {
             val warnings: List<String>,
             /** 脚本可选返回的作息时间；空表示该教务页没有时间信息 */
             val sectionTimes: List<SectionTimeDraft> = emptyList(),
-        ) : ParseResult
+            /**
+             * 脚本可选返回的第 1 周周一（ISO `yyyy-MM-dd`）；null 表示脚本没给。
+             *
+             * 只有 totalWeeks 不够：课表页给的是「第 N 周上什么课」，不给第 1 周是哪天，
+             * 而本地那个 startDate 来自建表当天。缺了它，学期第 10 周照样显示成第 1 周。
+             */
+            val startDate: String? = null,
+        ) : ParseResult {
+            /**
+             * 这次解析能同步的学期元数据；两样都没给时返回 null（本地值原样保留）。
+             *
+             * 放在 [Ok] 上而不是让调用方各拼一遍：调用方只该关心「有没有元数据」，
+             * 不该重复判断 totalWeeks 的区间与 startDate 的格式——那两件事已经校验过了。
+             */
+            fun metaOrNull(): JwMeta? {
+                if (totalWeeks == null && startDate == null) return null
+                return JwMeta(startDate = startDate.orEmpty(), totalWeeks = totalWeeks ?: 0)
+            }
+        }
 
         data class Invalid(
             val reason: String,
@@ -42,6 +63,10 @@ object JwScriptOutput {
 
     /** 课程名里的连续空白压成单个空格 */
     private val WHITESPACE = Regex("""\s+""")
+
+    /** 开学日期：容许 `2026-8-31` / `2026/08/31` 两种写法，归一化成 ISO */
+    private val DATE = Regex("""^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$""")
+    private val ISO_DATE = DateTimeFormatter.ISO_LOCAL_DATE
 
     fun parse(
         raw: String,
@@ -84,6 +109,7 @@ object JwScriptOutput {
             totalWeeks = declaredWeeks,
             warnings = warnings,
             sectionTimes = sectionTimesOf(root, warnings),
+            startDate = startDateOf(root, warnings),
         )
     }
 
@@ -138,6 +164,40 @@ object JwScriptOutput {
 
     private fun JsonObject.totalWeeksOrNull(): Int? =
         (this["totalWeeks"] as? JsonPrimitive)?.intOrNull?.takeIf { it in 1..30 }
+
+    /**
+     * 脚本可选字段 `startDate`（第 1 周周一，ISO `yyyy-MM-dd`）。
+     *
+     * 认不出就返回 null 并记 warning，而不是把原文写进库：开学日期写错会让整学期的
+     * 周次映射全偏，而且用户在课表上很难发现——宁可保留本地值。
+     * 顺便归一化成 ISO：脚本作者常写 `2026/8/31` 或 `2026-8-31`，补齐零位后存库，
+     * 免得 [com.zhijian.schedule.core.util.TimeUtils.parseDate] 在别处解析失败。
+     */
+    private fun startDateOf(
+        root: JsonObject,
+        warnings: MutableList<String>,
+    ): String? {
+        val raw = root.str("startDate").trim()
+        if (raw.isEmpty()) return null
+        val m = DATE.find(raw)
+        val date =
+            m?.let {
+                val year = it.groupValues[1].toIntOrNull() ?: 0
+                val month = it.groupValues[2].toIntOrNull() ?: 0
+                val day = it.groupValues[3].toIntOrNull() ?: 0
+                runCatching { LocalDate.of(year, month, day) }.getOrNull()
+            }
+        if (date == null) {
+            warnings +=
+                if (m == null) {
+                    "脚本返回的开学日期「$raw」不是 yyyy-MM-dd 格式，已忽略"
+                } else {
+                    "脚本返回的开学日期「$raw」不是有效日期，已忽略"
+                }
+            return null
+        }
+        return date.format(ISO_DATE)
+    }
 
     private fun JsonObject.str(key: String): String = (this[key] as? JsonPrimitive)?.contentOrNull.orEmpty()
 

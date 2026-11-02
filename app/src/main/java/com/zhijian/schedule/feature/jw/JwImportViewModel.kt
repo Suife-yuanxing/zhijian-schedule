@@ -9,7 +9,6 @@ import androidx.lifecycle.viewModelScope
 import com.zhijian.schedule.core.data.prefs.SettingsStore
 import com.zhijian.schedule.core.jw.AdapterSteps
 import com.zhijian.schedule.core.jw.JwAdapterRegistry
-import com.zhijian.schedule.core.jw.JwMeta
 import com.zhijian.schedule.core.jw.credential.JwCredentialMasking
 import com.zhijian.schedule.core.jw.credential.JwCredentialOrigin
 import com.zhijian.schedule.core.jw.credential.JwCredentialPromptPolicy
@@ -734,9 +733,10 @@ class JwImportViewModel
                                 ImportSource.JW,
                                 syncMode = false,
                                 sectionTimes = out.sectionTimes,
-                                // 脚本能声明学期周数（本校校历）：带上它，预览才按同一个长度
-                                // 归一化掩码，确认导入时才会连课表信息一起同步
-                                meta = out.totalWeeks?.let { JwMeta(totalWeeks = it) },
+                                // 脚本能声明学期周数与第 1 周周一（本校校历）：两个都带上，
+                                // 预览才按同一个长度归一化掩码，确认导入时才会连课表信息一起同步。
+                                // 只带总周数不够——开学日期缺了，学期第 10 周照样显示成第 1 周。
+                                meta = out.metaOrNull(),
                             )
                     }
                 }

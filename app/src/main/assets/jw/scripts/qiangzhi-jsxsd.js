@@ -13,6 +13,54 @@
  * 给新学校写脚本可复制本文件改 manifest 与选择器。
  */
 globalThis.__paperScheduleScript = {
+  /**
+   * 读同源「教学周历」页：首列是周次，日期在单元格 `title='2026年08月31'` 里
+   * （正文只有「31」「09月06日」，缺年月，不能拿来当日期用）。
+   *
+   * 尽力而为：页面不开放（菜单权限 / 空数据）时返回 null，脚本照常交课程，
+   * 只是不带学期元数据——抓课表本身不该因为周历拿不到而失败。
+   *
+   * 挂在对象内而不是写成顶层 function：脚本走 indirect eval，顶层函数声明会
+   * 落到 global 上，而运行器只清 `__paperScheduleScript`，残留会漏给下一个脚本。
+   */
+  readCalendar: async function (warnings) {
+    var m = /^(https?:\/\/[^/]+\/jsxsd\/)/.exec(location.href);
+    if (!m) return null;
+    try {
+      var res = await fetch(m[1] + 'jxzl/jxzl_query', { credentials: 'same-origin' });
+      if (!res.ok) return null;
+      var doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+      var table = doc.getElementById('kbtable') || doc.querySelector('table.kbtable');
+      if (!table) return null;
+      var rows = table.querySelectorAll('tr');
+      var maxWeek = 0, startDate = '';
+      for (var i = 0; i < rows.length; i++) {
+        var cells = rows[i].querySelectorAll('td,th');
+        if (cells.length < 2) continue;
+        var weekNo = parseInt((cells[0].textContent || '').trim(), 10);
+        if (!weekNo || isNaN(weekNo)) continue;
+        var dateText = '';
+        for (var c = 1; c < cells.length; c++) {
+          var t = (cells[c].getAttribute('title') || '').trim();
+          if (/^\d{4}年\d{1,2}月\d{1,2}$/.test(t)) { dateText = t; break; }
+        }
+        if (!dateText) continue;
+        if (weekNo > maxWeek) maxWeek = weekNo;
+        if (weekNo === 1) {
+          var d = /^(\d{4})年(\d{1,2})月(\d{1,2})$/.exec(dateText);
+          if (d) {
+            startDate = d[1] + '-' + ('0' + d[2]).slice(-2) + '-' + ('0' + d[3]).slice(-2);
+          }
+        }
+      }
+      if (!maxWeek || !startDate) return null;
+      return { totalWeeks: maxWeek, startDate: startDate };
+    } catch (e) {
+      warnings.push('教学周历读取失败，学期周次与开学日期未同步');
+      return null;
+    }
+  },
+
   fetchSchedule: async function (ctx) {
     var warnings = [];
     var table = document.getElementById('kbtable') || document.querySelector('table.kbtable');
@@ -145,6 +193,14 @@ globalThis.__paperScheduleScript = {
         });
       });
     });
-    return { courses: courses, warnings: warnings };
+    // 教学周历：课表页只给「第 N 周上什么课」，不给第 1 周是哪一天。
+    // 缺了这个日期，本地建表日会被当成开学日，学期第 10 周也显示成第 1 周。
+    var calendar = await globalThis.__paperScheduleScript.readCalendar(warnings);
+    var envelope = { courses: courses, warnings: warnings };
+    if (calendar) {
+      envelope.totalWeeks = calendar.totalWeeks;
+      envelope.startDate = calendar.startDate;
+    }
+    return envelope;
   }
 };
