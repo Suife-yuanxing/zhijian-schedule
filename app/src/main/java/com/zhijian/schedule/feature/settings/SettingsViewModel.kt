@@ -21,6 +21,9 @@ import com.zhijian.schedule.core.jw.credential.JwCredentialStore
 import com.zhijian.schedule.core.jw.credential.JwCredentialSummary
 import com.zhijian.schedule.core.notifications.AlarmScheduler
 import com.zhijian.schedule.core.repository.ScheduleRepository
+import com.zhijian.schedule.core.repository.SemesterStartDateMemory
+import com.zhijian.schedule.core.ui.island.IslandHintTone
+import com.zhijian.schedule.core.ui.island.IslandNotice
 import com.zhijian.schedule.core.util.TimeUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -78,6 +81,23 @@ class SettingsViewModel
         /** 用户从权限设置页返回后，若已授权就补上这次开启 */
         private var pendingCalendarEnable = false
 
+        /**
+         * 设置页的浮岛提示（与本 App 别处的浮岛同一条通道，见 IslandNoticeHost）。
+         *
+         * 与 [SettingsUiState.message] 分工：那条是**常驻**在页面顶部的一行结果说明
+         * （「课表信息已保存」），说的是刚刚做完的事；这条会自己收起，说的是**还差什么**
+         * ——它每次进设置页都该出现，直到用户真的填了为止。
+         */
+        var notice by mutableStateOf<IslandNotice?>(null)
+            private set
+
+        /** 与 [notice] 分开，是为了让退场动画有内容可演（同 IslandNoticeHost 的契约） */
+        var noticeVisible by mutableStateOf(false)
+            private set
+
+        /** 当前挂着的那条「还缺开学日期」的文案；null = 没有这条待办 */
+        private var startDatePrompt: String? = null
+
         init {
             uiState =
                 uiState.copy(
@@ -95,6 +115,9 @@ class SettingsViewModel
                     repository.activeSections,
                 ) { settings, timetable, sections -> Triple(settings, timetable, sections) }
                     .collect { (settings, timetable, sections) ->
+                        // 开学日期提示跟着课表一起算：换学期（timetable.semester 变了）
+                        // 就得重新问一次，而学期名只在这条流里出现
+                        refreshStartDateNotice(settings, timetable)
                         uiState =
                             uiState.copy(
                                 settings = settings,
@@ -109,6 +132,45 @@ class SettingsViewModel
                             )
                     }
             }
+        }
+
+        /**
+         * 开学日期缺来源时，弹一条浮岛提醒（走与本 App 别处同一条通道）。
+         *
+         * ## 判据为什么是「这个学期不在记忆里」
+         * 课表实体上的 startDate **永远有值**——首次建表时写的是当天那一周的周一。
+         * 从它身上分不出「这是教务给的 / 用户填的」还是「这是建表那天猜的」。
+         * 所以权威性单独记一张表（[SemesterStartDateMemory]）：教务给了就记、
+         * 用户填了就记，**没记过 = 没有来源**。这条判据不需要认识任何一家教务。
+         *
+         * ## 为什么只在文案变化时重弹
+         * 这条流会被节假日刷新、跨零点、改任意设置反复触发。每次都取新时间戳
+         * 重弹一遍，用户在设置页待多久就被打扰多久。文案没变就不动它。
+         */
+        private fun refreshStartDateNotice(
+            settings: AppSettings,
+            timetable: TimetableEntity?,
+        ) {
+            val text =
+                timetable?.let {
+                    SemesterStartDateMemory.prompt(it.semester, settings.semesterStartDates)
+                }
+            // 与「当前挂着哪条待办」比，而不是与 notice.message 比：
+            // 同一条通道上还会出现别的话（「课表信息已保存」），拿它比会把那些话吞掉
+            if (text == startDatePrompt) return
+            startDatePrompt = text
+            if (text == null) {
+                // 待办消失了：只在正挂着这条待办时才收起，别把别的提示顺手关掉
+                if (notice?.tone == IslandHintTone.Pending) noticeVisible = false
+                return
+            }
+            notice = IslandNotice(tone = IslandHintTone.Pending, message = text, at = System.currentTimeMillis())
+            noticeVisible = true
+        }
+
+        /** 浮岛提示的进度条走完：收起它（数据留着，退场动画才有内容可演） */
+        fun dismissNotice() {
+            noticeVisible = false
         }
 
         private suspend fun calendarAvailable(): Boolean =
@@ -183,16 +245,36 @@ class SettingsViewModel
                 return
             }
             viewModelScope.launch {
+                val merged = semester.trim().ifBlank { timetable.semester }
                 repository.updateTimetable(
                     timetable.copy(
                         name = name.trim().ifBlank { timetable.name },
-                        semester = semester.trim(),
+                        semester = merged,
                         startDate = startDate.trim(),
                         totalWeeks = totalWeeks.coerceIn(1, 30),
                     ),
                 )
+                // 用户亲手填的开学日期按学期记下来：下学期（学期名变了）才会再问一次。
+                // 这是「填一次、按学期复用」里的那一半——不记的话，下次教务抓不到
+                // 日期时仍然只能沿用建表当天，等于白填。
+                settingsStore.rememberSemesterStartDate(merged, startDate.trim())
                 uiState = uiState.copy(message = "课表信息已保存")
+                postNotice(IslandHintTone.Done, "开学日期已记住 · 「" + merged + "」以后自动复用")
             }
+        }
+
+        /**
+         * 设置页浮岛提示的唯一入口（与本 App 别处同一条通道）。
+         *
+         * 令牌取系统时钟而不是由调用方传：它既是这条提示的身份，也是进度条的重置令牌
+         * （见 [IslandNotice.at]）。让调用方参与只会引入一个不可信的输入。
+         */
+        private fun postNotice(
+            tone: IslandHintTone,
+            message: String,
+        ) {
+            notice = IslandNotice(tone = tone, message = message, at = System.currentTimeMillis())
+            noticeVisible = true
         }
 
         fun saveSectionTime(

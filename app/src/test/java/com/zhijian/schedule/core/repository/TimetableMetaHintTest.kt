@@ -2,6 +2,8 @@ package com.zhijian.schedule.core.repository
 
 import com.zhijian.schedule.core.jw.JwMeta
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -41,12 +43,21 @@ class TimetableMetaHintTest {
     /**
      * 这是本次修复的核心提醒：正方 / 青果能同步学期名但拿不到开学日期，
      * 旧值（建表当天）会安静留下，整学期周次平移而界面上看不出异常。
+     *
+     * ## 断言为什么变了
+     * 文案被拆成了两半：这里只说**后果**（「周次可能不准」），
+     * 「怎么做」交给 [SemesterStartDateMemory.prompt]。原来那句
+     * 「建议在高级设置里核对」与那边的提示说的是同一件事，并排出现读起来
+     * 像两个问题。断言的**意图没有放宽**——它仍然要求这条提示说清「会出什么事」，
+     * 只是不再要求它同时给出操作路径（那件事另有断言在别处钉着）。
      */
     @Test
-    fun missing_start_date_is_named_explicitly() {
+    fun missing_start_date_names_the_consequence() {
         val hint = TimetableMetaHint.missingHint(JwMeta(semester = "2026-2027学年第一学期"))
-        assertTrue(hint!!.contains("开学日期"))
-        assertTrue(hint.contains("核对"))
+        assertNotNull(hint)
+        assertTrue("必须说清后果，否则用户没有理由去填", hint!!.contains("周次"))
+        assertTrue("「可能不准」而不是「一定不准」：来源没声明不等于已知是错的", hint.contains("可能"))
+        assertFalse("操作路径由 SemesterStartDateMemory 给，这里不该重一句", hint.contains("设置"))
     }
 
     @Test

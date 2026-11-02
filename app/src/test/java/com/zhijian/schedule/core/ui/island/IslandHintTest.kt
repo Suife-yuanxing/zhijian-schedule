@@ -184,6 +184,43 @@ class IslandHintTest {
     }
 
     /**
+     * 三档语气的图标必须两两不同。
+     *
+     * 第二档（待办）与成功档共用同一支强调色，颜色这一层**不传递任何差别**——
+     * 分开它们的只有图标与文案。若这里退化成「待办也用对勾」，一条「还差什么」
+     * 的说明会被读成「已经办好了」，用户合上设置页就走了。
+     */
+    @Test
+    fun allThreeTonesHaveDistinctIcons() {
+        val icons = IslandHintTone.entries.map { defaultIcon(it) }
+        assertEquals("三档语气必须各有各的图标", icons.size, icons.toSet().size)
+    }
+
+    /**
+     * 待办档的**醒目程度**必须与成功档完全一致。
+     *
+     * 两档共用同一支颜色不是"顺手复用"，而是一条视觉契约：待办说的是
+     * 「顺路去做一下」，它既不该比成功更吵（那会让一条待办读成告警），
+     * 也不该更淡（那会让它读成可忽略的装饰）。任何一边单独换色都会破坏这条，
+     * 而这类偏差在单看一张截图时是看不出来的。
+     */
+    @Test
+    fun pendingToneSharesAccentWithDoneOnEveryPreset() {
+        for (preset in ThemePresets.all) {
+            for (isDark in listOf(false, true)) {
+                val colors = if (isDark) preset.dark else preset.light
+                val pending = IslandTokens.doneOn(colors, isDark, preset.metal)
+                val under = IslandTokens.pillUnder(colors, isDark, preset.metal)
+                val label = preset.id + if (isDark) "/dark" else "/light"
+                assertTrue(
+                    "$label 的待办档色只有 " + Contrast.ratio(pending, under) + ":1，低于图形门槛 3.0",
+                    Contrast.ratio(pending, under) >= IslandTokens.MIN_ICON_CONTRAST,
+                )
+            }
+        }
+    }
+
+    /**
      * 危险色必须与浮岛**底色**拉开图形门槛（而不是与强调色拉开）。
      *
      * 这是失败提示真正的可读性下限：叉号与进度条压在胶囊面上，

@@ -44,6 +44,7 @@ import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.RippleLoader
 import com.zhijian.schedule.core.ui.SecondaryTopBar
 import com.zhijian.schedule.core.ui.StaggerIn
+import com.zhijian.schedule.core.ui.island.IslandNoticeHost
 
 /**
  * 设置页：只保留脚手架与接线（顶栏、消息条、启动器、六个分组的编排、两个编辑弹窗）。
@@ -223,7 +224,37 @@ fun SettingsScreen(
                 )
             }
 
+            // 底部浮岛会盖住这一块五秒。刻意**不**为它预留常驻留白：
+            // 那等于让每一秒都付一笔只在那五秒里有用的版面成本，而设置页的
+            // 高度正是这个功能当初要从常驻行里抢回来的东西。
+            // 被盖住的是「备份与恢复」——它不需要在提示有效期内被点
             Spacer(Modifier.navigationBarsPadding().height(40.dp))
+        }
+
+        // 开学日期缺来源：浮岛提醒（与本 App 别处同一条通道，见 IslandNoticeHost）。
+        //
+        // ## 为什么是浮岛而不是顶部那一行常驻文案
+        // 这条说的是「还差什么」，用户读完就该去做，不该长期占着设置页首屏的位置——
+        // 而设置页每一块分组都排在首屏里，多一行常驻说明会把下面的分组整体推下去。
+        //
+        // ## 为什么贴**底部**而不是顶部
+        // 真机截图当场暴露的：放顶部时它正压着「课表信息」卡片——也就是它叫用户去点
+        // 的那一块。一条提示盖住自己的行动目标，比不提示更糟（用户得等它自己收起来）。
+        // 底部是「备份与恢复」，是这一页里唯一不需要在提示有效期内去点的分组。
+        //
+        // 为什么套一层 Box：Scaffold 的 content 是 (PaddingValues) -> Unit，不是
+        // BoxScope，`.align` 在那儿没有接收者。这层 Box 只是为了给出对齐。
+        Box(
+            Modifier.fillMaxSize().padding(padding),
+            contentAlignment = Alignment.BottomCenter,
+        ) {
+            IslandNoticeHost(
+                notice = viewModel.notice,
+                visible = viewModel.noticeVisible,
+                onFinished = viewModel::dismissNotice,
+                colors = colors,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 16.dp),
+            )
         }
 
         AnimatedVisibility(
