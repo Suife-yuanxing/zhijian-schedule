@@ -111,6 +111,77 @@ class JwScriptOutputTest {
         assertEquals(20, mask.length)
     }
 
+    /**
+     * 脚本声明的 startDate 要跟着进元数据。
+     *
+     * 这一条守着「学期第 10 周显示成第 1 周」那个回归：课表页只给周次，
+     * 开学日期只能靠来源声明，缺了它周次映射全偏。
+     */
+    @Test
+    fun declaredStartDateGoesIntoMeta() {
+        val json =
+            """
+            {"courses":[{"name":"高等数学","day":1,"startSection":1,"endSection":2,"weeks":"1-8周"}],
+             "totalWeeks":20,"startDate":"2026-08-31"}
+            """.trimIndent()
+        val r = JwScriptOutput.parse(json, 20) as JwScriptOutput.ParseResult.Ok
+        assertEquals("2026-08-31", r.startDate)
+        val meta = r.metaOrNull()
+        assertEquals("2026-08-31", meta?.startDate)
+        assertEquals(20, meta?.totalWeeks)
+    }
+
+    /** 只声明开学日期、不声明总周数：总周数留 0 表示不覆盖 */
+    @Test
+    fun startDateAloneStillYieldsMeta() {
+        val json =
+            """
+            {"courses":[{"name":"高等数学","day":1,"startSection":1,"endSection":2,"weeks":"1-8周"}],
+             "startDate":"2026-08-31"}
+            """.trimIndent()
+        val r = JwScriptOutput.parse(json, 20) as JwScriptOutput.ParseResult.Ok
+        val meta = r.metaOrNull()
+        assertEquals("2026-08-31", meta?.startDate)
+        assertEquals(0, meta?.totalWeeks)
+    }
+
+    /** 非 ISO 写法归一化成 ISO：脚本作者常写 2026/8/31 */
+    @Test
+    fun slashAndShortDateNormalizedToIso() {
+        val json =
+            """
+            {"courses":[{"name":"高等数学","day":1,"startSection":1,"endSection":2,"weeks":"1-8周"}],
+             "startDate":"2026/8/31"}
+            """.trimIndent()
+        val r = JwScriptOutput.parse(json, 20) as JwScriptOutput.ParseResult.Ok
+        assertEquals("2026-08-31", r.startDate)
+    }
+
+    /** 日期不合法就丢弃并记 warning，不能把原文写进库 */
+    @Test
+    fun invalidStartDateDroppedWithWarning() {
+        val json =
+            """
+            {"courses":[{"name":"高等数学","day":1,"startSection":1,"endSection":2,"weeks":"1-8周"}],
+             "startDate":"不是日期"}
+            """.trimIndent()
+        val r = JwScriptOutput.parse(json, 20) as JwScriptOutput.ParseResult.Ok
+        assertNull(r.startDate)
+        assertTrue(r.warnings.any { it.contains("开学日期") })
+        assertNull(r.metaOrNull())
+    }
+
+    /** 两样都没声明：没有元数据，本地值原样保留 */
+    @Test
+    fun noMetaWhenNeitherDeclared() {
+        val json =
+            """
+            {"courses":[{"name":"高等数学","day":1,"startSection":1,"endSection":2,"weeks":"1-8周"}]}
+            """.trimIndent()
+        val r = JwScriptOutput.parse(json, 20) as JwScriptOutput.ParseResult.Ok
+        assertNull(r.metaOrNull())
+    }
+
     @Test
     fun mergesSplitRowsBySameKey() {
         val json =
