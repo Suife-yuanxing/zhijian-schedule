@@ -166,7 +166,19 @@ class ScheduleRepository
 
         suspend fun getCourse(id: Long): CourseEntity? = db.courseDao().getById(id)
 
-        suspend fun updateTimetable(timetable: TimetableEntity) = db.timetableDao().update(timetable)
+        /**
+         * 更新课表信息（设置页手填）。
+         *
+         * 总周数变了要把课程掩码重排到新长度，与教务抓取那条路径同口径
+         * （[TimetableImportService.applyMeta]）：否则「16 周改成 20 周」之后第 17 周以后
+         * 永远是空白，而掩码长度又和 totalWeeks 对不上，编辑器与课表页读出来的周次会打架。
+         */
+        suspend fun updateTimetable(timetable: TimetableEntity) {
+            val previous = db.timetableDao().getById(timetable.id)
+            db.timetableDao().update(timetable)
+            val weeksChanged = previous != null && previous.totalWeeks != timetable.totalWeeks
+            if (weeksChanged) importer.resizeWeekMasks(timetable.id, timetable.totalWeeks)
+        }
 
         suspend fun updateSectionTime(section: SectionTimeEntity) = db.timeModeDao().updateSection(section)
 

@@ -60,6 +60,10 @@ object JwScriptOutput {
         (root["warnings"] as? JsonArray)?.forEach { el ->
             (el as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }?.let { warnings += it }
         }
+        // 掩码长度以**脚本声明的**学期周数为准：脚本按本校校历写 weeks，用本地那个可能
+        // 还没更新的总周数去建掩码，超出的周次会被截掉，而截掉的正是刚声明的那几周。
+        val declaredWeeks = root.totalWeeksOrNull()
+        val effectiveWeeks = declaredWeeks ?: totalWeeks
         val drafts = mutableListOf<CourseDraft>()
         coursesEl.forEachIndexed { i, el ->
             val obj =
@@ -67,7 +71,7 @@ object JwScriptOutput {
                     warnings += "第 ${i + 1} 条不是对象，已跳过"
                     return@forEachIndexed
                 }
-            val draft = toDraft(obj, totalWeeks) { warnings += "第 ${i + 1} 条：$it，已跳过" }
+            val draft = toDraft(obj, effectiveWeeks) { warnings += "第 ${i + 1} 条：$it，已跳过" }
             if (draft != null) drafts += draft
         }
         if (drafts.isEmpty()) return ParseResult.Invalid("解析到 0 门课，请确认已打开课表页面再运行脚本")
@@ -77,7 +81,7 @@ object JwScriptOutput {
         }
         return ParseResult.Ok(
             drafts = ZhengFangNewAdapter.mergeDuplicates(drafts),
-            totalWeeks = root.totalWeeksOrNull(),
+            totalWeeks = declaredWeeks,
             warnings = warnings,
             sectionTimes = sectionTimesOf(root, warnings),
         )

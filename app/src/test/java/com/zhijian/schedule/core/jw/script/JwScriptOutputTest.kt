@@ -2,6 +2,7 @@ package com.zhijian.schedule.core.jw.script
 
 import com.zhijian.schedule.core.util.WeekMask
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -74,6 +75,40 @@ class JwScriptOutputTest {
             ) is JwScriptOutput.ParseResult.Invalid,
         )
         assertTrue(JwScriptOutput.parse("not json", 20) is JwScriptOutput.ParseResult.Invalid)
+    }
+
+    /**
+     * 脚本声明的 totalWeeks 要决定掩码长度。
+     *
+     * 本地还停在 16 周、脚本按本校校历声明 18 周时，若仍用本地那个值建掩码，
+     * "17-18周" 会被截成空——声明的那两周正好是被吃掉的那两周。
+     */
+    @Test
+    fun declaredTotalWeeksDrivesMaskLength() {
+        val json =
+            """
+            {"courses":[{"name":"形势与政策","day":5,"startSection":9,"endSection":10,"weeks":"17-18周"}],
+             "totalWeeks":18}
+            """.trimIndent()
+        val r = JwScriptOutput.parse(json, totalWeeks = 16) as JwScriptOutput.ParseResult.Ok
+        assertEquals(18, r.totalWeeks)
+        val mask = r.drafts.first().weekMask
+        assertEquals(18, mask.length)
+        assertTrue(WeekMask.contains(mask, 17))
+        assertTrue(WeekMask.contains(mask, 18))
+    }
+
+    /** 脚本没声明时仍按本地总周数建掩码，行为不变 */
+    @Test
+    fun missingTotalWeeksKeepsLocalLength() {
+        val json =
+            """
+            {"courses":[{"name":"高等数学","day":1,"startSection":1,"endSection":2,"weeks":"1-8周"}]}
+            """.trimIndent()
+        val r = JwScriptOutput.parse(json, totalWeeks = 20) as JwScriptOutput.ParseResult.Ok
+        assertNull(r.totalWeeks)
+        val mask = r.drafts.first().weekMask
+        assertEquals(20, mask.length)
     }
 
     @Test

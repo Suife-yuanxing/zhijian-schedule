@@ -32,6 +32,19 @@ object TimetableMetaPlan {
         return if (updated == entity) entity else updated
     }
 
+    /**
+     * 这次导入该按多少周建掩码。
+     *
+     * 教务 / 脚本声明了总周数就按它建，没声明才回落到本地值——否则「本地 16 周、来源 18 周」
+     * 会把第 17/18 周的课在建掩码那一步截掉，而且截在 Diff 之前，预览里连「有变化」都看不见。
+     *
+     * 与 [apply] 的收口口径一致：非正数视为未声明，超过 [MAX_WEEKS] 的按上限算。
+     */
+    fun maskLength(
+        localWeeks: Int,
+        meta: JwMeta?,
+    ): Int = meta?.totalWeeks?.takeIf { it > 0 }?.coerceIn(1, MAX_WEEKS) ?: localWeeks
+
     /** 与手填口径一致的总周数上限 */
     const val MAX_WEEKS = 30
 }

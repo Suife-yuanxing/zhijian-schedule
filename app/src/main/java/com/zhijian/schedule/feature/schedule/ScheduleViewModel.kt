@@ -11,6 +11,7 @@ import com.zhijian.schedule.core.data.db.TimetableEntity
 import com.zhijian.schedule.core.data.prefs.AppSettings
 import com.zhijian.schedule.core.repository.ScheduleRepository
 import com.zhijian.schedule.core.util.TimeUtils
+import com.zhijian.schedule.core.util.WeekPlan
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -35,6 +36,14 @@ data class ScheduleUiState(
 ) {
     val totalWeeks: Int get() = timetable?.totalWeeks ?: 20
     val startDate: LocalDate get() = TimeUtils.parseDate(timetable?.startDate) ?: today
+
+    /**
+     * 开学日期是否真的填过。
+     *
+     * 没填时 [startDate] 会回落到 [today]，于是「今天早于开学日」恒为假，
+     * 顶栏会把「还没填开学日期」误报成「学期已结束」。
+     */
+    val hasStartDate: Boolean get() = TimeUtils.parseDate(timetable?.startDate) != null
     val sectionCount: Int get() = sections.size.coerceAtLeast(1)
     val periodCount: Int get() = sections.maxOfOrNull { it.periodNo } ?: 0
 
@@ -86,9 +95,17 @@ class ScheduleViewModel
                 repository.settings,
             ) { t, c, s, st -> Base(t, c, s, st) }
 
+        /**
+         * 「今天」自己带一条流。
+         *
+         * 原来 `today` 是写在 transform 里的 `LocalDate.now()`，而 transform 只在上游发射时重跑：
+         * 课表 / 设置 / 节假日都不变时，周日夜里跨到周一，顶栏会一直停在「本周 · 第 9 周」，
+         * 直到切页或改设置。周次是日期的函数，就该由日期来驱动（见 [WeekPlan.todayTicks]）。
+         */
+        private val todayTicks = WeekPlan.todayTicks()
+
         val uiState: StateFlow<ScheduleUiState> =
-            combine(base, selectedWeek, holidayDao.observeAll()) { b, sel, holidays ->
-                val today = LocalDate.now()
+            combine(base, selectedWeek, holidayDao.observeAll(), todayTicks) { b, sel, holidays, today ->
                 val start = TimeUtils.parseDate(b.timetable?.startDate)
                 val currentWeek =
                     if (start != null && b.timetable != null) {

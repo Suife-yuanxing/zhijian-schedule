@@ -49,7 +49,8 @@ internal class TimetableImportService(
         meta: JwMeta? = null,
     ): ImportPreview {
         val tableId = currentTableId() ?: return ImportPreview(source, emptyList())
-        val totalWeeks = db.timetableDao().getById(tableId)?.totalWeeks ?: 20
+        // 掩码长度跟**这次导入的学期**走，不跟库里那个还没更新的旧值走（判据见 TimetableMetaPlan.maskLength）
+        val totalWeeks = TimetableMetaPlan.maskLength(db.timetableDao().getById(tableId)?.totalWeeks ?: 20, meta)
         // 首次教务同步只建立基线、不删除任何旧课；lastSyncTime 在抓取成功后才会写入
         val firstJwSync = settingsStore.settings.first().lastSyncTime == 0L
         val existing = db.courseDao().getByTable(tableId)
@@ -151,12 +152,14 @@ internal class TimetableImportService(
                 draft = draft,
             )
         }
+        // 周次比较前先把本地掩码重排到草稿长度：这次导入若改了总周数，掩码长度必然不同，
+        // 逐字节比会把「周次其实没变」的课全判成变更，预览里一片噪音。
         val same =
             matched.room == draft.room &&
                 matched.teacher == draft.teacher &&
                 matched.startSection == draft.startSection &&
                 matched.endSection == draft.endSection &&
-                matched.weekMask == draft.weekMask
+                WeekMask.normalize(matched.weekMask, draft.weekMask.length) == draft.weekMask
         return if (same) {
             ImportChange(
                 kind = ImportChangeKind.UNCHANGED,
@@ -182,6 +185,10 @@ internal class TimetableImportService(
         applyConflicts: Boolean = false,
     ) {
         val tableId = currentTableId() ?: return
+        // 课表信息**先落**：总周数决定掩码长度，而 buildPreview 是按这次导入的学期
+        // （教务声明的那个）归一化草稿的。若先写课再写元数据，会把「按 18 周归一化的掩码」
+        // 塞进一张还是 16 周的课表——掩码与 totalWeeks 当场失配，落库后第 17/18 周又没了。
+        applyMeta(preview.meta, tableId)
         preview.changes.forEach { change ->
             when (change.kind) {
                 ImportChangeKind.ADDED ->
@@ -211,28 +218,46 @@ internal class TimetableImportService(
         }
         // 作息跟着课表一起变：来源写了时间就以来源为准（不硬编码）
         applySectionTimes(preview)
-        // 课表信息同理：教务声明了学期 / 开学日期 / 总周数就一起同步
-        applyMeta(preview.meta)
         // 手动导入不会清理旧记录：把新旧数据里残留的连堂课再归并一次
         mergeAdjacentCourses(tableId)
         val drafts = preview.changes.mapNotNull { it.draft }
         if (drafts.isNotEmpty()) saveSnapshot(preview.source, drafts)
     }
 
-    /** 学期元数据落库；总周数变了就把本表课程掩码重排到新长度，边界周才不会读错 */
-    private suspend fun applyMeta(meta: JwMeta?) {
+    /**
+     * 学期元数据落库（教务声明了学期 / 开学日期 / 总周数就一起同步）。
+     *
+     * 调用点必须在写课程**之前**：`WeekMask.normalize` 是「超出就截断」的，先写元数据
+     * 意味着掩码重排只作用于上一批旧课；先写课程则会让新掩码被旧长度截断一次。
+     */
+    private suspend fun applyMeta(
+        meta: JwMeta?,
+        tableId: Long,
+    ) {
         if (meta == null) return
-        val tableId = currentTableId() ?: return
         val table = db.timetableDao().getById(tableId) ?: return
         val planned = TimetableMetaPlan.apply(table, meta)
         if (planned == table) return
         db.timetableDao().update(planned)
         if (planned.totalWeeks != table.totalWeeks) {
-            db.courseDao().getByTable(tableId).forEach { course ->
-                val normalized = WeekMask.normalize(course.weekMask, planned.totalWeeks)
-                if (normalized != course.weekMask) {
-                    db.courseDao().update(course.copy(weekMask = normalized))
-                }
+            resizeWeekMasks(tableId, planned.totalWeeks)
+        }
+    }
+
+    /**
+     * 把本表课程的周次掩码重排到 [totalWeeks]（超出截断、不足补 0）。
+     *
+     * 抓取路径（[applyMeta]）与手填路径（设置页改总周数）共用这一段：两处曾经是两个口径，
+     * 手填改大周数后第 17 周以后永远空白，而掩码长度又和 totalWeeks 对不上。
+     */
+    suspend fun resizeWeekMasks(
+        tableId: Long,
+        totalWeeks: Int,
+    ) {
+        db.courseDao().getByTable(tableId).forEach { course ->
+            val normalized = WeekMask.normalize(course.weekMask, totalWeeks)
+            if (normalized != course.weekMask) {
+                db.courseDao().update(course.copy(weekMask = normalized))
             }
         }
     }

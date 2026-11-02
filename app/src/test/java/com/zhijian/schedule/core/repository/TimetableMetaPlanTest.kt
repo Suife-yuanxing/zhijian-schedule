@@ -49,4 +49,24 @@ class TimetableMetaPlanTest {
         assertEquals(30, TimetableMetaPlan.apply(entity, JwMeta(totalWeeks = 99)).totalWeeks)
         assertEquals(20, TimetableMetaPlan.apply(entity, JwMeta(totalWeeks = -5)).totalWeeks)
     }
+
+    /**
+     * 掩码长度：来源声明了就按声明建，没声明才用本地值。
+     *
+     * 这条守的是「本地 16 周、教务 18 周」的经典翻车：按本地建掩码，第 17/18 周
+     * 在建掩码那一刻就被截掉，截在 Diff 之前，预览里连「有变化」都看不见。
+     */
+    @Test
+    fun `mask length follows the declared total weeks`() {
+        assertEquals(18, TimetableMetaPlan.maskLength(localWeeks = 16, meta = JwMeta(totalWeeks = 18)))
+        assertEquals(16, TimetableMetaPlan.maskLength(localWeeks = 16, meta = JwMeta(totalWeeks = 0)))
+        assertEquals(16, TimetableMetaPlan.maskLength(localWeeks = 16, meta = null))
+    }
+
+    /** 异常声明与 [TimetableMetaPlan.apply] 同口径收口，不会把掩码撑到 99 位 */
+    @Test
+    fun `mask length caps and ignores non positive declarations`() {
+        assertEquals(30, TimetableMetaPlan.maskLength(localWeeks = 20, meta = JwMeta(totalWeeks = 99)))
+        assertEquals(20, TimetableMetaPlan.maskLength(localWeeks = 20, meta = JwMeta(totalWeeks = -5)))
+    }
 }

@@ -93,6 +93,9 @@ internal fun ScheduleTopBar(
                 val end = ui.dateOf(week, 7)
                 val subtitle =
                     when {
+                        // 先判「压根没填开学日期」：此时 startDate 回落成今天，下面那条判断永远为假，
+                        // 会把「没配」误报成「学期已结束」
+                        ui.currentWeek == null && !ui.hasStartDate -> "第 $week 周 · 未设置开学日期"
                         ui.currentWeek == null && ui.today.isBefore(ui.startDate) -> "第 $week 周 · 未开学"
                         ui.currentWeek == null -> "第 $week 周 · 学期已结束"
                         week == ui.currentWeek -> "本周 · 第 $week 周"
