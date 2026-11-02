@@ -74,3 +74,6 @@ replay_pid*.log
 __pycache__/
 *.pyc
 
+# --- 发版本地工作区（APK 与增量产物，资产以 Release 为准）---
+.release/
+

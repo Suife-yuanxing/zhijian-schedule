@@ -46,8 +46,14 @@ jobs:
         run: chmod +x ./gradlew
 
       # secrets 不能直接出现在 if 条件里（Actions 不支持 secrets 上下文参与 if 求值），
-      # 所以先落到 env，再用 env 判断。没有密钥时回落到 debug 签名，构建不会失败。
+      # 所以先落到 env，再用 env 判断。
+      #
+      # 为什么没有密钥时是「跳过」而不是「debug 签名回落」：
+      #   debug 签名与正式签名证书不同，装不到已有用户设备上（INSTALL_FAILED_UPDATE_INCOMPATIBLE）；
+      #   而 UpdateChecker 取资产列表里第一个 .apk —— 一个 debug 签名的 app-release.apk 若排在
+      #   正式包前面，会被直接选中，等于把更新链路整个打断。宁可这一趟不发，也不发装不上的包。
       - name: Prepare signing material
+        id: signing
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -55,7 +61,8 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "没有配置签名密钥，使用 debug 签名回落"
+            echo "::warning::未配置签名密钥，本次跳过 CI 构建与发布；请用本地正式签名包手动发版"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "$KEYSTORE_BASE64" | base64 -d > keystore.jks
@@ -65,12 +72,15 @@ jobs:
             echo "keyAlias=$KEY_ALIAS"
             echo "keyPassword=$KEY_PASSWORD"
           } > keystore.properties
+          echo "ready=true" >> "$GITHUB_OUTPUT"
 
       - name: Build release APK
+        if: steps.signing.outputs.ready == 'true'
         run: ./gradlew :app:assembleRelease --console=plain
 
       - name: Collect APK metadata
         id: apk
+        if: steps.signing.outputs.ready == 'true'
         run: |
           APK=$(find app/build/outputs/apk/release -maxdepth 1 -name '*.apk' | head -1)
           if [ -z "$APK" ]; then echo "没有找到 release APK"; exit 1; fi
@@ -83,6 +93,7 @@ jobs:
       # 基线 = 上一个 Release 的 APK。失败是允许的（首次发版 / 上一版没带 APK）。
       - name: Fetch previous APK as baseline
         id: base
+        if: steps.signing.outputs.ready == 'true'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -111,6 +122,7 @@ jobs:
           ls -l .patch/out
 
       - name: Create Release
+        if: steps.signing.outputs.ready == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -143,7 +155,9 @@ jobs:
         run: |
           echo "### Release $RELEASE_TAG" >> "$GITHUB_STEP_SUMMARY"
           echo "- APK: ${{ steps.apk.outputs.asset }} (${{ steps.apk.outputs.size }} bytes)" >> "$GITHUB_STEP_SUMMARY"
-          if [ -f .patch/out/patch.bin ]; then
+          if [ "${{ steps.signing.outputs.ready }}" != "true" ]; then
+            echo "- 已跳过：缺少签名密钥，未构建也未发布" >> "$GITHUB_STEP_SUMMARY"
+          elif [ -f .patch/out/patch.bin ]; then
             echo "- 增量: $(stat -c%s .patch/out/patch.bin) bytes" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "- 增量: 未生成（无基线或生成失败）" >> "$GITHUB_STEP_SUMMARY"
