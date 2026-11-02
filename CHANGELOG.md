@@ -70,12 +70,16 @@
 - fix(ui): `StaggerIn` 默认撑满可用宽度（新增 `fillWidth`，嵌在 Row 里的标题 / 按钮显式关掉），上浮位移 20dp → 8dp。不撑宽时 Box 只有内容那么宽、又贴在左对齐的父容器里，叠上 20dp 位移与逐段淡入，整块内容读作「从左上角长出来」。
 - fix(update): **debug 包不再做启动自动检查更新**（`UpdatePromptViewModel.checkOnLaunch` 直接 return）。开发版版本名恒为「当前分支名 + -debug」，而线上 Release 已是同号或更高，于是每次冷启动都弹「发现新版本」——弹窗还盖住「我的」页入口卡，真机验收每次都要多点一下「关闭」。手动入口（我的 → 检查更新）不受影响。
 - fix(jw): 气泡挂着期间用户又登录了一次时，严禁拿旧问句保存新密码——`JwCredentialPrompt.candidateAt` 记录候选时刻，确认时若候选已变则这次不存并提示「这次登录的账号已变化」。另一处同类修正：`credentialNotice`（事后结果）与 `credentialPrompt`（待决定问句）拆成两个字段，此前共用一个，弹窗一关会把刚写好的结果提示一起抹掉。
+- fix(jw): **学期第 10 周显示成第 1 周**。周次公式 `floorDiv(DAYS.between(开学日, 今天), 7) + 1` 本身没错，错在喂给它的起点：`startDate` 来自首启建表时的 `LocalDate.now().with(DayOfWeek.MONDAY)`（今天建表就是今天那周一），而课表页 `xskb_list.do` **只给「第 N 周上什么课」，不给第 1 周是哪一天**——`QiangZhiAdapter.fetchCourses()` 返回的 `JwFetchResult` 第三个参数 `meta` 一直没传，`TimetableMetaPlan.apply(null)` 什么都不改，于是整学期恒等于第 1 周。修法：新增 `JwWeekCalendar` 解析同源「教学周历」页（`jxzl/jxzl_query`，首列周次、日期藏在单元格 `title='2026年08月31'` 里，正文只有「31」缺年月不能用），抓课表成功后顺带取回第 1 周周一与总周数，随 `JwMeta` 落库。真机实测（东莞职院）：修前 `startDate=2026-11-02`，修后 `2026-08-31`，顶栏从「本周 · 第 1 周」变「本周 · 第 10 周」，课表网格同步正确（`6-10周`、`2-19周`、`9-14周`、`10-17周` 四门课全部出现）。
+- fix(jw): **脚本导入只同步总周数、不同步开学日期**。`JwScriptOutput` 的信封只有 `totalWeeks`，同样的病在脚本那条路上重演一遍。现在 `startDate` 与 `totalWeeks` 一起校验（非 ISO 写法 `2026/8/31` 归一化，非法值丢弃并计 warning，绝不把错日期写进库），由 `Ok.metaOrNull()` 统一收口——调用方不再各拼一遍区间与格式判断。
 
 ### Changed
 
 - refactor(nav): `animatorScaledBudgetMs` 拆出 `animatorScale(context)`，切 tab 与入口卡两道闸共用同一个缩放系数读取（读 `Settings.Global` 失败按 1 回落，个别 ROM 会拒绝这个读）。
 - test(jw): 新增 `CredentialBlobTest`（6）、`JwCredentialOriginTest`（6）、`JwCredentialMaskingTest`（5）、`JwCredentialPromptPolicyTest`（7）、`JwCredentialFillTest`（12）——覆盖换机恢复、文件被改坏、跨校回填、跳统一认证、密码里带引号与换行、气泡与候选错配等**不会抛异常、只会安静做错事**的分支。
 - test(nav): 新增 `SecondLevelEntrancePolicyTest`（8）与 `ProfileEntryNavigatorTest`（7）——钉住「按路由各播一次」「窗口内第二次请求必须丢弃而不是排队」「预算每次重新求值」三条。
+- test(jw): 新增 `JwWeekCalendarTest`（9）——含一份**真机实抓的整页夹具**（`src/test/resources/jw/jsxsd-jxzl-2026-11-02.html`，16 KB，20 周 × 9 列，内联进 Kotlin 既读不下去也改不动）。钉住四件事：第 1 周周一取该行最左日期、总周数取**最大周次而不是行数**（缺项周历不会把后面的周吃掉）、学期码 `-1/-3` 都映射到第一学期、以及「2026-11-02 落在第 10 周」这条正是用户报障当天的断言。`JwScriptOutputTest` 加 5 条覆盖脚本侧 `startDate`。
+
 
 ## [1.0.15] - 2026-11-01
 
