@@ -11,13 +11,14 @@
 | [`specs/`](specs/) | **设计规格**：项目总体技术方案 + 各变更的设计文档 | 变更设计为 `YYYY-MM-DD-主题-design.md`，与 `plans/` 成对 | 总体方案随版本修订；变更设计归档 |
 | [`testing/`](testing/) | 本地测试夹具说明与手工 E2E 步骤 | 按夹具名 | 随夹具代码同步更新 |
 | [`adr/`](adr/) | **架构决策记录**（ADR）：不可逆或高成本的取舍 | `NNNN-动词短语.md`，规则见 [ADR 使用说明](adr/README.md) | 只追加，历史条目不改 |
+| [`reviews/`](reviews/) | **问题复盘**：异常现象的真机取证、根因认定与修法，供后人遇到同症状时直接对照 | `YYYY-MM-DD-现象短语.md` | 只追加，结论被推翻时补新篇而不是改旧篇 |
 
 两条稳定约定：
 
 1. **日期取首稿完成日**，不是提交日；`plans/X.md` 对应 `specs/X-design.md`。
 2. **路径一经发布即视为稳定契约**：改名会让提交信息、issue 与代码注释里的引用失配。除目录分类迁移外不要移动或重命名文档。
 
-配套的仓库级文档：[README](../README.md) · [CONTRIBUTING](../CONTRIBUTING.md) · [CHANGELOG](../CHANGELOG.md)。
+配套的仓库级文档：[README](../README.md) · [CONTRIBUTING](../CONTRIBUTING.md) · [CHANGELOG](../CHANGELOG.md) · [开发后端 MCP](../tools/mcp-dev/README.md)（把构建 / 测试 / 静态检查 / 真机 / 发版动作固定成 MCP 工具，供 AI 助手直接调用）。
 
 ---
 
@@ -67,6 +68,11 @@
 
 - [mock-jw.md](testing/mock-jw.md) — 本地模拟教务服务的使用说明：`node tools/mock-jw/server.mjs` 起服，模拟正方新版与强智 jsxsd，覆盖 WebView → 共享 Cookie → 适配器 → 预览 → 落库整条客户端链路，无需真实学校账号。
 - [2026-10-27-real-device-jw.md](testing/2026-10-27-real-device-jw.md) — 真机实测记录：6 个适配器（强智 / 树维 classic / URP / eams5 / 青果 / 正方新版）的识别链路在 Android 16 上逐家验证，含填写地址、识别文案、页面可达性与「抓取失败的定制指引」对照表；12 张证据截图在 [`testing/shots/jw-real-device/`](testing/shots/jw-real-device/)，文档内有逐张说明表（每张证明哪一环），不留「只看文件名猜」的图。
+
+## reviews/ — 问题复盘
+
+- [2026-10-29-页面切换实现与切页刷新异常根因.md](reviews/2026-10-29-页面切换实现与切页刷新异常根因.md) — 切页动画与切页刷新异常的根因认定：把「切 tab 触发整页重建」与「入场动画重播」两件事分开定位，给出各自的触发条件与修法。
+- [2026-10-31-切页打断三页同框根因.md](reviews/2026-10-31-切页打断三页同框根因.md) — 快速连点底栏时三页同时可见的根因：NavHost 的 AnimatedContent 走打断路径时旧页未退出，配套的落位窗口（`TAB_SWITCH_SETTLE_BUDGET_MS`）如何把它掐死。
 
 ## adr/ — 架构决策记录
 
