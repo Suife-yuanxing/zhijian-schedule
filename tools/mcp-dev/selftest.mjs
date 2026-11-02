@@ -190,6 +190,24 @@ async function main() {
         if (tool.inputSchema.type !== 'object') problems.push(tool.name + '.inputSchema 根必须是 object');
     }
 
+    // 2b) DEVICE 的 action 枚举必须覆盖约定的动作集。
+    //     新增动作若被误删或改名，schema 校验与只读实调都发现不了（DEVICE 不在只读调用列表里），
+    //     这里显式钉住，避免"文档写了、实现没了"这种静默退化。
+    const deviceTool = tools.find((t) => t.name === 'device');
+    if (!deviceTool) {
+        problems.push('缺少 device 工具');
+    } else {
+        const actionSchema = deviceTool.inputSchema.properties && deviceTool.inputSchema.properties.action;
+        const values = (actionSchema && actionSchema.enum) || [];
+        const required = [
+            'list', 'install', 'launch', 'stop', 'logcat', 'screenshot', 'shell', 'uninstall',
+            'reverse', 'tap', 'swipe', 'text', 'key', 'settings', 'perf',
+        ];
+        for (const action of required) {
+            if (!values.includes(action)) problems.push('device.action 缺少 ' + action);
+        }
+    }
+
     // 3) 只读工具实调
     const calls = [];
     if (!skipCalls) {

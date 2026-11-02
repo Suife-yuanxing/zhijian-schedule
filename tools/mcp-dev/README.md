@@ -14,6 +14,8 @@
 | KSP 增量缓存损坏（Storage corrupted ... lookups.tab_i） | BUILD 识别该特征，自动清 app/build/kspCaches 后重跑一次 |
 | applicationIdSuffix = .debug 只改包名，Activity 仍在 namespace 下 | DEVICE launch 用设备侧 resolve-activity 解析真实组件，不拼字符串 |
 | ktlint/detekt 有 baseline，控制台输出带 ANSI 色码且任务名与报告目录不同名 | LINT 读报告文件、按任务族匹配、把「存量」与「新增」分开统计 |
+| 真机联调要先 `adb reverse`，但它是 adb 子命令、走 shell 白名单永远进不去 | DEVICE reverse 直接管 add/list/remove，mock-jw 联调不用手敲 |
+| `dumpsys gfxinfo` 只吐一大段文本，卡顿率靠肉眼比对两段文本 | DEVICE perf 解析成 totalFrames/jankyPercent/p50/p90/p99，样本不足 60 帧时明确标注不可信 |
 | 行宽按字节统计会把 40 个汉字的注释误判超长 | ARCH_CHECK 按字符数（Array.from）统计 |
 
 ## 工具清单（12 个）
@@ -26,7 +28,7 @@
 | TEST | 单元测试：gradle / direct / auto，按 JUnit XML 判定 |
 | LINT | ktlint + detekt：check / format / baseline，区分存量与新增 |
 | ARCH_CHECK | 架构约定：包结构、单测不依赖 Android、行宽、Room schema 同步 |
-| DEVICE | 真机：list / install / launch / stop / logcat / screenshot / shell / uninstall |
+| DEVICE | 真机：list / install / launch / stop / logcat / screenshot / shell / uninstall / reverse / tap / swipe / text / key / settings / perf |
 | GIT | status / diff / stage（只接受显式文件）/ commit（校验提交信息）/ log / show |
 | JW_SCRIPTS | scripts/index.json 维护：list / verify / sync / lint |
 | DOCS_CHECK | docs 索引、相对链接、plans 与 specs 成对 |
