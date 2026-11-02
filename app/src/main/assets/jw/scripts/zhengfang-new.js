@@ -15,6 +15,21 @@ globalThis.__paperScheduleScript = {
     if (!m) throw new Error('请先打开正方教务（地址需包含 /jwglxt/）');
     var base = location.origin + location.pathname.slice(0, m.index + '/jwglxt/'.length);
 
+    // 学年 + 学期码 → 学期名。与 Kotlin 侧 JwSemesterLabel 同口径：正方用 3/12，
+    // 也兼容强智那套 1/2。认不出返回空串（不回传字段，本地值原样保留）。
+    function termLabel(year, term) {
+      // 变量名避开外层那个 m（location 匹配结果），同名虽不冲突但读起来容易错认
+      var yearMatch = /^(\d{4})\s*-?\s*(\d{4})?/.exec(String(year || '').trim());
+      if (!yearMatch) return '';
+      var start = parseInt(yearMatch[1], 10);
+      var end = yearMatch[2] ? parseInt(yearMatch[2], 10) : start + 1;
+      if (end !== start + 1) end = start + 1;
+      var t = parseInt(String(term || '').trim(), 10);
+      var name = (t === 1 || t === 3) ? '第一学期' : (t === 2 || t === 12) ? '第二学期' : '';
+      if (!name) return '';
+      return start + '-' + end + '学年' + name;
+    }
+
     function selected(id) {
       var el = document.querySelector('select#' + id + ' option[selected]');
       return el ? (el.getAttribute('value') || '').trim() : '';
@@ -73,7 +88,14 @@ globalThis.__paperScheduleScript = {
           weeks: String(k.zcd || k.zcmc || '')
         });
       });
-      if (courses.length) return { courses: courses };
+      if (courses.length) {
+        // 学期名随课表一起交回去：kbList 只给周次不给日期，但页面上的学年学期下拉
+        // 是现成的，能同步一个字段就少让用户手填一个。开学日期拿不到就不编。
+        var env = { courses: courses };
+        var label = termLabel(parts[0], parts[1]);
+        if (label) env.semester = label;
+        return env;
+      }
     }
     throw new Error('正方新版未返回课表：' + lastErr);
   }

@@ -51,8 +51,8 @@ object JwWeekCalendar {
     /** 单元格 `title='2026年08月31'` */
     private val CELL_DATE = Regex("""^(\d{4})年(\d{1,2})月(\d{1,2})$""")
 
-    /** 学期下拉的选中项，如 `2026-2027-1` */
-    private val SEMESTER_ID = Regex("""^(\d{4})-(\d{4})-(\d{1,2})$""")
+    /** 学期下拉的选中项，如 `2026-2027-1`；命名分组让取值处不用数下标 */
+    private val SEMESTER_ID = Regex("""^(?<start>\d{4})-(?<end>\d{4})-(?<term>\d{1,2})$""")
 
     /**
      * 周历表 → (总周数, 第 1 周周一 ISO)。
@@ -110,22 +110,23 @@ object JwWeekCalendar {
      * 两种都要认，否则换一所学校学期名就同步不过来。
      */
     fun semesterName(html: String): String {
-        if (html.isBlank()) return ""
-        val doc = Jsoup.parse(html)
         val selected =
-            doc.selectFirst("select#xnxq01id option[selected]")?.attr("value")?.trim()
-                ?: doc.selectFirst("select[name=xnxq01id] option[selected]")?.attr("value")?.trim()
-        val m = selected?.let { SEMESTER_ID.find(it) }
-        val year = m?.groupValues?.get(1)
-        val yearEnd = m?.groupValues?.get(2)
-        val term =
-            when (m?.groupValues?.get(3)?.toIntOrNull()) {
-                1, 3 -> "第一学期"
-                2, 12 -> "第二学期"
-                else -> null
+            if (html.isBlank()) {
+                null
+            } else {
+                Jsoup
+                    .parse(html)
+                    .let { doc ->
+                        doc.selectFirst("select#xnxq01id option[selected]")
+                            ?: doc.selectFirst("select[name=xnxq01id] option[selected]")
+                    }?.attr("value")
+                    ?.trim()
             }
-        val head = if (year != null && yearEnd != null) year + "-" + yearEnd else ""
-        return if (head.isNotEmpty() && term != null) head + "学年" + term else ""
+        val parts = selected?.let { SEMESTER_ID.find(it) }?.groups
+        val start = parts?.get("start")?.value.orEmpty()
+        val end = parts?.get("end")?.value.orEmpty()
+        // 学期码 → 第一/第二学期的映射与正方共用 [JwSemesterLabel]，各写一份必然漂移
+        return JwSemesterLabel.of(start + "-" + end, parts?.get("term")?.value.orEmpty())
     }
 
     /** 与 `TimetableMetaPlan.MAX_WEEKS` 同口径 */

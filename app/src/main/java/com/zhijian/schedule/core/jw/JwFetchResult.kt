@@ -29,4 +29,14 @@ data class JwMeta(
     val semester: String = "",
     val startDate: String = "",
     val totalWeeks: Int = 0,
-)
+) {
+    companion object {
+        /**
+         * 只有学期名时也包成 [JwMeta]；名字为空则返回 null（不覆盖本地值）。
+         *
+         * 单独给个入口是因为好几个厂家只拿得到学期名、拿不到周历：让它们各自写
+         * `if (name.isEmpty()) null else JwMeta(semester = name)` 会把同一件事抄很多遍。
+         */
+        fun semesterOnly(name: String): JwMeta? = name.takeIf { it.isNotBlank() }?.let { JwMeta(semester = it) }
+    }
+}

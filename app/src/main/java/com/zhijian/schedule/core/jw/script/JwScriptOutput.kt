@@ -36,6 +36,13 @@ object JwScriptOutput {
              * 而本地那个 startDate 来自建表当天。缺了它，学期第 10 周照样显示成第 1 周。
              */
             val startDate: String? = null,
+            /**
+             * 脚本可选返回的学期名（如「2026-2027学年第一学期」）；null 表示脚本没给。
+             *
+             * 正方 / 青果这类没有校历可读的系统拿不到开学日期，但页面上的学年学期下拉是
+             * 现成的——能同步一个字段就少让用户手填一个。
+             */
+            val semester: String? = null,
         ) : ParseResult {
             /**
              * 这次解析能同步的学期元数据；两样都没给时返回 null（本地值原样保留）。
@@ -44,8 +51,12 @@ object JwScriptOutput {
              * 不该重复判断 totalWeeks 的区间与 startDate 的格式——那两件事已经校验过了。
              */
             fun metaOrNull(): JwMeta? {
-                if (totalWeeks == null && startDate == null) return null
-                return JwMeta(startDate = startDate.orEmpty(), totalWeeks = totalWeeks ?: 0)
+                if (totalWeeks == null && startDate == null && semester == null) return null
+                return JwMeta(
+                    semester = semester.orEmpty(),
+                    startDate = startDate.orEmpty(),
+                    totalWeeks = totalWeeks ?: 0,
+                )
             }
         }
 
@@ -110,8 +121,16 @@ object JwScriptOutput {
             warnings = warnings,
             sectionTimes = sectionTimesOf(root, warnings),
             startDate = startDateOf(root, warnings),
+            semester = semesterOf(root),
         )
     }
+
+    /**
+     * 脚本可选字段 `semester`（学期名原文）。不做格式校验：学期名是给人看的字符串，
+     * 各校写法本就不同（「2026-2027学年第一学期」「2026-2027-1」都有），
+     * 强行归一反而会把学校自己的叫法改掉。空白视为没给。
+     */
+    private fun semesterOf(root: JsonObject): String? = root.str("semester").trim().takeIf { it.isNotEmpty() }
 
     /**
      * 脚本可选字段 `sectionTimes: [{section, start, end}]`：逐条校验后使用，

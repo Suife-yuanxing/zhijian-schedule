@@ -103,7 +103,9 @@ object ChaoXingAdapter : JwAdapter {
                     }
                 val drafts = parseTimetable(body, totalWeeks)
                 if (drafts.isNotEmpty()) {
-                    return@withContext JwFetchResult(drafts, emptyList(), JwMeta(semester = xnxq))
+                    // 课表接口认的 xnxq 是 `2026-2027-1` 这种码，直接塞进学期名会显示成
+                    // 「2026-2027-1」而不是「2026-2027学年第一学期」；翻成人话再落库。
+                    return@withContext JwFetchResult(drafts, emptyList(), metaOf(xnxq))
                 }
                 if (needsLoginJson(body)) throw JwException.NeedsLogin()
             }
@@ -181,6 +183,14 @@ object ChaoXingAdapter : JwAdapter {
                 else -> derived.dropLast(1) + "1"
             }
         return (listOf(derived, flipped) + fromPage).distinct()
+    }
+
+    /** `2026-2027-1` → 「2026-2027学年第一学期」；认不出就只带总周数以外什么都不覆盖 */
+    private fun metaOf(xnxq: String): JwMeta? {
+        val parts = xnxq.split("-")
+        val year = parts.getOrNull(0).orEmpty() + "-" + parts.getOrNull(1).orEmpty()
+        val term = parts.getOrNull(2).orEmpty()
+        return JwMeta.semesterOnly(JwSemesterLabel.of(year, term))
     }
 
     /** 8-12 月为学年第一学期，1 月仍属上一学年第一学期，2-7 月为第二学期 */

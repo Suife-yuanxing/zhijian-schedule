@@ -5,6 +5,7 @@ import com.zhijian.schedule.core.data.db.AppDatabase
 import com.zhijian.schedule.core.data.db.CourseEntity
 import com.zhijian.schedule.core.data.db.ImportSnapshotEntity
 import com.zhijian.schedule.core.data.db.SectionTimeEntity
+import com.zhijian.schedule.core.data.db.TimetableEntity
 import com.zhijian.schedule.core.data.prefs.SettingsStore
 import com.zhijian.schedule.core.jw.JwMeta
 import com.zhijian.schedule.core.jw.SectionTimeDraft
@@ -94,21 +95,31 @@ internal class TimetableImportService(
         return ImportPreview(source, changes, warning, sectionTimes, meta, infoHint)
     }
 
-    /** 元数据同步提示：只列真正会变的字段，与教务声明一致的本地值不占用户注意力 */
+    /**
+     * 元数据同步提示：只列真正会变的字段，与教务声明一致的本地值不占用户注意力。
+     *
+     * 来源只给了部分字段时，没给的那部分会安静地保留旧值——若旧值来自建表当天，
+     * 整学期的周次映射就是错的（「第 10 周显示成第 1 周」的成因）。所以「会变什么」
+     * 与「还缺什么」拼成一句话，两个判断都在 [TimetableMetaHint] 里可单测。
+     */
     private suspend fun metaHint(
         tableId: Long,
         meta: JwMeta,
     ): String? {
         val table = db.timetableDao().getById(tableId) ?: return null
         val planned = TimetableMetaPlan.apply(table, meta)
-        if (planned == table) return null
-        val parts = mutableListOf<String>()
-        if (planned.semester != table.semester) parts += "学期「${planned.semester}」"
-        if (planned.startDate != table.startDate) parts += "第 1 周 ${planned.startDate}"
-        if (planned.totalWeeks != table.totalWeeks) parts += "总周数 ${planned.totalWeeks}"
-        if (parts.isEmpty()) return null
-        return "课表信息将随抓取同步：" + parts.joinToString("，")
+        val parts =
+            TimetableMetaHint.changedLabels(
+                before = table.toLocalMeta(),
+                after = planned.toLocalMeta(),
+            )
+        val missing = TimetableMetaHint.missingHint(meta)
+        val sync = if (parts.isEmpty()) "" else "课表信息将随抓取同步：" + parts.joinToString("，")
+        return listOf(sync, missing.orEmpty()).filter { it.isNotEmpty() }.joinToString("；").ifEmpty { null }
     }
+
+    private fun TimetableEntity.toLocalMeta() =
+        TimetableMetaHint.LocalMeta(semester = semester, startDate = startDate, totalWeeks = totalWeeks)
 
     /**
      * 课表信息核对提示：只在教务抓取时给。

@@ -85,8 +85,14 @@ object ZhengFangNewAdapter : JwAdapter {
                     if (isSessionDeadPage(body)) throw JwException.NeedsLogin()
                     val drafts = parseJson(body, totalWeeks)
                     if (drafts.isNotEmpty()) {
-                        // kbList 只有节次序号，没有时分；只在课表页 HTML 里出现时间表时才带上
-                        return@withContext JwFetchResult(drafts, SectionTimes.fromHtml(indexHtml))
+                        // kbList 只有节次序号，没有时分；只在课表页 HTML 里出现时间表时才带上。
+                        // 学期名出自「真正返回了课程的那个」xnm/xqm，不是循环里的任意候选：
+                        // 兜底候选（按月份推断）也会跑，拿它去拼学期名会把错的学期写进库。
+                        return@withContext JwFetchResult(
+                            drafts,
+                            SectionTimes.fromHtml(indexHtml),
+                            JwMeta.semesterOnly(JwSemesterLabel.of(xnm, xqm)),
+                        )
                     }
                     lastError = "学期 $xnm/$xqm 未返回课程"
                 }
