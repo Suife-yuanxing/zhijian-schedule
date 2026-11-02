@@ -234,9 +234,21 @@ class JwAssetCache(
 
         val CACHED_EXTENSIONS =
             setOf(
-                "js", "mjs", "css",
-                "png", "jpg", "jpeg", "gif", "webp", "svg", "ico",
-                "woff", "woff2", "ttf", "otf", "eot",
+                "js",
+                "mjs",
+                "css",
+                "png",
+                "jpg",
+                "jpeg",
+                "gif",
+                "webp",
+                "svg",
+                "ico",
+                "woff",
+                "woff2",
+                "ttf",
+                "otf",
+                "eot",
             )
 
         val MIME_BY_EXT =

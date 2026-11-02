@@ -41,8 +41,7 @@ object JwUrlGuard {
         return parsed?.takeIf { isHttpScheme(it) && isPublicHost(it.host.lowercase()) }
     }
 
-    private fun isHttpScheme(url: HttpUrl): Boolean =
-        url.scheme.lowercase() in setOf(SCHEME_HTTP, SCHEME_HTTPS)
+    private fun isHttpScheme(url: HttpUrl): Boolean = url.scheme.lowercase() in setOf(SCHEME_HTTP, SCHEME_HTTPS)
 
     private fun isPublicHost(host: String): Boolean =
         host.isNotEmpty() && if (host.contains(':')) isPublicIpv6(host) else !isRejectedV4(host)

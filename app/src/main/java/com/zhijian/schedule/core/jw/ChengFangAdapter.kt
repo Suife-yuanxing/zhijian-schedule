@@ -208,7 +208,8 @@ object ChengFangAdapter : JwAdapter {
         totalWeeks: Int,
     ): List<CourseDraft> {
         val url =
-            (base + OLD_COURSE_API).toHttpUrlOrNull()
+            (base + OLD_COURSE_API)
+                .toHttpUrlOrNull()
                 ?.newBuilder()
                 ?.addQueryParameter("xnxqdm", semester.value)
                 ?.build()
@@ -258,7 +259,12 @@ object ChengFangAdapter : JwAdapter {
                 end <= SectionTimes.MAX_SECTIONS &&
                 weeks.isNotEmpty()
         if (!valid) return null
-        val room = item.str("jcxdmc").ifEmpty { item.str("jcxdmcs") }.replace('\\', '/').trim()
+        val room =
+            item
+                .str("jcxdmc")
+                .ifEmpty { item.str("jcxdmcs") }
+                .replace('\\', '/')
+                .trim()
         return draft(name, cleanTeacher(item.str("teaxms")), room, day, start..end, weeks, totalWeeks)
     }
 

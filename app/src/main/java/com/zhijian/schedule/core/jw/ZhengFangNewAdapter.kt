@@ -192,9 +192,7 @@ object ZhengFangNewAdapter : JwAdapter {
     }
 
     /** 不区分大小写取第一个非空字段（正方各版本键名大小写混用） */
-    private fun JsonObject.strAlias(
-        vararg keys: String,
-    ): String {
+    private fun JsonObject.strAlias(vararg keys: String): String {
         val lowered = keys.map { it.lowercase() }.toSet()
         for ((key, value) in this) {
             if (key.lowercase() in lowered) {

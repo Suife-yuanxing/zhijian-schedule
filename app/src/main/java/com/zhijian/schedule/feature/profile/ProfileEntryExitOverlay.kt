@@ -61,9 +61,10 @@ fun ProfileEntryExitOverlay(
             // EaseOut 比浮层的线性收拢快半拍，别让背景糊到着地那一帧
             launch {
                 val backdrop = Animatable(transitions.backdrop)
-                val mirror = launch {
-                    snapshotFlow { backdrop.value }.collect { transitions.backdrop = it }
-                }
+                val mirror =
+                    launch {
+                        snapshotFlow { backdrop.value }.collect { transitions.backdrop = it }
+                    }
                 backdrop.animateTo(
                     targetValue = 0f,
                     animationSpec = tween(PROFILE_ENTRY_EXIT_MS, easing = Motion.EaseOut),

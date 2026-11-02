@@ -21,9 +21,7 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.rememberMotionAllowed
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.launch
 
 /*
  * 入口卡 ⇄ 二级页的共享状态与参数。

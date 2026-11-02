@@ -61,13 +61,13 @@ object JinZhiAdapter : JwAdapter {
             val referer = base
             val candidates =
                 buildList {
-                val current = parseUrl(baseUrl)
-                if (current != null && current.encodedPath.contains("oursetable")) {
-                    add(baseUrl) // 用户已停在带参数的课表页，原样重放
+                    val current = parseUrl(baseUrl)
+                    if (current != null && current.encodedPath.contains("oursetable")) {
+                        add(baseUrl) // 用户已停在带参数的课表页，原样重放
+                    }
+                    add(base + TIMETABLE_STUDENT)
+                    add(base + TIMETABLE_STD)
                 }
-                add(base + TIMETABLE_STUDENT)
-                add(base + TIMETABLE_STD)
-            }
 
             for (url in candidates) {
                 val html =

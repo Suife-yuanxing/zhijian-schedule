@@ -41,8 +41,9 @@ internal object CipGradeFetcher {
         client: OkHttpClient,
         baseUrl: String,
     ): List<GradeRecord> {
-        val root = JwUrlGuard.safeHttpUrl(baseUrl)?.let { GuangXiGcAdapter.portalRoot(it.toString()) }
-            ?: return emptyList()
+        val root =
+            JwUrlGuard.safeHttpUrl(baseUrl)?.let { GuangXiGcAdapter.portalRoot(it.toString()) }
+                ?: return emptyList()
         return withContext(Dispatchers.IO) { fetchCipGrades(client, root) }
     }
 

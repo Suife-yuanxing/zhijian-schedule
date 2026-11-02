@@ -256,7 +256,8 @@ private fun WeekPresetsRow(
                     ).clickable(
                         interactionSource = source,
                         indication = LocalIndication.current,
-                    ) { onSelect(preset) }.padding(vertical = 8.dp),
+                    ) { onSelect(preset) }
+                    .padding(vertical = 8.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
