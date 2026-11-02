@@ -22,12 +22,21 @@ object UpdateDigest {
     private fun ByteArray.toHex(): String {
         val out = StringBuilder(size * 2)
         for (byte in this) {
-            val v = byte.toInt() and 0xFF
-            out.append(HEX[v ushr 4]).append(HEX[v and 0x0F])
+            val v = byte.toInt() and BYTE_MASK
+            out.append(HEX[v ushr NIBBLE_BITS]).append(HEX[v and NIBBLE_MASK])
         }
         return out.toString()
     }
 
     private const val BUFFER = 64 * 1024
     private const val HEX = "0123456789abcdef"
+
+    /** 取低 8 位：把有符号 Byte 抬成 0..255 的无符号值 */
+    private const val BYTE_MASK = 0xFF
+
+    /** 一个十六进制字符占 4 位（半个字节） */
+    private const val NIBBLE_BITS = 4
+
+    /** 取低 4 位：一个字节拆成高低两个十六进制字符 */
+    private const val NIBBLE_MASK = 0x0F
 }

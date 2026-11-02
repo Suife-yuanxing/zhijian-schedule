@@ -22,9 +22,7 @@ import com.zhijian.schedule.core.theme.LocalCourseColors
  * 内容由各根页自己画到状态栏底下，这里不再重复绘制。
  */
 @Composable
-internal fun StatusBarVeil(
-    modifier: Modifier = Modifier,
-) {
+internal fun StatusBarVeil(modifier: Modifier = Modifier) {
     val colors = LocalCourseColors.current
     val density = LocalDensity.current
     val statusBarHeight = with(density) { WindowInsets.statusBars.getTop(density).toDp() }
@@ -38,8 +36,8 @@ internal fun StatusBarVeil(
                         Brush.verticalGradient(
                             colorStops =
                                 arrayOf(
-                                    0f to colors.bg.copy(alpha = 0.32f),
-                                    0.55f to colors.bg.copy(alpha = 0.14f),
+                                    0f to colors.bg.copy(alpha = VEIL_TOP_ALPHA),
+                                    VEIL_MID_STOP to colors.bg.copy(alpha = VEIL_MID_ALPHA),
                                     1f to androidx.compose.ui.graphics.Color.Transparent,
                                 ),
                         ),
@@ -50,3 +48,9 @@ internal fun StatusBarVeil(
 
 /** 羽化带：轻纱在状态栏下沿再拖一小段，接缝不可见 */
 internal val STATUS_VEIL_FEATHER = 10.dp
+
+// 轻纱渐变：顶部几乎不可见，到中段已淡掉大半，末端完全透明。
+// 三个值取自「不能盖住壁纸细节、又要让状态图标读得清」的目视调校。
+private const val VEIL_TOP_ALPHA = 0.32f
+private const val VEIL_MID_STOP = 0.55f
+private const val VEIL_MID_ALPHA = 0.14f

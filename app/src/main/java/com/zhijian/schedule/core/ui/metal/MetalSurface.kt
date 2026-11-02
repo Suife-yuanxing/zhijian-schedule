@@ -143,7 +143,7 @@ fun Modifier.metalSurface(
                 heightPx = size.height,
                 radiusPx = r,
                 time = clock.value,
-                touch = touch?.touch ?: Offset(0.5f, 0.5f),
+                touch = touch?.touch ?: TOUCH_NEUTRAL,
                 press = touch?.pressValue ?: 0f,
                 tint = touchTint,
                 face = face,
@@ -158,7 +158,7 @@ fun Modifier.metalSurface(
         val r = shape.radiusPx(size, this)
         val cr = CornerRadius(r, r)
         val press = touch?.pressValue ?: 0f
-        val tp = touch?.touch ?: Offset(0.5f, 0.5f)
+        val tp = touch?.touch ?: TOUCH_NEUTRAL
         val w = size.width
         val h = size.height
 
@@ -215,6 +215,13 @@ fun Modifier.metalSurface(
         )
     }
 }
+
+/**
+ * 触摸点未按下时的中性位置：屏幕坐标归一化后的中心。
+ *
+ * 着色器用这个点算折射偏移与高光中心；不按下时给中心，视觉上等于「没有手在上面」。
+ */
+private val TOUCH_NEUTRAL = Offset(0.5f, 0.5f)
 
 /** 圆角半径（px）：百分比圆角（胶囊）按「短边一半」算，绝对值圆角按 dp 换算 */
 internal fun RoundedCornerShape.radiusPx(

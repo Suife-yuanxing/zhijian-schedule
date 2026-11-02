@@ -44,12 +44,23 @@ internal object SemesterTimelinePlan {
             }
         val weeks =
             (1..totalWeeks).map { no ->
-                Week(no, when {
-                    no < rawWeek -> WeekState.PAST
-                    no == rawWeek -> WeekState.NOW
-                    else -> WeekState.FUTURE
-                })
+                Week(
+                    no,
+                    when {
+                        no < rawWeek -> WeekState.PAST
+                        no == rawWeek -> WeekState.NOW
+                        else -> WeekState.FUTURE
+                    },
+                )
             }
-        return Model(weeks, rawWeek.takeIf { it in 1..totalWeeks }, TimeUtils.dateOfWeekDay(sd, totalWeeks, 7), status)
+        return Model(
+            weeks,
+            rawWeek.takeIf { it in 1..totalWeeks },
+            TimeUtils.dateOfWeekDay(sd, totalWeeks, DAYS_PER_WEEK),
+            status,
+        )
     }
 }
+
+/** 一周七天：取学期最后一天用（周一为 1，周日为 7） */
+private const val DAYS_PER_WEEK = 7

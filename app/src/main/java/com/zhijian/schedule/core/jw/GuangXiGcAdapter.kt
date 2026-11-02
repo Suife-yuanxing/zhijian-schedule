@@ -154,9 +154,9 @@ object GuangXiGcAdapter : JwAdapter {
                 try {
                     val rule = post(client, root + RULE_API, csrf, referer, """{"semesterId":"$semesterId"}""")
                     bandHoursOf(rule)
-                } catch (e: JwException) {
+                } catch (_: JwException) {
                     CipBandHours.DEFAULT
-                } catch (e: java.io.IOException) {
+                } catch (_: java.io.IOException) {
                     CipBandHours.DEFAULT
                 }
 
@@ -238,9 +238,9 @@ object GuangXiGcAdapter : JwAdapter {
                 val body =
                     post(client, root + WEEK_LIST_API, csrf, referer, """{"semesterId":"$semesterId"}""")
                 parseWeekList(body)
-            } catch (e: JwException) {
+            } catch (_: JwException) {
                 null
-            } catch (e: java.io.IOException) {
+            } catch (_: java.io.IOException) {
                 null
             }
         val semester =
@@ -248,9 +248,9 @@ object GuangXiGcAdapter : JwAdapter {
                 val body =
                     post(client, root + SEMESTER_API, csrf, referer, """{"dataTypes":"semester"}""")
                 parseSemesterName(body, semesterId)
-            } catch (e: JwException) {
+            } catch (_: JwException) {
                 ""
-            } catch (e: java.io.IOException) {
+            } catch (_: java.io.IOException) {
                 ""
             }
         if (weeks == null && semester.isBlank()) return null

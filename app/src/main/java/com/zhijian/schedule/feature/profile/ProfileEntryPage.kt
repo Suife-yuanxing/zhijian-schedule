@@ -108,9 +108,10 @@ fun ProfileEntryPage(
         // 背景景深跟随展开进度：磨砂与压暗在卡片浮起时同步铺开（镜像到共享状态，
         // 「我的」页在绘制阶段读，不逐帧重组）
         coroutineScope {
-            val mirror = launch {
-                snapshotFlow { enter.value }.collect { transitions.backdrop = it }
-            }
+            val mirror =
+                launch {
+                    snapshotFlow { enter.value }.collect { transitions.backdrop = it }
+                }
             enter.animateTo(
                 targetValue = 1f,
                 animationSpec = tween(PROFILE_ENTRY_ENTER_MS, easing = EntryEasing),
@@ -158,9 +159,10 @@ fun ProfileEntryPage(
                     .toInt()
                     .coerceIn(PROFILE_ENTRY_ABORT_MIN_MS, PROFILE_ENTRY_ABORT_MS)
             coroutineScope {
-                val mirror = launch {
-                    snapshotFlow { enter.value }.collect { transitions.backdrop = it }
-                }
+                val mirror =
+                    launch {
+                        snapshotFlow { enter.value }.collect { transitions.backdrop = it }
+                    }
                 enter.animateTo(
                     targetValue = 0f,
                     animationSpec = tween(remaining, easing = EntryEasing),

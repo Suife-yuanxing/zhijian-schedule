@@ -40,10 +40,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.theme.LocalCoursePreset
-import com.zhijian.schedule.core.theme.LocalIsDark
 import com.zhijian.schedule.core.ui.Motion
 import com.zhijian.schedule.core.ui.island.IslandCollapseState
-import com.zhijian.schedule.core.ui.island.IslandTokens
 import com.zhijian.schedule.core.ui.island.rememberIslandPalette
 import com.zhijian.schedule.core.ui.metal.MetalBackdropState
 import com.zhijian.schedule.core.ui.metal.metalMirrorSurface
@@ -110,7 +108,6 @@ internal fun FloatingIslandBar(
 ) {
     val colors = LocalCourseColors.current
     val metal = LocalCoursePreset.current.metal
-    val isDark = LocalIsDark.current
     val island = rememberIslandPalette()
     // 金属浮岛的实时交互态：整条胶囊就是一枚被指腹按住的抛光金属片
     val metalTouch = rememberMetalTouchState()
@@ -139,7 +136,6 @@ internal fun FloatingIslandBar(
         val travelFrom = remember { mutableFloatStateOf(selectedIndex.toFloat()) }
         val travelTo = remember { mutableFloatStateOf(selectedIndex.toFloat()) }
         rememberJellyTravel(selectedIndex, slide, travelFrom, travelTo, animationsOff)
-        val chipAlpha = IslandTokens.CHIP_ALPHA
         Box(
             Modifier
                 .fillMaxWidth()

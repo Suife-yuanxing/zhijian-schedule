@@ -40,7 +40,7 @@ fun rememberMetalClock(): State<Float> {
                 base = now
                 first = false
             }
-            time.floatValue = (now - base) / 1_000_000_000f
+            time.floatValue = (now - base) / NANOS_PER_SECOND
         }
     }
     return time
@@ -57,3 +57,6 @@ val LocalMetalClock = staticCompositionLocalOf<State<Float>?> { null }
  * 倾斜手机时，金属上的高光会像真实金属一样滑过表面——这是金属与「贴图」的分界。
  */
 val LocalMetalGyro = staticCompositionLocalOf<State<Offset>?> { null }
+
+/** 纳秒 → 秒：着色器里的 uTime 以秒为单位（Float 精度只够这个量级） */
+private const val NANOS_PER_SECOND = 1_000_000_000f

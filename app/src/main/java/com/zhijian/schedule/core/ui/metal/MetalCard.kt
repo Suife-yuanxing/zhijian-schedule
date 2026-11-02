@@ -1,3 +1,7 @@
+// 本文件是金属卡片这一主题的集合：两个 metalCard 重载 + 配套私有件。
+// 按文件名概括这套主题比按单个声明命名更准确，故显式放行 MatchingDeclarationName。
+@file:Suppress("MatchingDeclarationName")
+
 package com.zhijian.schedule.core.ui.metal
 
 import androidx.compose.foundation.background

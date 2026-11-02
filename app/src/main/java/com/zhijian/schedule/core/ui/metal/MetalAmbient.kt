@@ -74,26 +74,38 @@ fun MetalAmbientBackdrop(
             .fillMaxSize()
             .drawBehind {
                 drawRect(floor)
+                // 冷光斑：左上偏内，半径接近整宽，压出「远处天光」的漫射
                 drawCircle(
                     brush =
                         Brush.radialGradient(
-                            colors = listOf(cool.copy(alpha = 0.55f), Color.Transparent),
-                            center = Offset(size.width * 0.26f, size.height * 0.08f),
-                            radius = size.width * 0.9f,
+                            colors = listOf(cool.copy(alpha = COOL_GLOW_ALPHA), Color.Transparent),
+                            center = Offset(size.width * COOL_GLOW_X, size.height * COOL_GLOW_Y),
+                            radius = size.width * COOL_GLOW_RADIUS,
                         ),
-                    radius = size.width * 0.9f,
-                    center = Offset(size.width * 0.26f, size.height * 0.08f),
+                    radius = size.width * COOL_GLOW_RADIUS,
+                    center = Offset(size.width * COOL_GLOW_X, size.height * COOL_GLOW_Y),
                 )
+                // 暖光斑：右下，略小且更淡，与冷光斑形成对角张力
                 drawCircle(
                     brush =
                         Brush.radialGradient(
-                            colors = listOf(warm.copy(alpha = 0.42f), Color.Transparent),
-                            center = Offset(size.width * 0.82f, size.height * 0.30f),
-                            radius = size.width * 0.75f,
+                            colors = listOf(warm.copy(alpha = WARM_GLOW_ALPHA), Color.Transparent),
+                            center = Offset(size.width * WARM_GLOW_X, size.height * WARM_GLOW_Y),
+                            radius = size.width * WARM_GLOW_RADIUS,
                         ),
-                    radius = size.width * 0.75f,
-                    center = Offset(size.width * 0.82f, size.height * 0.30f),
+                    radius = size.width * WARM_GLOW_RADIUS,
+                    center = Offset(size.width * WARM_GLOW_X, size.height * WARM_GLOW_Y),
                 )
             },
     )
 }
+
+// 环境光斑的几何与强度：数值取自金属主题的目视调校，单独命名以便整体重调时只改一处。
+private const val COOL_GLOW_X = 0.26f
+private const val COOL_GLOW_Y = 0.08f
+private const val COOL_GLOW_RADIUS = 0.9f
+private const val COOL_GLOW_ALPHA = 0.55f
+private const val WARM_GLOW_X = 0.82f
+private const val WARM_GLOW_Y = 0.30f
+private const val WARM_GLOW_RADIUS = 0.75f
+private const val WARM_GLOW_ALPHA = 0.42f

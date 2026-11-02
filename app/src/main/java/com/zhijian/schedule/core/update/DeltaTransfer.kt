@@ -1,3 +1,8 @@
+// 本文件名为 DeltaTransfer（= 增量传输这件事），内含结论类型与两个同主题扩展函数；
+// detekt 的 MatchingDeclarationName 要求文件名等于唯一的顶层声明名，这里按文件名概括
+// 整体语义更准确，故显式放行。
+@file:Suppress("MatchingDeclarationName")
+
 package com.zhijian.schedule.core.update
 
 import kotlinx.coroutines.CancellationException
@@ -34,7 +39,14 @@ internal sealed interface DeltaOutcome {
     data object Cancelled : DeltaOutcome
 }
 
-/** 下载 patch.bin 并在本地拼装新包 */
+/**
+ * 下载 patch.bin 并在本地拼装新包。
+ *
+ * 捕 Exception 是有意的：本函数是「增量 vs 全量」的分叉点，任何一步失败都必须转成
+ * Fallback 交给全量下载，绝不能把异常抛给上层中断整个更新流程。异常文本要进 reason
+ * 供日志排查，所以不能收窄成具体的 IO 异常。
+ */
+@Suppress("TooGenericExceptionCaught")
 internal suspend fun DownloadSession.runDeltaUpdate(
     request: DownloadRequest,
     strategy: DownloadStrategy.Delta,
@@ -90,6 +102,7 @@ internal suspend fun DownloadSession.runDeltaUpdate(
  *
  * @return null = 成功；非 null = 失败原因
  */
+@Suppress("TooGenericExceptionCaught")
 private suspend fun DownloadSession.downloadPatchFile(
     descriptor: PatchDescriptor,
     target: File,

@@ -31,7 +31,8 @@ object MetalRuntime {
         if (DEBUG_LOG) {
             android.util.Log.i(
                 "MetalRuntime",
-                "supported=$ok forceFallback=$forceFallbackForPreview sdk=${Build.VERSION.SDK_INT} lowRam=${am.isLowRamDevice}",
+                "supported=$ok forceFallback=$forceFallbackForPreview " +
+                    "sdk=${Build.VERSION.SDK_INT} lowRam=${am.isLowRamDevice}",
             )
         }
         supportedCache = ok
@@ -41,7 +42,13 @@ object MetalRuntime {
     /** 诊断开关：置 true 构建一次即可在 logcat 里看到能力判定与着色器编译结果 */
     const val DEBUG_LOG = false
 
-    /** 首次用某段源码创建 shader 时校验一次，编译失败立刻暴露（否则只会静默回退） */
+    /**
+     * 首次用某段源码创建 shader 时校验一次，编译失败立刻暴露（否则只会静默回退）。
+     *
+     * 捕 Throwable 是有意的：AGSL 编译失败可能以 Error（如 UnsatisfiedLinkError）出现，
+     * 只捕 Exception 会让这类失败静默穿过，着色器退化成黑块且无任何日志。
+     */
+    @Suppress("TooGenericExceptionCaught")
     fun verify(
         tag: String,
         source: String,
@@ -146,7 +153,14 @@ object MetalRuntime {
         shader.setFloatUniform("uChrome", chrome)
     }
 
-    /** 全屏环境 shader */
+    /**
+     * 全屏环境 shader。
+     *
+     * 保留 [spec] 参数是为了与 surfaceShader / ssrShader 的调用形状一致：三者在同一处按
+     * 主题预设分支创建，签名不齐会让调用点长出一堆特例。环境着色器的所有参数都是逐帧
+     * uniform（见 updateAmbient），构建期不需要预设值。
+     */
+    @Suppress("UnusedParameter")
     fun ambientShader(spec: MetalSpec): RuntimeShader = verify("ambient", MetalShaders.buildAmbientSource())
 
     fun updateAmbient(

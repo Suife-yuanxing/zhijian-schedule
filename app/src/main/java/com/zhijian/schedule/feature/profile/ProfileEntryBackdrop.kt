@@ -39,7 +39,7 @@ internal fun Modifier.entryBackdrop(transitions: ProfileEntryTransitions): Modif
         .graphicsLayer {
             val b = transitions.backdrop
             renderEffect =
-                if (maxBlurPx > 0f && b > 0.01f) {
+                if (maxBlurPx > 0f && b > BLUR_VISIBLE_THRESHOLD) {
                     // Clamp：整屏底图，边缘钳位采样不出黑边（Modifier.blur 的 Rectangle 同款）
                     BlurEffect(maxBlurPx * b, maxBlurPx * b, TileMode.Clamp)
                 } else {
@@ -48,8 +48,16 @@ internal fun Modifier.entryBackdrop(transitions: ProfileEntryTransitions): Modif
         }.drawWithContent {
             drawContent()
             val b = if (motionAllowed) transitions.backdrop else 0f
-            if (b > 0.01f) {
+            if (b > BLUR_VISIBLE_THRESHOLD) {
                 drawRect(colors.bg.copy(alpha = ENTRY_BACKDROP_SCRIM_ALPHA * b))
             }
         }
 }
+
+/**
+ * 模糊「看得见」的下限。
+ *
+ * 进度低于这个值时 RenderEffect 与压暗都肉眼不可辨，继续每帧挂着模糊只会白烧 GPU
+ * （整屏底图模糊在低端机上是最贵的一笔）。
+ */
+private const val BLUR_VISIBLE_THRESHOLD = 0.01f

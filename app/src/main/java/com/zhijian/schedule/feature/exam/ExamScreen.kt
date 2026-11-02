@@ -161,7 +161,12 @@ fun ExamScreen(
                                 now,
                                 past = false,
                                 entranceDelayMs =
-                                    if (entranceOnce) (60L + index * 24).coerceAtMost(240L) else -1L,
+                                    if (entranceOnce) {
+                                        (UPCOMING_STAGGER_BASE_MS + index * STAGGER_STEP_MS)
+                                            .coerceAtMost(UPCOMING_STAGGER_CAP_MS)
+                                    } else {
+                                        -1L
+                                    },
                                 onClick = {
                                     editing = exam
                                     showEditor = true
@@ -181,7 +186,12 @@ fun ExamScreen(
                                 now,
                                 past = true,
                                 entranceDelayMs =
-                                    if (entranceOnce) (140L + index * 24).coerceAtMost(320L) else -1L,
+                                    if (entranceOnce) {
+                                        (PAST_STAGGER_BASE_MS + index * STAGGER_STEP_MS)
+                                            .coerceAtMost(PAST_STAGGER_CAP_MS)
+                                    } else {
+                                        -1L
+                                    },
                                 onClick = {},
                                 onLongClick = { pendingDelete = exam },
                             )
@@ -448,3 +458,11 @@ private fun ExamEditorDialog(
         dismissButton = { TapTextButton(onClick = onDismiss) { Text("取消") } },
     )
 }
+
+// 行级入场错峰：逐行延迟 base + index * step，并封顶，避免长列表末尾等太久。
+// 未结束与已结束两组各有一套参数（后者整体后移，读起来像「接着往下排」）。
+private const val STAGGER_STEP_MS = 24L
+private const val UPCOMING_STAGGER_BASE_MS = 60L
+private const val UPCOMING_STAGGER_CAP_MS = 240L
+private const val PAST_STAGGER_BASE_MS = 140L
+private const val PAST_STAGGER_CAP_MS = 320L

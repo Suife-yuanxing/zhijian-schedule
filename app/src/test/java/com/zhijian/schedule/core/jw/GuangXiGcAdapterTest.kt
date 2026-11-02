@@ -561,7 +561,7 @@ class GuangXiGcAdapterTest {
                 "classIndex3":["20:50","21:35"],"classIndex4":["21:45","22:30"]}}}}
             """.trimIndent()
 
-        val RULE_TIME_EMPTY = """{"code":0,"data":{}}"""
+        const val RULE_TIME_EMPTY = """{"code":0,"data":{}}"""
 
         val WEEK_LIST_JSON =
             """
@@ -572,7 +572,7 @@ class GuangXiGcAdapterTest {
               {"weekId":"w18","weekNo":18,"startDate":"2026-12-28","endDate":"2027-01-03","remarks":null}]}
             """.trimIndent()
 
-        val WEEK_LIST_EMPTY = """{"code":0,"data":[]}"""
+        const val WEEK_LIST_EMPTY = """{"code":0,"data":[]}"""
 
         /** 成绩页 fixture：非登录态 + meta csrf（结构照抄实测 score_view.html） */
         val SCORE_PAGE_HTML =

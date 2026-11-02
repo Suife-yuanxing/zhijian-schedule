@@ -1,3 +1,7 @@
+// 本文件是周视图单元格的成套件：解析函数 + 主 composable + 若干私有绘制件。
+// 按文件名概括这套主题比按单个声明命名更准确，故显式放行 MatchingDeclarationName。
+@file:Suppress("MatchingDeclarationName")
+
 package com.zhijian.schedule.core.ui.week
 
 import androidx.compose.animation.animateColor

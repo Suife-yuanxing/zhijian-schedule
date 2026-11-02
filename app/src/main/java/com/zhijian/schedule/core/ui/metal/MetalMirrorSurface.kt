@@ -43,7 +43,7 @@ fun Modifier.metalMirrorSurface(
             shape = shape,
             touch = touch,
             clock = clock,
-            chromeOverride = 0.58f,
+            chromeOverride = MIRROR_CHROME,
         )
     }
     // shader 与图层同生命周期：RuntimeShader 的图层采样绑定会固化在首个 effect 上
@@ -65,11 +65,11 @@ fun Modifier.metalMirrorSurface(
                 widthPx = size.width,
                 heightPx = size.height,
                 radiusPx = r,
-                touch = touch?.touch ?: Offset(0.5f, 0.5f),
+                touch = touch?.touch ?: TOUCH_NEUTRAL,
                 press = touch?.pressValue ?: 0f,
                 tint = tint,
                 face = face,
-                chrome = 0.58f,
+                chrome = MIRROR_CHROME,
             )
             MetalRuntime.attachSsr(backdrop.layer, ssrShader)
             backdrop.ssrAttachSignature = signature
@@ -92,3 +92,9 @@ private data class SsrSignature(
     val height: Float,
     val radius: Float,
 )
+
+/** 触摸点未按下时的中性位置：归一化坐标中心，等价于「没有手在玻璃上」 */
+private val TOUCH_NEUTRAL = Offset(0.5f, 0.5f)
+
+/** 镜面档的铬面强度：玻璃本体近乎清水，靠这层铬反射撑出金属感 */
+private const val MIRROR_CHROME = 0.58f
