@@ -1,6 +1,5 @@
 package com.zhijian.schedule.core.jw
 
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
