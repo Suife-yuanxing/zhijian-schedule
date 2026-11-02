@@ -1,10 +1,10 @@
 package com.zhijian.schedule.feature.settings
 
-import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalDate
 
 /**
  * 学期时间轴纯逻辑的边界：学期中、未开学、已结课、最后一天、空输入。
