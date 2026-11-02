@@ -1,5 +1,6 @@
 package com.zhijian.schedule.core.jw.script
 
+import com.zhijian.schedule.core.jw.JwCurrentWeekInference
 import com.zhijian.schedule.core.util.WeekMask
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -219,6 +220,48 @@ class JwScriptOutputTest {
             """.trimIndent()
         val r = JwScriptOutput.parse(json, 20) as JwScriptOutput.ParseResult.Ok
         assertEquals("2026-2027-1", r.metaOrNull()?.semester)
+    }
+
+    /**
+     * 周历页不可用时的退路：页面写着「当前第 N 周」，脚本把它交回来，
+     * 由 JwCurrentWeekInference 反推第 1 周周一。
+     */
+    @Test
+    fun currentWeek_is_inferred_into_start_date() {
+        val json =
+            """
+            {"courses":[{"name":"高等数学","day":1,"startSection":1,"endSection":2,"weeks":"1-8周"}],
+             "totalWeeks":20,"currentWeek":10}
+            """.trimIndent()
+        val r = JwScriptOutput.parse(json, 20) as JwScriptOutput.ParseResult.Ok
+        val expected = JwCurrentWeekInference.infer(10, 20, java.time.LocalDate.now())
+        assertEquals(expected, r.metaOrNull()?.startDate)
+    }
+
+    /** 脚本直接给了 startDate 时以它为权威，不被反推覆盖 */
+    @Test
+    fun explicit_start_date_wins_over_inference() {
+        val json =
+            """
+            {"courses":[{"name":"高等数学","day":1,"startSection":1,"endSection":2,"weeks":"1-8周"}],
+             "totalWeeks":20,"startDate":"2026-08-31","currentWeek":3}
+            """.trimIndent()
+        val r = JwScriptOutput.parse(json, 20) as JwScriptOutput.ParseResult.Ok
+        assertEquals("2026-08-31", r.metaOrNull()?.startDate)
+    }
+
+    /** 脏 currentWeek（越界 / 超过总周数）必须被丢弃，否则整学期周次会偏 */
+    @Test
+    fun out_of_range_current_week_is_dropped() {
+        val bad =
+            """
+            {"courses":[{"name":"高等数学","day":1,"startSection":1,"endSection":2,"weeks":"1-8周"}],
+             "totalWeeks":20,"currentWeek":21}
+            """.trimIndent()
+        val r = JwScriptOutput.parse(bad, 20) as JwScriptOutput.ParseResult.Ok
+        // totalWeeks 仍然有效，所以 meta 不为 null；关键是 currentWeek 没被采信，
+        // 因而没有反推出任何开学日期（否则整学期周次会跟着偏）。
+        assertEquals("", r.metaOrNull()?.startDate.orEmpty())
     }
 
     @Test
