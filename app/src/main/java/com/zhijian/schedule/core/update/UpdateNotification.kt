@@ -33,7 +33,12 @@ object UpdateNotification {
         )
     }
 
-    /** 进度通知；percent 为 null 时显示不确定进度（响应没有长度信息）；sourceLabel 非空时注明来源 */
+    /**
+     * 进度通知；percent 为 null 时显示不确定进度（响应没有长度信息）；sourceLabel 非空时注明来源。
+     *
+     * [preparing] 为 true 时标题与正文都换成「准备中」：这一段还没有任何字节在动，
+     * 若照常写「0 B / 35.2 MB · 0 B/s」，用户会以为下载卡死了。
+     */
     fun buildProgress(
         context: Context,
         version: String,
@@ -42,22 +47,25 @@ object UpdateNotification {
         percent: Int?,
         etaSeconds: Long?,
         sourceLabel: String? = null,
+        preparing: Boolean = false,
     ): Notification {
         val source = sourceLabel?.let { " · 经 $it" }.orEmpty()
         val text =
-            if (totalBytes != null) {
-                val tail = ResumableDownload.etaText(etaSeconds)?.let { " · $it" }.orEmpty()
-                "${ResumableDownload.formatBytes(downloadedBytes)} / " +
-                    "${ResumableDownload.formatBytes(totalBytes)}$tail$source"
-            } else {
-                "已下载 ${ResumableDownload.formatBytes(downloadedBytes)}$source"
+            when {
+                preparing -> "正在准备下载（校验本地数据、探测下载源）"
+                totalBytes != null -> {
+                    val tail = ResumableDownload.etaText(etaSeconds)?.let { " · $it" }.orEmpty()
+                    "${ResumableDownload.formatBytes(downloadedBytes)} / " +
+                        "${ResumableDownload.formatBytes(totalBytes)}$tail$source"
+                }
+                else -> "已下载 ${ResumableDownload.formatBytes(downloadedBytes)}$source"
             }
         return NotificationCompat
             .Builder(context, CH_UPDATE)
             .setSmallIcon(R.drawable.ic_stat_notify)
-            .setContentTitle("正在下载更新 v$version")
+            .setContentTitle(if (preparing) "正在准备更新 v$version" else "正在下载更新 v$version")
             .setContentText(text)
-            .setProgress(100, percent ?: 0, percent == null)
+            .setProgress(100, percent ?: 0, preparing || percent == null)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setSilent(true)

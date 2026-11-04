@@ -21,14 +21,31 @@ internal sealed interface WatchdogVerdict {
 /** 25 秒没有新字节视为停滞 */
 internal const val WATCHDOG_STALL_TIMEOUT_MS = 25_000L
 
+/**
+ * 一次源尝试的**首字节**上限：这么久还一个字节都没进来，就当这条源不通、立刻换下一个。
+ *
+ * 为什么要单独一条：25 s 的停滞判据是给「已经开始下、中途卡住」用的。
+ * 而点「下载更新」之后用户面对的是**首字节之前的等待**——直连被黑洞时（国内移动网络下
+ * github.com 的 releases 域名很常见），建连会一路挂到 25 s 才判停顿，那 25 s 里界面是
+ * 「正在下载更新 · 0 B / 32.1 MB」，用户只会以为卡死了然后杀掉应用。
+ * 6 s 的余量：正常 4G 下建连 + TLS + 首个 Range 响应在 1 s 内完成，6 s 已经留了六倍余量；
+ * 真慢成这样的源，就算它最后通了，下完 32 MB 也是几个小时后的事。
+ */
+internal const val WATCHDOG_FIRST_BYTE_MS = 6_000L
+
 /** 前 1 分钟是连接/加速宽限期，之后才评价速度 */
 internal const val WATCHDOG_SPEED_GRACE_MS = 60_000L
 
 /** 有效速度下限：低于 30KB/s 且还有候选源时换源（46MB 按此速度要 25 分钟以上） */
 internal const val WATCHDOG_MIN_SPEED_BPS = 30_000L
 
-/** 源监视器巡检间隔 */
-private const val WATCHDOG_TICK_MS = 3_000L
+/**
+ * 源监视器巡检间隔。
+ *
+ * 从 3s 收到 1s：巡检只比几个 long 字段，开销可以忽略；而 3s 的粒度会让首字节早判
+ * （[WATCHDOG_FIRST_BYTE_MS] = 6s）实际落在 6~9s 之间——那一段是用户盯着「0 B」干等的全部时间。
+ */
+private const val WATCHDOG_TICK_MS = 1_000L
 
 internal fun sourceWatchdogVerdict(
     movedBytes: Long,
@@ -37,6 +54,9 @@ internal fun sourceWatchdogVerdict(
     hasNextSource: Boolean,
 ): WatchdogVerdict =
     when {
+        // 首字节一直不来：比「中途停顿」更需要早判，因为这段时间界面完全没有进度可看。
+        // 只在还有下一个候选时才早换——单源时换也白换，留着让它自己按停滞阈值收场。
+        hasNextSource && movedBytes <= 0L && elapsedMs >= WATCHDOG_FIRST_BYTE_MS -> WatchdogVerdict.Stalled
         stillForMs >= WATCHDOG_STALL_TIMEOUT_MS -> WatchdogVerdict.Stalled
         hasNextSource &&
             movedBytes > 0L &&

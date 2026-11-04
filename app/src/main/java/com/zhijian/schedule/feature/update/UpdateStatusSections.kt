@@ -40,6 +40,7 @@ import com.zhijian.schedule.BuildConfig
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.theme.LocalIsDark
 import com.zhijian.schedule.core.ui.Motion
+import com.zhijian.schedule.core.update.DownloadPhase
 import com.zhijian.schedule.core.update.DownloadState
 import com.zhijian.schedule.core.update.ResumableDownload
 import com.zhijian.schedule.core.update.UpdateChecker
@@ -56,6 +57,8 @@ internal fun UpdateStatusCard(ui: UpdateUiState) {
     val info = ui.updateInfo
     when {
         ui.busy -> CheckingCard()
+        // 已点下载、服务还没接住：先给一张「准备中」，不能让卡片停在新版本介绍上
+        ui.launching && download !is DownloadState.Running -> PreparingCard()
         download is DownloadState.Running -> RunningCard(download)
         download is DownloadState.Paused -> PausedCard(download)
         download is DownloadState.Ready -> ReadyCard(download)
@@ -168,6 +171,44 @@ private fun UpdateAvailableCard(info: UpdateChecker.UpdateInfo) {
     }
 }
 
+/**
+ * 「已经点下去、还没有一个字节在动」的一段：拉增量清单、算基线摘要、探测下载源。
+ *
+ * 这一段真实存在（可能几百毫秒到两秒），旧界面在这期间什么都不变，于是被读成「没点上」。
+ * 卡片形态与 [RunningCard] 保持一致，只是标题换成「正在准备更新」、进度条走不确定态——
+ * 用户看到的是「同一个东西在往前走」，而不是卡片闪一下再换一张。
+ */
+@Composable
+private fun PreparingCard() {
+    val colors = LocalCourseColors.current
+    StatusCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(18.dp),
+                color = colors.accent,
+                strokeWidth = 2.dp,
+            )
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "正在准备更新",
+                    color = colors.text,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    "校验本地数据并探测下载源",
+                    color = colors.textMuted,
+                    fontSize = 12.sp,
+                )
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        IndeterminateBar()
+    }
+}
+
 @Composable
 private fun RunningCard(state: DownloadState.Running) {
     val colors = LocalCourseColors.current
@@ -179,7 +220,11 @@ private fun RunningCard(state: DownloadState.Running) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    "正在下载更新",
+                    when (state.phase) {
+                        DownloadPhase.Preparing -> "正在准备更新"
+                        DownloadPhase.Verifying -> "正在校验安装包"
+                        DownloadPhase.Transfer -> "正在下载更新"
+                    },
                     color = colors.text,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -197,6 +242,10 @@ private fun RunningCard(state: DownloadState.Running) {
             }
         }
         Spacer(Modifier.height(10.dp))
+        // 判定规则只有一条：**有确定进度就画确定条**。
+        // 续传时准备阶段已经握着 4% 的进度，这时还画一条来回扫的不确定条，
+        // 会出现「右边写着 4%、下面那条却在漫游」的自相矛盾读数。
+        // 校验阶段进度必然已经 100%，确定条正好停在满格，也读得通。
         if (fraction != null) ProgressBar(fraction) else IndeterminateBar()
         Spacer(Modifier.height(8.dp))
         Text(
@@ -416,8 +465,18 @@ private fun IndeterminateBar() {
 }
 
 private fun runningDetail(state: DownloadState.Running): String {
-    // 刚点下载时还在探测/连接源，进度和速度都是 0：给一句明确的「在干活」而不是干巴巴的 0 B
-    if (state.downloadedBytes <= 0L && state.bytesPerSecond <= 0L) return "正在连接下载源…"
+    // 准备与校验都没有「字节在动」，给一句话说明在干什么；
+    // 否则进度与速度都是 0，一行「0 B / 35.2 MB · 0 B/s」读起来就是卡住
+    val phaseText =
+        when (state.phase) {
+            DownloadPhase.Preparing -> "校验本地数据、探测下载源…"
+            DownloadPhase.Verifying -> "正在核对安装包完整性，马上就好…"
+            DownloadPhase.Transfer -> null
+        }
+    // 刚进入传输时仍在连接源，同样给一句明确的「在干活」而不是干巴巴的 0 B
+    val idleConnect = state.downloadedBytes <= 0L && state.bytesPerSecond <= 0L
+    if (phaseText != null) return phaseText
+    if (idleConnect) return "正在连接下载源…"
     val size =
         state.totalBytes?.let {
             "${ResumableDownload.formatBytes(state.downloadedBytes)} / ${ResumableDownload.formatBytes(it)}"

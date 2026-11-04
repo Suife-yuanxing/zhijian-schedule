@@ -140,6 +140,13 @@ class ApkDownloadService : Service() {
     private fun renderProgress(state: DownloadState) {
         if (state !is DownloadState.Running) return
         val percent = percentOf(state)
+        // 准备阶段（拉清单 / 算摘要 / 探测源）进度数字不动，节流会把它一直挡在外面，
+        // 于是通知栏停在「0% · 0 B/s」——看起来像卡死。这一阶段的每一次状态都放行：
+        // 它本来就只有一次，放行不产生任何额外开销。
+        if (state.phase == DownloadPhase.Preparing) {
+            UpdateNotification.postProgress(this, notificationFor(state, percent))
+            return
+        }
         if (!throttle.shouldRefresh(System.currentTimeMillis(), percent)) return
         UpdateNotification.postProgress(this, notificationFor(state, percent))
     }
@@ -184,6 +191,7 @@ class ApkDownloadService : Service() {
             percent = percent,
             etaSeconds = state.etaSeconds,
             sourceLabel = state.sourceLabel,
+            preparing = state.phase == DownloadPhase.Preparing,
         )
 
     private fun percentOf(state: DownloadState.Running): Int? =

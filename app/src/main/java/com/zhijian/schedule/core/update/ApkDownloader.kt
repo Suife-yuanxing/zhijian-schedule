@@ -3,12 +3,18 @@ package com.zhijian.schedule.core.update
 import android.os.SystemClock
 import com.zhijian.schedule.di.DownloadClient
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -32,6 +38,15 @@ class ApkDownloader
         @DownloadClient private val client: OkHttpClient,
         private val store: UpdateStore,
     ) {
+        /**
+         * 基线包 sha256 的记忆。点「下载更新」之后这里直接关系首屏响应：
+         * 没有它就每次都要把 30~50 MB 的已安装整包读一遍（几百毫秒到一秒多），
+         * 而用户点了按钮后看到的第一帧就是这个等待。见 [BaselineDigestCache]。
+         */
+        private val baselineDigests = BaselineDigestCache()
+
+        /** 同一份摘要的磁盘旁注：跨进程复用，冷启动后第一次点下载也不必重算 */
+        private val baselineNotes = BaselineDigestNoteStore({ store.baselineDir }, Json)
         private val _state = MutableStateFlow<DownloadState>(DownloadState.Idle)
         val state: StateFlow<DownloadState> = _state.asStateFlow()
 
@@ -52,6 +67,16 @@ class ApkDownloader
         private var lastPublishAt: Long = 0L
 
         /**
+         * 增量清单的预热缓存（版本 → 清单）。
+         *
+         * 为什么需要：清单放在 github.com 上，一次往返实测 7.3 s（移动网络），
+         * 而它只是用来回答「这次能不能少下几十 MB」。它挡在第一个字节之前，纯亏。
+         * 但**打开更新窗口**那一刻用户正在读版本号与更新说明，那段时间做这件事完全免费。
+         * 窗口一打开就预热，点下载时直接命中，判定退化成纯本地计算。
+         */
+        private val patchCache = java.util.concurrent.ConcurrentHashMap<String, PatchDescriptor>()
+
+        /**
          * 开始或继续下载。
          *
          * 两条路径：
@@ -62,39 +87,108 @@ class ApkDownloader
          * 分流放在这一层而不是 UI：状态机、磁盘、基线三样都在这里，判断才有一致的依据。
          */
         suspend fun download(request: DownloadRequest) {
+            // 重新起表：这一轮从「用户点下去」开始算，日志里的 +Nms 才有意义
+            UpdateTrace.reset()
             session.reset()
-            if (tryDelta(request)) return
-            downloadFull(request)
+            val (startBytes, startTotal) =
+                withContext(Dispatchers.IO) {
+                    val meta = store.readMeta(request.version)
+                    progressOnDisk(request.version, meta) to
+                        (request.sizeBytes?.takeIf { it > 0 } ?: meta?.totalBytes?.takeIf { it > 0 })
+                }
+            // 先落「准备中」再干任何耗时的事：下面每一步都要几百毫秒到几秒，
+            // 这段时间界面必须已经有反应。已下字节取磁盘记账，续传时进度条不会先掉回 0。
+            publishPreparing(request, startBytes, startTotal)
+            UpdateTrace.log { "准备态已发布，磁盘可续传 $startBytes 字节" }
+            val resumable = startBytes > 0L
+            //
+            // 从这里开始是「点下载 → 真的在跑」的全部等待。三件事本来可以串着做，
+            // 但它们之间没有依赖，串行做等于把等待相加：实测串行 1.66 s（增量判定）
+            // + 1.99 s（源探测）= 3.65 s 才发出第一个字节请求。
+            // 现在增量判定与源探测**同时起跑**，等待变成两者里较慢的那一个。
+            val delta =
+                if (resumable || request.patchUrl == null) {
+                    null
+                } else {
+                    // 续传不试增量：增量走的是另一个文件（patch.bin），复用不了已有分片；
+                    // 先花一次往返拉 patch.json 只会把「点继续」到「真的在跑」再拉长一截。
+                    scope.async(Dispatchers.IO) { resolveDelta(request) }
+                }
+            val sourcesDeferred = scope.async(Dispatchers.IO) { prepareSources(request, resumable) }
+            if (delta != null) {
+                // **增量判定带硬超时。** 它省的是流量，不是时间：值得为它多等一点，
+                // 但绝不该让用户在「点完按钮、还没有第一个字节」的状态里干等。
+                // 实测（2026-11-04，移动网络）：patch.json 落在 github.com 上，
+                // 一次往返 7.3 s —— 而它换来的只是「这次能不能少下 28 MB」这个判断题。
+                // 超时就放弃增量、直接走全量：多花的是流量，少花的是用户 7 秒。
+                val strategy = withTimeoutOrNull(DELTA_DECIDE_TIMEOUT_MS) { delta.await() }
+                if (strategy == null && !delta.isCompleted) {
+                    UpdateTrace.log { "增量判定超时（${DELTA_DECIDE_TIMEOUT_MS}ms），直接走全量" }
+                    delta.cancel()
+                }
+                if (strategy != null && runDelta(request, strategy)) return
+            }
+            val sources = sourcesDeferred.await()
+            downloadFull(request, sources)
         }
 
+        /** 增量路径的工作协程域：与源探测并行跑，谁先好谁先用 */
+        private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
         /**
-         * 尝试增量路径。返回 true 表示已经处理完（成功或取消），调用方不要再走全量。
+         * 判定这次能不能走增量。只做判定、不下载：判定是「点下载后最慢的那一步」
+         * （要读 30~50 MB 的基线包算 sha256），所以它必须能和源探测并行。
          *
-         * 注意「失败也要回退全量」：任何一步不对就返回 false，让 [downloadFull] 接着跑。
-         * 用户看到的是「下载中」，不会因为增量不可用而多一次点击。
+         * @return null 表示这次不走增量（没清单 / 基线对不上 / 增量不够省）
          */
-        private suspend fun tryDelta(request: DownloadRequest): Boolean {
-            val patchUrl = request.patchUrl ?: return false
-            val descriptor = withContext(Dispatchers.IO) { fetchDescriptor(patchUrl) } ?: return false
-            val baselineVersion = withContext(Dispatchers.IO) { store.baselineVersion() }
-            val baselineBytes =
+        private suspend fun resolveDelta(request: DownloadRequest): DownloadStrategy.Delta? {
+            val patchUrl = request.patchUrl ?: return null
+            //
+            // **先看本地，再走网络。** 增量能不能用有两个前提：清单（网络）与基线包（本地）。
+            // 本地这一半几乎免费（读一次目录），而网络那一半是一次 GitHub 往返（实测 1.8 s）。
+            // 先查本地：没有基线包时，清单拉回来也一定会被判「没有本地基线，只能全量」，
+            // 那 1.8 s 就是纯粹的等待——而它正好落在用户点完按钮、第一个字节之前。
+            //
+            // 这个顺序还有一个附带好处：首次更新（多数人的多数时候）直接走全量，
+            // 一个网络请求都不发，连 patch.json 的流量与限流都省了。
+            val baselineVersion =
                 withContext(Dispatchers.IO) {
-                    baselineVersion
-                        ?.let { store.baselineFile(it) }
-                        ?.takeIf { it.isFile }
-                        ?.length()
+                    store.baselineVersion()?.takeIf { version ->
+                        store.baselineFile(version).let { it.isFile && it.length() > 0L }
+                    }
                 }
+            if (baselineVersion == null) {
+                UpdateTrace.log { "本地没有基线包，跳过增量判定（不拉清单）" }
+                return null
+            }
+            // 基线的长度与摘要都要先用：摘要那一步是这里最贵的（32 MB 约 1.2 s），
+            // 但它与「拉清单」互不依赖，所以两个 deferred 在 download() 里是同时在跑的。
+            val baselineFile = withContext(Dispatchers.IO) { store.baselineFile(baselineVersion) }
+            val baselineBytes = baselineFile.takeIf { it.isFile }?.length()
+            // 预热命中就直接用，没命中才走网络（并受调用方的 1.5 s 上限约束）
+            val descriptor = patchCache[request.version] ?: fetchDescriptor(patchUrl) ?: return null
             val strategy =
                 DeltaPolicy.decide(
                     descriptor = descriptor,
                     baseApkBytes = baselineBytes,
-                    baseSha256 = computeBaselineDigest(baselineVersion),
+                    baseSha256 = baselineDigest(baselineVersion),
                     fullSize = request.sizeBytes,
                 )
-            if (strategy !is DownloadStrategy.Delta) {
-                UpdateTrace.log { "不走增量：" + strategy.reasonText }
-                return false
+            return (strategy as? DownloadStrategy.Delta).also {
+                UpdateTrace.log { "增量判定：" + strategy.reasonText }
             }
+        }
+
+        /**
+         * 跑增量并收敛结论。返回 true 表示这一轮已经结束（成功或取消），调用方不要再走全量。
+         *
+         * 「失败也回退全量」：任何一步不对就返回 false，让全量接着跑——
+         * 用户看到的是「下载中」，不会因为增量不可用而多一次点击。
+         */
+        private suspend fun runDelta(
+            request: DownloadRequest,
+            strategy: DownloadStrategy.Delta,
+        ): Boolean {
             UpdateTrace.log {
                 "走增量：" + ResumableDownload.formatBytes(strategy.patchSize) +
                     " / 全量 " + ResumableDownload.formatBytes(strategy.fullSize)
@@ -107,6 +201,7 @@ class ApkDownloader
                     bytesPerSecond = 0L,
                     etaSeconds = null,
                     sourceLabel = "增量 " + ResumableDownload.formatBytes(strategy.patchSize),
+                    phase = DownloadPhase.Transfer,
                 )
             val outcome =
                 withContext(Dispatchers.IO) {
@@ -130,6 +225,56 @@ class ApkDownloader
             }
         }
 
+        /**
+         * 决定这一轮按什么顺序试哪些源。
+         *
+         * 续传且上次那个源还在候选里：**不探测**，直接接着下——那个源刚刚才把几个 MB
+         * 写进分片，它能不能跑已经有答案了，再花一两次往返去证明一遍纯属让用户多等。
+         */
+        private suspend fun prepareSources(
+            request: DownloadRequest,
+            resumable: Boolean,
+        ): List<UpdateSource> {
+            val sources =
+                DownloadSourceSet.availableSources(
+                    directUrl = request.url,
+                    digest = request.digest,
+                    mirrors = if (request.mirrorsEnabled) DownloadSourceSet.MIRRORS else emptyList(),
+                )
+            val meta = withContext(Dispatchers.IO) { store.readMeta(request.version) }
+            val previousUrl = meta?.url
+            val resumeSource =
+                previousUrl?.takeIf { resumable && sources.any { source -> source.url == it } }
+            if (resumeSource != null) {
+                UpdateTrace.log { "续传跳过源探测，沿用 $resumeSource" }
+                return DownloadSourceSet.preferResumeSource(sources, resumeSource)
+            }
+            val ordered = session.probeSources(sources, request.sizeBytes)
+            return DownloadSourceSet.preferResumeSource(ordered, previousUrl)
+        }
+
+        /**
+         * 落「准备中」状态。字节数取磁盘上的记账而不是 0：
+         * 续传时进度条应该停在原处等，而不是先掉回 0 再长上去。
+         */
+        private fun publishPreparing(
+            request: DownloadRequest,
+            bytes: Long,
+            total: Long?,
+        ) {
+            session.publishedBytes = bytes
+            lastPublishAt = 0L
+            _state.value =
+                DownloadState.Running(
+                    version = request.version,
+                    downloadedBytes = bytes,
+                    totalBytes = total,
+                    bytesPerSecond = 0L,
+                    etaSeconds = null,
+                    phase = DownloadPhase.Preparing,
+                )
+        }
+
         /** 拉增量清单；拿不到就当这个版本没有增量 */
         private suspend fun fetchDescriptor(patchUrl: String): PatchDescriptor? =
             runCatching {
@@ -146,49 +291,43 @@ class ApkDownloader
                 }
             }.getOrNull()
 
-        /** 基线包的 sha256；没有基线或读不出来都返回 null（[DeltaPolicy] 会据此回退全量） */
-        private suspend fun computeBaselineDigest(baselineVersion: String?): String? {
+        /**
+         * 基线包的 sha256；没有基线或读不出来都返回 null（[DeltaPolicy] 会据此回退全量）。
+         *
+         * 三级加速，逐级省掉重复读盘：
+         * 1. 进程内记忆（[BaselineDigestCache]）——同一次运行里点多少次下载都只读一遍；
+         * 2. 磁盘旁注（[UpdateStore.readBaselineDigest]）——冷启动后第一次点下载也不必重算；
+         * 3. 都没有才真读文件。
+         * 这一步实测 1.66 s（32 MB 的包），是「点下载」之后最大的一块等待；
+         * 而它算出来的东西只跟文件内容有关，重算没有任何意义。
+         */
+        private suspend fun baselineDigest(baselineVersion: String?): String? {
             if (baselineVersion == null) return null
             return withContext(Dispatchers.IO) {
                 val file = store.baselineFile(baselineVersion)
                 if (!file.isFile) return@withContext null
-                runCatching { UpdateDigest.sha256Of(file) }.getOrNull()
+                baselineDigests.get(file)?.let { return@withContext it }
+                baselineNotes.read(baselineVersion, file)?.let {
+                    baselineDigests.put(file, it)
+                    return@withContext it
+                }
+                runCatching { UpdateDigest.sha256Of(file) }
+                    .getOrNull()
+                    ?.also {
+                        baselineDigests.put(file, it)
+                        baselineNotes.write(baselineVersion, file, it)
+                    }
             }
         }
 
-        /** 全量路径：源链 + 分片并行（原来的 download() 主体） */
-        private suspend fun downloadFull(request: DownloadRequest) {
-            // 源探测、换源可能要好几秒：先把「下载中」摆出来，页面不能在这段时间毫无反应
-            val (initialBytes, initialTotal) =
-                withContext(Dispatchers.IO) {
-                    val meta = store.readMeta(request.version)
-                    progressOnDisk(request.version, meta) to
-                        (request.sizeBytes?.takeIf { it > 0 } ?: meta?.totalBytes?.takeIf { it > 0 })
-                }
-            session.publishedBytes = initialBytes
-            lastPublishAt = 0L
-            _state.value =
-                DownloadState.Running(
-                    version = request.version,
-                    downloadedBytes = initialBytes,
-                    totalBytes = initialTotal,
-                    bytesPerSecond = 0L,
-                    etaSeconds = null,
-                )
-            val sources =
-                DownloadSourceSet.availableSources(
-                    directUrl = request.url,
-                    digest = request.digest,
-                    mirrors = if (request.mirrorsEnabled) DownloadSourceSet.MIRRORS else emptyList(),
-                )
+        /** 全量路径：源链 + 分片并行（[sources] 由 [prepareSources] 并行备好） */
+        private suspend fun downloadFull(
+            request: DownloadRequest,
+            sources: List<UpdateSource>,
+        ) {
             try {
-                val previousUrl = withContext(Dispatchers.IO) { store.readMeta(request.version)?.url }
-                val ordered = withContext(Dispatchers.IO) { session.probeSources(sources, request.sizeBytes) }
-                val finalSources = DownloadSourceSet.preferResumeSource(ordered, previousUrl)
-                if (previousUrl != null && finalSources.firstOrNull()?.url == previousUrl) {
-                    UpdateTrace.log { "续传沿用上次下载源 ${finalSources.first().id}" }
-                }
-                val result = withContext(Dispatchers.IO) { runSourceChain(request, finalSources) }
+                UpdateTrace.log { "源链就绪：" + sources.joinToString(",") { it.id } }
+                val result = withContext(Dispatchers.IO) { runSourceChain(request, sources) }
                 _state.value = result
             } catch (e: CancellationException) {
                 // 服务被回收时协程会被取消：把状态落回 Paused（分片保留），再向上传播
@@ -239,6 +378,7 @@ class ApkDownloader
 
         /** 清空下载缓存，返回删除的文件数；文件没了，状态也必须退出 Ready/Paused，否则安装永远打不开 */
         fun clearCache(): Int {
+            baselineDigests.clear()
             val deleted = store.clearCache()
             if (_state.value !is DownloadState.Running) _state.value = DownloadState.Idle
             return deleted
@@ -282,8 +422,47 @@ class ApkDownloader
             if (installedApk == null || !installedApk.isFile) return false
             val existing = store.baselineFile(installedVersion)
             if (existing.isFile && existing.length() == installedApk.length()) return true
-            // 只剩一份基线，换版本时旧的自然被清掉（见 UpdateStore.saveBaseline）
+            // 只剩一份基线，换版本时旧的自然被清掉（见 UpdateStore.saveBaseline）。
+            // 记忆与磁盘旁注一起作废：它们描述的是那个刚被覆盖掉的文件。
+            baselineDigests.clear()
             return store.saveBaseline(installedVersion, installedApk)
+        }
+
+        /**
+         * 预热基线包摘要：把「点下载之后最贵的那一步」搬到启动后的空闲时间。
+         *
+         * 实测（2026-11-04，PKG110）：32 MB 的基线包算一遍 sha256 要 1.17 s，
+         * 而它恰好发生在用户点「下载更新」之后、第一个字节之前——那一段是纯等待，
+         * 界面上只有一句「正在准备更新」，最容易读成卡死。
+         *
+         * 调用时机：「我的」页/启动时 ensureBaseline 之后、且不在下载中。
+         * 命中磁盘旁注时这一趟只读几百字节 JSON，代价可以忽略；没命中就顺手补上，
+         * 于是用户真正点下载时几乎必然命中。
+         *
+         * 失败静默：算不出来只是回到「点下载时现算」，不比现在更差，不该打扰任何人。
+         */
+        suspend fun warmBaselineDigest(version: String) {
+            if (_state.value is DownloadState.Running) return
+            runCatching { baselineDigest(version) }
+        }
+
+        /**
+         * 预热增量清单：打开更新窗口时调用，结果留在 [patchCache] 里供点下载时直接用。
+         *
+         * 与 [warmBaselineDigest] 同理——把「点下载之后才做」的网络往返搬到「用户正在读更新说明」时。
+         * 失败静默：拿不到清单只是回到「点下载时现拉（并在超时后走全量）」，不比现在更差。
+         */
+        fun prefetchPatch(
+            version: String,
+            patchUrl: String?,
+        ) {
+            if (patchUrl.isNullOrBlank() || patchCache.containsKey(version)) return
+            if (_state.value is DownloadState.Running) return
+            scope.launch {
+                runCatching {
+                    withTimeoutOrNull(PATCH_PREFETCH_TIMEOUT_MS) { fetchDescriptor(patchUrl) }
+                }.getOrNull()?.let { patchCache[version] = it }
+            }
         }
 
         /**
@@ -462,23 +641,46 @@ class ApkDownloader
             session.publishedBytes = downloaded
             // 8 个 worker 每 64 KiB 就想刷一次，主线程会被重组打满、页面点不动：
             // 一秒钟最多推 4 次，进度条动画本身有 320ms 补间，看起来仍然是连续的
+            // 字节已经齐了、但整包 sha256 还要算（几十 MB，几百毫秒）：
+            // 这一段必须切到「校验中」，否则进度条卡在 100%、按钮还写着「取消下载」，读作卡死。
+            // 顺带跳过节流——这一帧是阶段切换，不能因为落在 250ms 窗口里被吞掉。
+            val verifying = total != null && (total <= 0L || downloaded >= total)
             val now = SystemClock.elapsedRealtime()
-            if (lastPublishAt != 0L && now - lastPublishAt < PUBLISH_MIN_INTERVAL_MS) return
+            if (!verifying && lastPublishAt != 0L && now - lastPublishAt < PUBLISH_MIN_INTERVAL_MS) return
             lastPublishAt = now
             _state.value =
                 DownloadState.Running(
                     version = request.version,
                     downloadedBytes = downloaded,
                     totalBytes = total,
-                    bytesPerSecond = meter.bytesPerSecond() ?: 0L,
-                    etaSeconds = meter.etaSeconds(downloaded, total),
+                    bytesPerSecond = if (verifying) 0L else meter.bytesPerSecond() ?: 0L,
+                    etaSeconds = if (verifying) null else meter.etaSeconds(downloaded, total),
                     // 直连时不显示来源，默认路径不打扰
                     sourceLabel = source.label.takeIf { source.id != DownloadSourceSet.DIRECT_ID },
+                    phase = if (verifying) DownloadPhase.Verifying else DownloadPhase.Transfer,
                 )
         }
 
         private companion object {
             /** UI 进度节流：最快 250ms 一次，避免高频状态写入把主线程重组打满 */
             const val PUBLISH_MIN_INTERVAL_MS = 250L
+
+            /**
+             * 增量判定的等待上限。
+             *
+             * 判定的产出是「这次能不能少下几十 MB」，它不改善首次可见速度——
+             * 而它挡在第一个字节之前。实测 GitHub 往返 7.3 s，用户已经点了按钮，
+             * 屏幕上却只有「正在准备更新」。1.5 s 内答不上来就直接全量，
+             * 用流量换响应：这条路径第一次更新就走不到增量，本来也没省多少。
+             */
+            const val DELTA_DECIDE_TIMEOUT_MS = 1_500L
+
+            /**
+             * 清单预热的等待上限。
+             *
+             * 比 [DELTA_DECIDE_TIMEOUT_MS] 宽松：预热发生在用户读更新说明的时候，
+             * 早一秒晚一秒都没人感知，而多等一会儿命中率就高得多。
+             */
+            const val PATCH_PREFETCH_TIMEOUT_MS = 8_000L
         }
     }

@@ -3,10 +3,25 @@ package com.zhijian.schedule.core.update
 import android.content.Context
 import android.os.StatFs
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
+
+/**
+ * 基线包摘要旁注的序列化形态。
+ *
+ * 带长度与 mtime 是刻意的：基线包是原地覆盖（saveBaseline 用 copyTo(overwrite)），
+ * 只记摘要的话，换了包但版本号没变（重装同一版本）时会把旧摘要当成新的，
+ * 而增量判据一旦拿错摘要就永远失配——表现是「增量永远走不通」。
+ */
+@Serializable
+internal data class BaselineDigestNote(
+    val digest: String,
+    val length: Long,
+    val modifiedAt: Long,
+)
 
 /**
  * `filesDir/updates/` 的目录布局、元数据读写与占用统计：
@@ -125,7 +140,6 @@ class UpdateStore
 
         fun baselineFile(version: String): File = File(baselineDir, version + SUFFIX_APK)
 
-        /** 当前留作基线的版本号；没有则返回 null */
         fun baselineVersion(): String? =
             baselineDir
                 .listFiles()
@@ -175,5 +189,8 @@ class UpdateStore
 
             /** 增量数据文件后缀：与 .apk 区分，清理缓存时一并删除 */
             const val SUFFIX_PATCH = ".patch.bin"
+
+            /** 基线包摘要旁注的后缀（与基线包并列放在 update-baseline/ 里） */
+            const val SUFFIX_BASELINE_DIGEST = ".digest.json"
         }
     }

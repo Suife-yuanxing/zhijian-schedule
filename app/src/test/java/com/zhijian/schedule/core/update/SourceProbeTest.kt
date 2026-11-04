@@ -1,9 +1,13 @@
 package com.zhijian.schedule.core.update
 
+import com.zhijian.schedule.core.update.PROBE_EARLY_CHECK_MS
+import com.zhijian.schedule.core.update.PROBE_HARD_CAP_MS
 import com.zhijian.schedule.core.update.PROBE_MIN_THROUGHPUT_BPS
 import com.zhijian.schedule.core.update.ProbeVerdict
 import com.zhijian.schedule.core.update.decideProbeThroughput
+import com.zhijian.schedule.core.update.shouldAbortProbe
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -58,5 +62,39 @@ class SourceProbeTest {
     fun zeroElapsedIsTreatedAsInstant() {
         // elapsed=0 不能引发除零；按 1 ms 处理并判为可用
         assertTrue(decideProbeThroughput(reachable = true, bodyBytes = 1024, elapsedMs = 0) is ProbeVerdict.Usable)
+    }
+
+    // ---------- 提前收手：这一段决定了「点下载」之后用户要等多久 ----------
+
+    @Test
+    fun probeKeepsReadingBeforeTheEarlyCheckPoint() {
+        // 前 150ms 一律不打断：样本太短量不出吞吐，早断会把好源也判死
+        assertFalse(shouldAbortProbe(elapsedMs = 0, bytesRead = 0))
+        assertFalse(shouldAbortProbe(elapsedMs = PROBE_EARLY_CHECK_MS - 1, bytesRead = 0))
+    }
+
+    @Test
+    fun stalledSourceIsAbortedRightAfterEarlyCheck() {
+        // 150ms 只读到 1 KB ≈ 6.8 KB/s，远低于下限的两倍：立刻让位给下一个候选
+        assertTrue(shouldAbortProbe(elapsedMs = PROBE_EARLY_CHECK_MS, bytesRead = 1_024))
+    }
+
+    @Test
+    fun fastSourceIsNotAborted() {
+        // 150ms 读到 64 KB ≈ 437 KB/s：好源必须让它继续，不能把能跑的源打断
+        assertFalse(shouldAbortProbe(elapsedMs = PROBE_EARLY_CHECK_MS, bytesRead = 64L * 1024))
+    }
+
+    @Test
+    fun hardCapAlwaysAborts() {
+        // 无论读得多快，到硬上限必须收手：探测不能把点击后的首屏拖过 3 秒
+        assertTrue(shouldAbortProbe(elapsedMs = PROBE_HARD_CAP_MS, bytesRead = 10L * 1024 * 1024))
+    }
+
+    @Test
+    fun abortedSampleStillYieldsSameVerdict() {
+        // 提前放弃时返回的是已读字节数，最终裁决仍按吞吐算，结论与读满样本时一致
+        val aborted = decideProbeThroughput(reachable = true, bodyBytes = 1_024, elapsedMs = PROBE_EARLY_CHECK_MS)
+        assertTrue("提前放弃的源必须判为不可用", aborted is ProbeVerdict.Unusable)
     }
 }

@@ -66,6 +66,10 @@ class ZhiJianApp :
                     installedApk = java.io.File(applicationInfo.sourceDir),
                 )
             }
+            // 顺手把基线包的 sha256 算好（命中磁盘旁注只读几百字节）。
+            // 这一步是「点下载更新」之后最贵的那一段（32 MB 约 1.17 s），搬到启动后的空闲时间，
+            // 用户真正点下去时就只剩探测源与建连——那两件本来就是必须做的。
+            runCatching { apkDownloader.warmBaselineDigest(BuildConfig.VERSION_NAME) }
             // 旧版本的镜像开关默认关闭；升级后一次性打开，保证直连不可用时能自动换源
             runCatching { settingsStore.migrateIfNeeded() }
             // 学校目录（选校自动填 URL + 域名兜底识别）在后台解一次，避免首开弹层空转

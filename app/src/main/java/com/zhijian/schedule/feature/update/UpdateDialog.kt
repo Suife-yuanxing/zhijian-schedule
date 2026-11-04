@@ -186,7 +186,12 @@ private fun UpdateActionButton(
 ) {
     val download = ui.download
     when {
-        download is DownloadState.Running ->
+        // 先认「已点下去、服务还没接住」这一小段：
+        // 否则用户点完的第一帧按钮还是「下载更新」，会以为没点中而再点一次。
+        // 三个阶段（准备 / 传输 / 校验）都保持「取消下载」这一个动作——
+        // 谁也不想在「正在准备」时被一个写着「准备中」的死按钮困住；
+        // 具体在干什么由上方状态卡片的标题说明，按钮只管「能不能退出」。
+        ui.downloading ->
             OutlinedAction(
                 label = "取消下载",
                 onClick = { viewModel.cancelDownload() },
