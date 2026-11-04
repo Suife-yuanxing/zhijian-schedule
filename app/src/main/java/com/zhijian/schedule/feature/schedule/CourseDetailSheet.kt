@@ -1,65 +1,69 @@
 package com.zhijian.schedule.feature.schedule
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Place
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetValue
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.zhijian.schedule.core.data.db.CourseEntity
-import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.theme.LocalCoursePreset
 import com.zhijian.schedule.core.theme.LocalIsDark
 import com.zhijian.schedule.core.theme.courseTone
-import com.zhijian.schedule.core.ui.StaggerIn
-import com.zhijian.schedule.core.ui.pressScale
-import com.zhijian.schedule.core.util.TimeUtils
-import com.zhijian.schedule.core.util.WeekMask
+import com.zhijian.schedule.core.ui.SheetChoreography
+import com.zhijian.schedule.core.ui.rememberSheetArrival
+import com.zhijian.schedule.core.ui.rememberSheetExitGate
+import com.zhijian.schedule.core.ui.sheetDepart
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+/**
+ * 课程详情面板：点课块弹出，展示这门课的时间 / 周次 / 教室 / 教师，并提供编辑、删除。
+ *
+ * # 入场编排（本次改动的主体）
+ *
+ * 顺序是「头卡 -> 色点 -> 课程名 -> 两枚 pill -> 信息卡 -> 逐行 -> 按钮」，全部挂在**同一条时间轴**上，
+ * 起播点对齐面板开始显示的那一帧（节拍与理由见 SheetChoreography，驱动器见 SheetArrival）。
+ *
+ * 旧写法是给每块套一个 StaggerIn（各自 delay + 各自 tween），有两个代价：
+ * 一是起播点是「内容首次组合」，而 M3 面板是先组合再 show()，内容会提前跑掉一两百毫秒，
+ * 于是面板滑上来时内容早就摆好了，错峰等于没做；
+ * 二是各块各自起协程，低端机上偶发次序颠倒。
+ * 现在位移 / 缩放 / 透明度 / 过冲都在绘制阶段算，一次入场不产生任何重组。
+ *
+ * # 出场（点编辑 / 删除）
+ *
+ * 走 SheetExitGate：内容先收（130ms 缩 3% + 淡 42%），收完才真正换屏。
+ * 宿主把面板从组合里摘掉时 M3 不播 hide 动画，直接让位就是「点一下屏幕被切走」；
+ * 先收一下再走，读作「这份内容被收起来了」。
+ *
+ * # 表现细节
+ *
+ * - 头卡顶部叠了一道同色系高光（不用白色：白光会把课程色相洗成塑料片），
+ *   大块纯色因此有「受光面」，不再是一张平纸；
+ * - 色点加了同色描边，与课块选中态的描边同源——「这块颜色就是课表里那一块」；
+ * - 信息行之间加了极淡分割线：三行原来只靠留白分隔，读起来像一段文字，
+ *   有线之后才读作「一张卡里的三个字段」；
+ * - 头卡与信息卡只缩放、不上浮：它们要读作「从面板底板上长出来」，
+ *   而不是「从下面飞进来、身后留一块空底板」；文字与 pill 才给上浮。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CourseDetailSheet(
     course: CourseEntity,
@@ -73,10 +77,7 @@ fun CourseDetailSheet(
      */
     onTargetVisibilityChange: (Boolean) -> Unit = {},
 ) {
-    val colors = LocalCourseColors.current
     val haptics = LocalHapticFeedback.current
-    val editSource = remember { MutableInteractionSource() }
-    val deleteSource = remember { MutableInteractionSource() }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val isDark = LocalIsDark.current
     val preset = LocalCoursePreset.current
@@ -84,6 +85,11 @@ fun CourseDetailSheet(
         remember(course.color, isDark, preset.toneBias) {
             courseTone(Color(course.color), isDark, preset.toneBias)
         }
+    val detailRows = remember(course.room, course.teacher, course.note) { detailRowsOf(course) }
+    val editSource = remember { MutableInteractionSource() }
+    val deleteSource = remember { MutableInteractionSource() }
+    // 换屏闸门：编辑 / 删除都要等内容收完再走
+    val gate = rememberSheetExitGate()
 
     LaunchedEffect(sheetState) {
         snapshotFlow { sheetState.targetValue != SheetValue.Hidden }
@@ -93,134 +99,39 @@ fun CourseDetailSheet(
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 28.dp),
-        ) {
-            val chipScale = popIn()
-            val heroShape = RoundedCornerShape(20.dp)
-            // 头卡用课程自己的色调铺底，和课表里的色块一一对应
+        // 一条时间轴驱动全部内容；最后一拍随「有没有信息卡」变化，
+        // 没有信息卡时按钮提前跟上，不留一段空等（见 SheetChoreography.actionsSlot）
+        val arrival =
+            rememberSheetArrival(
+                sheetState = sheetState,
+                lastSlot = SheetChoreography.actionsSlot(detailRows.isNotEmpty()),
+            )
+        // 收起套在最外层：整块内容一起退，而不是只有某个子块在缩
+        Box(Modifier.fillMaxWidth().sheetDepart(gate)) {
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .clip(heroShape)
-                    .background(tone.container)
-                    .border(1.dp, tone.line, heroShape)
-                    .padding(16.dp),
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 28.dp),
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        Modifier
-                            .size(18.dp)
-                            .graphicsLayer {
-                                scaleX = chipScale
-                                scaleY = chipScale
-                            }.clip(RoundedCornerShape(6.dp))
-                            .background(Color(course.color)),
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Text(
-                        text = course.name,
-                        style = MaterialTheme.typography.titleLarge,
-                        color = tone.ink,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                SheetHeroCard(course = course, tone = tone, isDark = isDark, arrival = arrival)
+                if (detailRows.isNotEmpty()) {
+                    Spacer(Modifier.height(16.dp))
+                    SheetInfoCard(rows = detailRows, tone = tone, arrival = arrival)
                 }
-                Spacer(Modifier.height(12.dp))
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    HeroPill(
-                        text = "${TimeUtils.dayName(
-                            course.dayOfWeek,
-                        )} · 第 ${course.startSection}-${course.endSection} 节",
-                        tone = tone,
-                    )
-                    HeroPill(text = WeekMask.toExpression(course.weekMask), tone = tone)
-                }
-            }
-
-            val hasDetails =
-                course.room.isNotBlank() ||
-                    course.teacher.isNotBlank() ||
-                    course.note.isNotBlank()
-            if (hasDetails) {
-                Spacer(Modifier.height(16.dp))
-                StaggerIn(index = 1) {
-                    Column(
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(colors.surfaceVariant)
-                            .padding(horizontal = 16.dp, vertical = 4.dp),
-                    ) {
-                        if (course.room.isNotBlank()) {
-                            InfoRow(Icons.Filled.Place, "教室", course.room, tone)
-                        }
-                        if (course.teacher.isNotBlank()) {
-                            InfoRow(Icons.Filled.Person, "教师", course.teacher, tone)
-                        }
-                        if (course.note.isNotBlank()) {
-                            InfoRow(Icons.Filled.Info, "备注", course.note, tone)
-                        }
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(if (hasDetails) 20.dp else 16.dp))
-            StaggerIn(index = 2) {
-                Row {
-                    Button(
-                        onClick = {
-                            onEdit()
-                        },
-                        interactionSource = editSource,
-                        modifier =
-                            Modifier
-                                .weight(1f)
-                                .pressScale(editSource, pressedScale = 0.96f),
-                        colors =
-                            ButtonDefaults.buttonColors(
-                                containerColor = colors.accent,
-                                contentColor = colors.onAccent,
-                            ),
-                    ) {
-                        Icon(
-                            Icons.Filled.Edit,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text("编辑", fontWeight = FontWeight.SemiBold)
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    TextButton(
-                        onClick = {
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            onDelete()
-                        },
-                        interactionSource = deleteSource,
-                        modifier =
-                            Modifier
-                                .weight(1f)
-                                .pressScale(deleteSource, pressedScale = 0.96f),
-                    ) {
-                        Icon(
-                            Icons.Filled.Delete,
-                            contentDescription = null,
-                            tint = Color(0xFFE5484D),
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text("删除", color = Color(0xFFE5484D), fontWeight = FontWeight.Medium)
-                    }
-                }
+                Spacer(Modifier.height(if (detailRows.isEmpty()) 16.dp else 20.dp))
+                SheetActionRow(
+                    arrival = arrival,
+                    hasDetails = detailRows.isNotEmpty(),
+                    editSource = editSource,
+                    deleteSource = deleteSource,
+                    onEdit = { gate.submit(onEdit) },
+                    onDelete = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        gate.submit(onDelete)
+                    },
+                )
             }
         }
     }
