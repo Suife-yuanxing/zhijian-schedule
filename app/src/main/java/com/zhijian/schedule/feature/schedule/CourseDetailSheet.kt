@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -26,6 +25,7 @@ import com.zhijian.schedule.core.data.db.CourseEntity
 import com.zhijian.schedule.core.theme.LocalCoursePreset
 import com.zhijian.schedule.core.theme.LocalIsDark
 import com.zhijian.schedule.core.theme.courseTone
+import com.zhijian.schedule.core.ui.RecedingBottomSheet
 import com.zhijian.schedule.core.ui.SheetChoreography
 import com.zhijian.schedule.core.ui.rememberSheetArrival
 import com.zhijian.schedule.core.ui.rememberSheetExitGate
@@ -98,7 +98,18 @@ fun CourseDetailSheet(
             .collect(onTargetVisibilityChange)
     }
 
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+    // 面板层用 RecedingBottomSheet：它替掉 M3 的静态把手，并在下拉 / 点遮罩 / 按返回时
+    // 让内容同步退开（见 SheetRecede）。这一层与下面的入场编排互不冲突：
+    // 入场动的是每块内容的 graphicsLayer，退开动的是包住全部内容的那一层，
+    // 两者相乘得到「正在进来」与「正在离开」的连续过渡。
+    RecedingBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        // 拖柄用课程色：这是「课块 → 面板」唯一不靠动画的连续性手段。
+        // 面板是独立窗口，真正的容器变换（课块长成面板）在 Compose 里做不了；
+        // 把同一个色相放在面板最上沿，眼睛会把两块读成同一个东西的两端。
+        handleTint = Color(course.color).copy(alpha = 0.85f),
+    ) {
         // 一条时间轴驱动全部内容；最后一拍随「有没有信息卡」变化，
         // 没有信息卡时按钮提前跟上，不留一段空等（见 SheetChoreography.actionsSlot）
         val arrival =

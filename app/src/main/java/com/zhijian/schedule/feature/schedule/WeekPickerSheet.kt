@@ -14,7 +14,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -32,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhijian.schedule.core.theme.LocalCourseColors
+import com.zhijian.schedule.core.ui.RecedingBottomSheet
 import com.zhijian.schedule.core.ui.StaggerIn
 import com.zhijian.schedule.core.ui.TapTextButton
 import com.zhijian.schedule.core.ui.week.WeekCell
@@ -78,7 +78,9 @@ fun WeekPickerSheet(
         scope.launch { sheetState.hide() }.invokeOnCompletion { onDismiss() }
     }
 
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+    // 与课程详情 / 日详情同一套面板层：下拉时内容退开、拖柄随进度变长。
+    // 三个面板的手感必须一致，否则同一个动作在不同面板上给出不同回应。
+    RecedingBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         // 水平内边距不放在这里，而是随行入场层（StaggerIn contentPadding）下发：
         // 选中格弹跳会越出行 bounds，alpha 离屏层以自身 bounds 裁剪，垫在图层内才不被切；
         // 行距/间距同步收窄补偿，各元素绝对位置与原来逐像素一致

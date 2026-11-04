@@ -27,7 +27,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -44,6 +43,7 @@ import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.ui.HolidayColors
 import com.zhijian.schedule.core.ui.LocalClock
 import com.zhijian.schedule.core.ui.Motion
+import com.zhijian.schedule.core.ui.RecedingBottomSheet
 import com.zhijian.schedule.core.ui.TapTextButton
 import com.zhijian.schedule.core.util.TimeUtils
 import java.time.LocalDate
@@ -90,7 +90,7 @@ fun DayDetailSheet(
             )
     }
 
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+    RecedingBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
             Modifier
                 .fillMaxWidth()
