@@ -146,6 +146,7 @@ fun WeekPickerSheet(
                                         current = week == ui.currentWeek,
                                         past = ui.currentWeek != null && week < ui.currentWeek,
                                     ),
+                                isCurrent = week == ui.currentWeek,
                                 modifier = Modifier.weight(1f),
                                 onClick = { pick(week) },
                             )
