@@ -160,15 +160,17 @@ fun WeekGrid(
                 // 课块层
                 Box(Modifier.fillMaxWidth().height(layout.totalHeight)) {
                     CourseOverlay(
-                        ui = ui,
-                        week = week,
-                        visibleDays = visibleDays,
-                        layout = layout,
-                        dayWidth = dayWidth,
-                        clock = clock,
-                        playEntrance = playEntrance,
+                        scene =
+                            CourseScene(
+                                ui = ui,
+                                week = week,
+                                visibleDays = visibleDays,
+                                layout = layout,
+                                dayWidth = dayWidth,
+                                clock = clock,
+                                playEntrance = playEntrance,
+                            ),
                         selectedCourseId = selectedCourseId,
-                        metrics = metrics,
                         onCourseClick = onCourseClick,
                     )
                 }

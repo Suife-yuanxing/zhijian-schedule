@@ -9,6 +9,7 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -36,6 +37,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.zhijian.schedule.core.theme.CourseColors
+import com.zhijian.schedule.core.theme.CourseTone
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.theme.LocalCoursePreset
 import com.zhijian.schedule.core.theme.LocalIsDark
@@ -144,55 +147,87 @@ internal fun CourseRow(
                 .background(tone.ink.copy(alpha = alpha)),
         )
         Spacer(Modifier.width(10.dp))
-        Column(Modifier.width(80.dp)) {
+        RowTime(item, alpha, colors)
+        RowInfo(item, alpha, colors, isCurrent)
+        RowStatus(finished, isCurrent, tone, colors)
+    }
+}
+
+/** 起止时间一列：80dp 定宽，结束时间缺席则只占一行 */
+@Composable
+private fun RowTime(
+    item: TodayCourseItem,
+    alpha: Float,
+    colors: CourseColors,
+) {
+    Column(Modifier.width(80.dp)) {
+        Text(
+            text = item.startTime?.let { TimeUtils.formatTime(it) } ?: "—",
+            fontSize = 12.sp,
+            color = colors.text.copy(alpha = alpha),
+            fontWeight = FontWeight.Medium,
+        )
+        item.endTime?.let {
             Text(
-                text = item.startTime?.let { TimeUtils.formatTime(it) } ?: "—",
-                fontSize = 12.sp,
-                color = colors.text.copy(alpha = alpha),
-                fontWeight = FontWeight.Medium,
+                text = TimeUtils.formatTime(it),
+                fontSize = 11.sp,
+                color = colors.textMuted.copy(alpha = alpha),
             )
-            item.endTime?.let {
-                Text(
-                    text = TimeUtils.formatTime(it),
-                    fontSize = 11.sp,
-                    color = colors.textMuted.copy(alpha = alpha),
-                )
-            }
         }
-        Column(Modifier.weight(1f)) {
+    }
+}
+
+/** 课程名 + 教室·教师副行；正在上的课名字加粗（RowScope：weight 只在行里可用） */
+@Composable
+private fun RowScope.RowInfo(
+    item: TodayCourseItem,
+    alpha: Float,
+    colors: CourseColors,
+    isCurrent: Boolean,
+) {
+    Column(Modifier.weight(1f)) {
+        Text(
+            text = item.course.name,
+            style = MaterialTheme.typography.bodyLarge,
+            color = colors.text.copy(alpha = alpha),
+            fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
+            maxLines = 1,
+        )
+        val sub =
+            listOf(item.course.room, item.course.teacher)
+                .filter { it.isNotBlank() }
+                .joinToString(" · ")
+        if (sub.isNotBlank()) {
             Text(
-                text = item.course.name,
-                style = MaterialTheme.typography.bodyLarge,
-                color = colors.text.copy(alpha = alpha),
-                fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
+                text = sub,
+                fontSize = 12.sp,
+                color = colors.textMuted.copy(alpha = alpha),
                 maxLines = 1,
             )
-            val sub =
-                listOf(item.course.room, item.course.teacher)
-                    .filter { it.isNotBlank() }
-                    .joinToString(" · ")
-            if (sub.isNotBlank()) {
-                Text(
-                    text = sub,
-                    fontSize = 12.sp,
-                    color = colors.textMuted.copy(alpha = alpha),
-                    maxLines = 1,
-                )
-            }
         }
-        if (finished) {
-            StatusPill(
-                text = "已结束",
-                color = colors.textMuted,
-                background = colors.border.copy(alpha = 0.18f),
-            )
-        } else if (isCurrent) {
-            StatusPill(
-                text = "进行中",
-                color = tone.ink,
-                background = tone.ink.copy(alpha = 0.12f),
-            )
-        }
+    }
+}
+
+/** 行尾状态角标：已结束置灰，正在上的课挂主题色「进行中」 */
+@Composable
+private fun RowStatus(
+    finished: Boolean,
+    isCurrent: Boolean,
+    tone: CourseTone,
+    colors: CourseColors,
+) {
+    if (finished) {
+        StatusPill(
+            text = "已结束",
+            color = colors.textMuted,
+            background = colors.border.copy(alpha = 0.18f),
+        )
+    } else if (isCurrent) {
+        StatusPill(
+            text = "进行中",
+            color = tone.ink,
+            background = tone.ink.copy(alpha = 0.12f),
+        )
     }
 }
 

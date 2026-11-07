@@ -20,7 +20,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.zhijian.schedule.core.data.db.CourseEntity
-import com.zhijian.schedule.core.data.db.SectionTimeEntity
 import com.zhijian.schedule.core.theme.LocalCoursePreset
 import com.zhijian.schedule.core.theme.LocalIsDark
 import com.zhijian.schedule.core.ui.Motion
@@ -29,6 +28,7 @@ import com.zhijian.schedule.core.util.TimeUtils
 import com.zhijian.schedule.feature.schedule.ScheduleUiState
 import java.time.Duration
 import java.time.LocalDateTime
+import java.time.LocalTime
 
 /**
  * 逐个入场的节拍：每个课块比上一个晚 70ms 起播，顺序是**阅读顺序**——
@@ -47,46 +47,80 @@ private const val ENTER_TOTAL_CAP_MS = 700L
 private fun entranceStepMs(count: Int): Long =
     if (count <= 1) 0L else minOf(ENTER_STEP_MS, ENTER_TOTAL_CAP_MS / (count - 1))
 
+/**
+ * 正在上课时返回块底的「剩 X 分」：分钟向下取整、至少 1；不在课时内或时段缺起止时间返回 null。
+ *
+ * 从 [CourseCell] 里拆出来的两个理由：原来四个条件挤在一个 if 里（detekt 的
+ * ComplexCondition 红线），而这段判定值得 JVM 单测——每分钟它都要决定今天那一列
+ * 哪几块显示倒计时。
+ */
+internal fun remainingMinutes(
+    now: LocalDateTime,
+    start: LocalTime?,
+    end: LocalTime?,
+): Int? =
+    if (start == null || end == null) {
+        null
+    } else if (now.toLocalTime() < start || now.toLocalTime() >= end) {
+        null
+    } else {
+        Duration
+            .between(now.toLocalTime(), end)
+            .toMinutes()
+            .toInt()
+            .coerceAtLeast(1)
+    }
+
+/**
+ * 课块层一次铺排的一切「不变事实」：数据（哪一周、可见哪几天）、几何（网格与列宽）、
+ * 时机（时钟与级联闸门）。
+ *
+ * 打包的理由同 [BandScene]——[CourseOverlay] 与 [CourseCell] 原本各自收一长串同值参数，
+ * 每个非「逐块变化」的量都要在两层签名上各添一项；打成一束后，逐块变化的只剩 course
+ * 本身和它的序号、选中态。
+ *
+ * [CourseCell] 拆成独立 composable 的理由（订阅边界）不变：scene 携带的 clock 仍是 State，
+ * 只有今天那一列的块会在组合期读它的 .value，其余列根本不订阅分钟。
+ */
+internal class CourseScene(
+    val ui: ScheduleUiState,
+    val week: Int,
+    val visibleDays: List<Int>,
+    val layout: GridLayout,
+    val dayWidth: Dp,
+    val clock: State<LocalDateTime>,
+    val playEntrance: Boolean,
+)
+
 /** 所有课块：按绝对坐标铺在网格之上，跨时段也不会被裁 */
 @Composable
 internal fun CourseOverlay(
-    ui: ScheduleUiState,
-    week: Int,
-    visibleDays: List<Int>,
-    layout: GridLayout,
-    dayWidth: Dp,
-    clock: State<LocalDateTime>,
-    playEntrance: Boolean,
+    scene: CourseScene,
     selectedCourseId: Long?,
-    metrics: GridMetrics,
+    /** 点击时上抛 (course, 该块的扩散种子) */
     onCourseClick: (CourseEntity, SeedShape) -> Unit,
 ) {
     // 「今天」一天只换一次：派生值只服务「哪一列是今天」，整层不跟分钟走
-    val today = remember(clock) { derivedStateOf { clock.value.toLocalDate() } }
+    val today = remember(scene.clock) { derivedStateOf { scene.clock.value.toLocalDate() } }
     val todayDate = today.value
 
     // 入场序列：阅读顺序（先上后下，同一节内周一→周日），逐块延迟 = 序号 × 节拍。
     // 旧实现是「每列 +26ms、每行 +30ms」——延迟由坐标算出来，同一行/同一列的块几乎同时
     // 起播，一屏十来个块全挤在 340ms 里起完，读起来是一整片涌上来，不是逐个。
     val cells =
-        visibleDays
-            .flatMapIndexed { colIndex, day -> ui.coursesAt(week, day).map { Triple(colIndex, day, it) } }
+        scene.visibleDays
+            .flatMapIndexed { colIndex, day -> scene.ui.coursesAt(scene.week, day).map { Triple(colIndex, day, it) } }
             .sortedWith(compareBy({ it.third.startSection }, { it.first }))
     val step = entranceStepMs(cells.size)
 
     cells.forEachIndexed { index, (colIndex, day, course) ->
         CourseCell(
+            scene = scene,
             course = course,
-            sections = ui.sections,
             colIndex = colIndex,
-            dayWidth = dayWidth,
-            layout = layout,
-            metrics = metrics,
-            isTodayColumn = ui.dateOf(week, day) == todayDate,
+            isTodayColumn = scene.ui.dateOf(scene.week, day) == todayDate,
             selected = course.id == selectedCourseId,
-            clock = clock,
             entranceDelayMs = index * step,
-            playEntrance = playEntrance,
             onClick = { seed -> onCourseClick(course, seed) },
         )
     }
@@ -102,22 +136,19 @@ internal fun CourseOverlay(
  */
 @Composable
 private fun CourseCell(
+    scene: CourseScene,
     course: CourseEntity,
-    sections: List<SectionTimeEntity>,
     colIndex: Int,
-    dayWidth: Dp,
-    layout: GridLayout,
-    metrics: GridMetrics,
     isTodayColumn: Boolean,
     selected: Boolean,
-    clock: State<LocalDateTime>,
     /** 这一块在入场序列里的起播延迟（序号 × 节拍，见 entranceStepMs；< 0 关闭级联） */
     entranceDelayMs: Long,
-    /** 是否播放级联：本次进程第一次进入课表才为 true */
-    playEntrance: Boolean,
     /** 点击时上抛本块的扩散种子（见 docs/specs/2026-11-07-edit-reveal-design.md） */
     onClick: (SeedShape) -> Unit,
 ) {
+    val sections = scene.ui.sections
+    val layout = scene.layout
+    val metrics = layout.metrics
     val startIndex = course.startSection.coerceIn(1, sections.size)
     val endIndex = course.endSection.coerceIn(startIndex, sections.size)
     val span = endIndex - startIndex + 1
@@ -127,23 +158,11 @@ private fun CourseCell(
     // 只有今天这一列读时钟：正在上的课，块底显示「剩 X 分」
     val remainingMin =
         if (isTodayColumn) {
-            val now = clock.value
-            val startTime = TimeUtils.parseTime(sections[startIndex - 1].startTime)
-            val endTime = TimeUtils.parseTime(sections[endIndex - 1].endTime)
-            if (
-                startTime != null &&
-                endTime != null &&
-                !now.toLocalTime().isBefore(startTime) &&
-                now.toLocalTime().isBefore(endTime)
-            ) {
-                Duration
-                    .between(now.toLocalTime(), endTime)
-                    .toMinutes()
-                    .toInt()
-                    .coerceAtLeast(1)
-            } else {
-                null
-            }
+            remainingMinutes(
+                now = scene.clock.value,
+                start = TimeUtils.parseTime(sections[startIndex - 1].startTime),
+                end = TimeUtils.parseTime(sections[endIndex - 1].endTime),
+            )
         } else {
             null
         }
@@ -157,9 +176,9 @@ private fun CourseCell(
     Box(
         Modifier
             .offset(
-                x = metrics.timeAxisWidth + dayWidth * colIndex + 1.dp,
+                x = metrics.timeAxisWidth + scene.dayWidth * colIndex + 1.dp,
                 y = layout.sectionTop(startIndex - 1) + 1.5.dp,
-            ).width(dayWidth - 2.dp)
+            ).width(scene.dayWidth - 2.dp)
             .height(metrics.sectionHeight * span - 3.dp)
             .onGloballyPositioned { cellBounds = it.boundsInRoot() },
     ) {
@@ -172,7 +191,7 @@ private fun CourseCell(
             // 逐个入场：延迟由序列序号给出（见 CourseOverlay）。
             // 只有本次进程第一次进入课表才播（playEntrance）；之后切回直接落位——
             // 否则每切一次 tab 整屏课块都要从 alpha=0 按阅读顺序重长一遍，读起来像刷新。
-            entranceDelayMs = if (playEntrance) entranceDelayMs else -1L,
+            entranceDelayMs = if (scene.playEntrance) entranceDelayMs else -1L,
             remainingMin = remainingMin,
             metrics = metrics,
             onClick = { onClick(SeedShape(bounds = cellBounds, cornerRadius = blockCornerPx)) },
