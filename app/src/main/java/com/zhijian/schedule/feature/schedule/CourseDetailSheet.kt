@@ -14,7 +14,11 @@ import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -32,6 +36,7 @@ import com.zhijian.schedule.core.ui.rememberSheetExitGate
 import com.zhijian.schedule.core.ui.sheetDepart
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.launch
 
 /**
  * 课程详情面板：点课块弹出，展示这门课的时间 / 周次 / 教室 / 教师，并提供编辑、删除。
@@ -47,9 +52,14 @@ import kotlinx.coroutines.flow.drop
  * 二是各块各自起协程，低端机上偶发次序颠倒。
  * 现在位移 / 缩放 / 透明度 / 过冲都在绘制阶段算，一次入场不产生任何重组。
  *
- * # 出场（点编辑 / 删除）
+ * # 出场（点编辑 / 删除），两条路
  *
- * 走 SheetExitGate：内容先收（130ms 缩 3% + 淡 42%），收完才真正换屏。
+ * **编辑 = 整体融合退场**：onEdit 先行——宿主启动导航，圆形扩散从被点课块长出来；
+ * 面板随即走 M3 原生 hide（整壳滑下 + 遮罩同步淡出），与圆形生长**并行**在同一条时间线上，
+ * hide 播完才回调 onDismiss 让宿主摘组合。旧做法里「壳瞬间消失」的那一帧断点由此消失：
+ * 壳的退场本身就是编舞的一部分。
+ *
+ * **删除 = SheetExitGate**：内容先收（130ms 缩 3% + 淡 42%），收完才执行删除并摘组合。
  * 宿主把面板从组合里摘掉时 M3 不播 hide 动画，直接让位就是「点一下屏幕被切走」；
  * 先收一下再走，读作「这份内容被收起来了」。
  *
@@ -88,8 +98,11 @@ fun CourseDetailSheet(
     val detailRows = remember(course.room, course.teacher, course.note) { detailRowsOf(course) }
     val editSource = remember { MutableInteractionSource() }
     val deleteSource = remember { MutableInteractionSource() }
-    // 换屏闸门：编辑 / 删除都要等内容收完再走
+    // 换屏闸门：删除仍走「内容先收再执行」；编辑改走整体融合退场（见 onEdit 包装处）
     val gate = rememberSheetExitGate()
+    val scope = rememberCoroutineScope()
+    // 编辑的整体退场只认一次提交：hide 途中再点编辑/删除不再排队
+    var editLeaving by remember { mutableStateOf(false) }
 
     LaunchedEffect(sheetState) {
         snapshotFlow { sheetState.targetValue != SheetValue.Hidden }
@@ -137,7 +150,20 @@ fun CourseDetailSheet(
                     hasDetails = detailRows.isNotEmpty(),
                     editSource = editSource,
                     deleteSource = deleteSource,
-                    onEdit = { gate.submit(onEdit) },
+                    // 编辑 = 整体融合退场：onEdit 先行（导航 + 圆形扩散从课块长出），
+                    // 面板**整个**（壳 + 内容 + 遮罩）随即走 M3 原生 hide 滑下，与圆形生长并行；
+                    // hide 播完才回调 onDismiss 让宿主摘组合。旧壳瞬间消失的断点由此编进同一条
+                    // 时间线（见 docs/specs/2026-11-07-edit-reveal-design.md「面板整体退场融合」）。
+                    onEdit = {
+                        if (!editLeaving) {
+                            editLeaving = true
+                            onEdit()
+                            scope.launch {
+                                sheetState.hide()
+                                onDismiss()
+                            }
+                        }
+                    },
                     onDelete = {
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                         gate.submit(onDelete)

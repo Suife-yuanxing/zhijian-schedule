@@ -20,13 +20,19 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -35,6 +41,7 @@ import com.zhijian.schedule.core.theme.LocalCoursePreset
 import com.zhijian.schedule.core.theme.LocalIsDark
 import com.zhijian.schedule.core.theme.courseTone
 import com.zhijian.schedule.core.ui.Motion
+import com.zhijian.schedule.core.ui.SeedShape
 import com.zhijian.schedule.core.ui.rememberTapHaptic
 import com.zhijian.schedule.core.util.TimeUtils
 import java.time.LocalDateTime
@@ -61,7 +68,8 @@ internal fun CourseRow(
     clock: State<LocalDateTime>,
     isCurrent: Boolean,
     selected: Boolean,
-    onClick: () -> Unit,
+    /** 点击时上抛本卡的扩散种子（编辑跳转用，见 docs/specs/2026-11-07-edit-reveal-design.md） */
+    onClick: (SeedShape) -> Unit,
 ) {
     // 行状态徽章（已结束/进行中）是本页最"密"的时间读者，让它自己订阅，
     // 一分钟只重算这一行，不再牵动整页
@@ -80,6 +88,9 @@ internal fun CourseRow(
     val pressed by pressSource.collectIsPressedAsState()
     val tapHaptic = rememberTapHaptic()
     val shape = RoundedCornerShape(12.dp)
+    // 扩散种子：本卡在根坐标系里的轮廓 + 卡片圆角；首帧退化（Rect.Zero）由调用方兜底
+    val cardCornerPx = with(LocalDensity.current) { 12.dp.toPx() }
+    var rowBounds by remember { mutableStateOf(Rect.Zero) }
 
     // 详情打开期间「弹起 + 描边 + 填充加深」；关闭动作一开始即快速回落（与面板滑出并行）
     val lift by animateFloatAsState(
@@ -115,12 +126,13 @@ internal fun CourseRow(
                 shape,
             ).border(1.dp, tone.line.copy(alpha = 0.7f), shape)
             .border(2.dp, tone.ink.copy(alpha = 0.9f * ring), shape)
+            .onGloballyPositioned { rowBounds = it.boundsInRoot() }
             .clickable(
                 interactionSource = pressSource,
                 indication = LocalIndication.current,
                 onClick = {
                     tapHaptic()
-                    onClick()
+                    onClick(SeedShape(bounds = rowBounds, cornerRadius = cardCornerPx))
                 },
             ).padding(horizontal = 13.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,

@@ -43,6 +43,12 @@ private class ScheduleSheets {
     var course by mutableStateOf<CourseEntity?>(null)
 
     /**
+     * 被点课块的实测轮廓（root 坐标 + 课块圆角），点开面板那一刻定格。
+     * 编辑跳转的圆形扩散从这一块长出来；摘面板时一并清空（见 docs/specs/2026-11-07-edit-reveal-design.md）。
+     */
+    var courseSeed by mutableStateOf<SeedShape?>(null)
+
+    /**
      * 面板**目标**可见性：关闭动作一开始就置回 false，
      * 让课块高亮恢复与面板滑出并行播，不必等面板走完。
      */
@@ -109,7 +115,7 @@ private fun ColumnScope.WeekPager(
     scene: GridScene,
     selectedCourse: CourseEntity?,
     detailSheetVisible: Boolean,
-    onCourseClick: (CourseEntity) -> Unit,
+    onCourseClick: (CourseEntity, SeedShape) -> Unit,
     onEmptyTap: (day: Int, section: Int, seed: SeedShape) -> Unit,
 ) {
     val pagerState = scene.pagerState
@@ -187,7 +193,7 @@ fun ScheduleScreen(
     onAddCourse: (day: Int?, section: Int?, seed: SeedShape) -> Unit = { _, _, _ -> },
     /** 加号单独一条：带上方块自身的实测轮廓（含颜色副本），供「页面从方块轮廓长出来」用 */
     onAddCourseFromFab: (seed: SeedShape) -> Unit = { onAddCourse(null, null, it) },
-    onEditCourse: (Long) -> Unit = {},
+    onEditCourse: (Long, SeedShape?) -> Unit = { _, _ -> },
     onOpenImport: () -> Unit = {},
     /** 从课程编辑页返回时的复位信号：加号要把 × 转回 +，见 AppNavHostState.fabResetTick */
     fabResetTick: Int = 0,
@@ -291,8 +297,9 @@ fun ScheduleScreen(
                         ),
                     selectedCourse = sheets.course,
                     detailSheetVisible = sheets.detailVisible,
-                    onCourseClick = { course ->
+                    onCourseClick = { course, seed ->
                         sheets.course = course
+                        sheets.courseSeed = seed
                         sheets.detailVisible = true
                     },
                     onEmptyTap = { day, section, origin -> onAddCourse(day, section, origin) },
@@ -326,18 +333,25 @@ fun ScheduleScreen(
 private fun ScheduleSheetsHost(
     sheets: ScheduleSheets,
     ui: ScheduleUiState,
-    onEditCourse: (Long) -> Unit,
+    onEditCourse: (Long, SeedShape?) -> Unit,
     onDeleteCourse: (Long) -> Unit,
     onSelectWeek: (Int) -> Unit,
 ) {
     sheets.course?.let { course ->
+        // seed 在点开面板那一刻定格；摘面板与上抛同帧发生——reveal 盖屏与窗口移除
+        // 落在同一帧快照，课表不会裸露（断点帧的修复，见 docs/specs/2026-11-07-edit-reveal-design.md）
+        val seed = sheets.courseSeed
         CourseDetailSheet(
             course = course,
             onTargetVisibilityChange = { sheets.detailVisible = it },
-            onDismiss = { sheets.course = null },
-            onEdit = {
+            onDismiss = {
                 sheets.course = null
-                onEditCourse(course.id)
+                sheets.courseSeed = null
+            },
+            onEdit = {
+                // 面板的整体退场（hide 滑下 + 遮罩淡出，与圆形扩散并行）由面板自己编排，
+                // hide 播完走 onDismiss 摘组合；这里只启动导航 + reveal
+                onEditCourse(course.id, seed)
             },
             onDelete = {
                 onDeleteCourse(course.id)

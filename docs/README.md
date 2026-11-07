@@ -65,6 +65,7 @@
 - [2026-10-27-multi-vendor-live-notification-design.md](specs/2026-10-27-multi-vendor-live-notification-design.md) — 多厂商实时通知适配设计：把既有流体云胶囊抽象成 `LiveContent` + `LiveSurfaceRenderer`，一次内容投影驱动原生提升 / 小米超级岛 / 未来各厂商；含 7 条问题清单（含一条勘误）、逐厂商接入契约与实施验收记录。
 - [2026-11-04-fab-morph-and-reveal-motion-design.md](specs/2026-11-04-fab-morph-and-reveal-motion-design.md) — 加号转 45° 变 × 与扩散曲线「由慢到快」的设计推导：为什么形变必须先播完（扩散第 0 帧圆内已是新页面）、(0.5,0,1,1)@400 的换算表与感知数据、返回镜像的「相通」口径、三个添加入口统一为「从被点控件长出来」，以及素墨「墨不会跳」如何落成 `MotionProfile.Still`。
 - [2026-11-07-week-grid-picker-design.md](specs/2026-11-07-week-grid-picker-design.md) — 周次选择重做：三方案可交互 mockup 对比后拍板 5 列全览格阵（方案 A）；轴向判定拖选保页面滚动、WeekSelection 逻辑层与动作语义不动、WeekStrip 删除。
+- [2026-11-07-edit-reveal-design.md](specs/2026-11-07-edit-reveal-design.md) — 编辑课程入口接入圆形扩散：课块 seed 在点开详情面板时定格、断点帧修复（面板窗口移除与盖屏同帧快照）、课表/今日两 tab 同一条语言、返回反向收回进课块。
 - [2026-10-30-根页切换规范.md](specs/2026-10-30-根页切换规范.md) — **根页面切换的硬约定**：切 tab 只做位移、入场只在冷启动首帧播一次（一处闸门三页共读、跨 Activity 重建保存）、页内定位副作用只认锚点变化；含「每次冷启动后的第一次切 tab 必现」的根因认定、真机实测对照、单测清单与反模式条目。
 
 ## testing/ — 测试夹具

@@ -29,6 +29,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.zhijian.schedule.core.data.db.CourseEntity
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.ui.LocalClock
+import com.zhijian.schedule.core.ui.SeedShape
 import com.zhijian.schedule.core.ui.StaggerIn
 import com.zhijian.schedule.core.ui.island.IslandCollapseState
 import com.zhijian.schedule.core.ui.island.IslandScrollToTop
@@ -38,7 +39,7 @@ import com.zhijian.schedule.navigation.IslandContentPadding
 
 @Composable
 fun TodayScreen(
-    onEditCourse: (Long) -> Unit = {},
+    onEditCourse: (Long, SeedShape?) -> Unit = { _, _ -> },
     onOpenExams: () -> Unit = {},
     islandCollapse: IslandCollapseState? = null,
     scrollToTopTick: Int = 0,
@@ -62,6 +63,9 @@ fun TodayScreen(
     LaunchedEffect(Unit) { if (entranceOnce) onEntranceShown() }
     val colors = LocalCourseColors.current
     var selectedCourse by remember { mutableStateOf<CourseEntity?>(null) }
+    // 被点课卡的实测轮廓：点开面板那一刻定格，编辑跳转的圆形从这一卡长出来
+    // （与课表 tab 同一条语言，见 docs/specs/2026-11-07-edit-reveal-design.md）
+    var editSeed by remember { mutableStateOf<SeedShape?>(null) }
     // 面板目标可见性：关闭动作一开始即置回 false，让行高亮与面板滑出并行恢复
     var detailSheetVisible by remember { mutableStateOf(false) }
 
@@ -177,7 +181,8 @@ fun TodayScreen(
                                 clock = clock,
                                 isCurrent = item == current,
                                 selected = detailSheetVisible && item.course.id == selectedCourse?.id,
-                                onClick = {
+                                onClick = { seed ->
+                                    editSeed = seed
                                     selectedCourse = item.course
                                     detailSheetVisible = true
                                 },
@@ -193,17 +198,22 @@ fun TodayScreen(
     }
 
     selectedCourse?.let { course ->
+        val seed = editSeed
         CourseDetailSheet(
             course = course,
             onTargetVisibilityChange = { detailSheetVisible = it },
-            onDismiss = { selectedCourse = null },
-            onEdit = {
+            onDismiss = {
                 selectedCourse = null
-                onEditCourse(course.id)
+                editSeed = null
+            },
+            onEdit = {
+                // 面板整体退场由面板自己 hide，播完走 onDismiss 摘组合；这里只启动导航 + reveal
+                onEditCourse(course.id, seed)
             },
             onDelete = {
                 viewModel.deleteCourse(course.id)
                 selectedCourse = null
+                editSeed = null
             },
         )
     }

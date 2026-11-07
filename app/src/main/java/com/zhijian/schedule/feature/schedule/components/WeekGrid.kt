@@ -56,7 +56,12 @@ fun WeekGrid(
      * 预组合的邻页）连同几十个课块一起重组一次；传下去之后只有真正读 .value 的叶子失效。
      */
     clock: State<LocalDateTime>,
-    onCourseClick: (CourseEntity) -> Unit,
+    /**
+     * 点课块。[seed] 是被点那一块的实测轮廓（矩形 + 课块圆角），点开详情面板时定格，
+     * 编辑跳转的圆形从这一块长出来（见 docs/specs/2026-11-07-edit-reveal-design.md）；
+     * bounds 为 [Rect.Zero] 表示块还没测出来，调用方应跳过扩散直接导航。
+     */
+    onCourseClick: (CourseEntity, SeedShape) -> Unit,
     /**
      * 点空课块。[seed] 是被点那一格的实测轮廓（矩形 + 课块圆角），供「页面从这一格里长出来」用；
      * bounds 为 [Rect.Zero] 表示列框还没测出来，调用方应跳过扩散直接导航。

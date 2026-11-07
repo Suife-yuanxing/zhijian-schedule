@@ -8,8 +8,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.zhijian.schedule.core.data.db.CourseEntity
@@ -17,6 +24,7 @@ import com.zhijian.schedule.core.data.db.SectionTimeEntity
 import com.zhijian.schedule.core.theme.LocalCoursePreset
 import com.zhijian.schedule.core.theme.LocalIsDark
 import com.zhijian.schedule.core.ui.Motion
+import com.zhijian.schedule.core.ui.SeedShape
 import com.zhijian.schedule.core.util.TimeUtils
 import com.zhijian.schedule.feature.schedule.ScheduleUiState
 import java.time.Duration
@@ -51,7 +59,7 @@ internal fun CourseOverlay(
     playEntrance: Boolean,
     selectedCourseId: Long?,
     metrics: GridMetrics,
-    onCourseClick: (CourseEntity) -> Unit,
+    onCourseClick: (CourseEntity, SeedShape) -> Unit,
 ) {
     // 「今天」一天只换一次：派生值只服务「哪一列是今天」，整层不跟分钟走
     val today = remember(clock) { derivedStateOf { clock.value.toLocalDate() } }
@@ -79,7 +87,7 @@ internal fun CourseOverlay(
             clock = clock,
             entranceDelayMs = index * step,
             playEntrance = playEntrance,
-            onClick = { onCourseClick(course) },
+            onClick = { seed -> onCourseClick(course, seed) },
         )
     }
 }
@@ -107,7 +115,8 @@ private fun CourseCell(
     entranceDelayMs: Long,
     /** 是否播放级联：本次进程第一次进入课表才为 true */
     playEntrance: Boolean,
-    onClick: () -> Unit,
+    /** 点击时上抛本块的扩散种子（见 docs/specs/2026-11-07-edit-reveal-design.md） */
+    onClick: (SeedShape) -> Unit,
 ) {
     val startIndex = course.startSection.coerceIn(1, sections.size)
     val endIndex = course.endSection.coerceIn(startIndex, sections.size)
@@ -139,13 +148,20 @@ private fun CourseCell(
             null
         }
 
+    // 扩散种子：本块在根坐标系里的轮廓 + 课块圆角。位置只在布局变化时更新，
+    // 点击那一下读到的就是此刻的实测矩形；首帧退化（Rect.Zero）由调用方兜底——
+    // 跳过扩散直接导航（与空课块路径同一条规则）。
+    val blockDp = preset.radius.blockDp
+    val blockCornerPx = with(LocalDensity.current) { blockDp.dp.toPx() }
+    var cellBounds by remember { mutableStateOf(Rect.Zero) }
     Box(
         Modifier
             .offset(
                 x = metrics.timeAxisWidth + dayWidth * colIndex + 1.dp,
                 y = layout.sectionTop(startIndex - 1) + 1.5.dp,
             ).width(dayWidth - 2.dp)
-            .height(metrics.sectionHeight * span - 3.dp),
+            .height(metrics.sectionHeight * span - 3.dp)
+            .onGloballyPositioned { cellBounds = it.boundsInRoot() },
     ) {
         CourseBlock(
             course = course,
@@ -159,7 +175,7 @@ private fun CourseCell(
             entranceDelayMs = if (playEntrance) entranceDelayMs else -1L,
             remainingMin = remainingMin,
             metrics = metrics,
-            onClick = onClick,
+            onClick = { onClick(SeedShape(bounds = cellBounds, cornerRadius = blockCornerPx)) },
         )
     }
 }

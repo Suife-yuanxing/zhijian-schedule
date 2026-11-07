@@ -14,6 +14,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.navigation
 import com.zhijian.schedule.core.theme.LocalCourseColors
+import com.zhijian.schedule.core.ui.SeedShape
 import com.zhijian.schedule.feature.courseeditor.CourseEditorScreen
 import com.zhijian.schedule.feature.exam.ExamScreen
 import com.zhijian.schedule.feature.grades.GradesScreen
@@ -52,6 +53,23 @@ internal fun AppNavHost(
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalCourseColors.current
+    // 编辑已有课程：圆形扩散从**被点的课块/课卡**长出来（seed 在点开详情面板那一刻定格，
+    // 见 docs/specs/2026-11-07-edit-reveal-design.md）。与三个添加入口同一条语言；
+    // 退化（seed 缺失或还没测出几何）时直接导航走默认横滑，与添加入口同一条兜底。
+    // 面板窗口的移除与 reveal 盖屏落在同一帧快照——课表不会裸露（断点帧的修复）。
+    val navigateEditor: (String, SeedShape?) -> Unit = { route, seed ->
+        val usable = seed?.takeIf { it.bounds.width > 0f && it.bounds.height > 0f }
+        state.seedOrigin = usable
+        if (usable == null) {
+            navController.navigate(route)
+        } else {
+            val started =
+                state.reveal.requestNavigation(usable, colors.bg) {
+                    navController.navigate(route)
+                }
+            if (!started) navController.navigate(route)
+        }
+    }
     NavHost(
         navController = navController,
         startDestination = Routes.SCHEDULE_TAB,
@@ -74,7 +92,16 @@ internal fun AppNavHost(
                     else -> pushExit
                 }
             },
-            popEnterTransition = { if (initialState.isInTabGraph()) tabPopEnter else popEnter },
+            popEnterTransition = {
+                // 反向扩散回到今日：今日页是被露出的一页，不能自己再淡入
+                if (state.reveal.navigating) {
+                    EnterTransition.None
+                } else if (initialState.isInTabGraph()) {
+                    tabPopEnter
+                } else {
+                    popEnter
+                }
+            },
             popExitTransition = { tabPopExit },
         ) {
             composable(
@@ -88,6 +115,8 @@ internal fun AppNavHost(
                 },
                 exitTransition = {
                     when {
+                        // 圆形扩散接管了这一程：旧页静止不动，由浮层的旧帧顶住圆外
+                        state.reveal.navigating -> ExitTransition.None
                         targetState.isRootTab() -> tabSlideExit(initialState, targetState)
                         targetState.isInTabGraph() -> tabExit
                         else -> pushExit
@@ -106,7 +135,9 @@ internal fun AppNavHost(
                         // Activity 重建）一律 false → 首帧直接落位。见 RootEntrancePolicy。
                         playEntrance = state.entrance.shouldPlay(Routes.TODAY),
                         onEntranceShown = { state.entrance.markPlayed() },
-                        onEditCourse = { id -> navController.navigate(Routes.todayEditor(courseId = id)) },
+                        onEditCourse = { id, seed ->
+                            navigateEditor(Routes.todayEditor(courseId = id), seed)
+                        },
                         onOpenExams = {
                             // 直达考试页：先切 tab 再 push。切 tab 不播入场（闸门在宿主），
                             // 所以这里不需要也不应该再给「我的」开一次级联。
@@ -119,12 +150,25 @@ internal fun AppNavHost(
             composable(
                 route = Routes.TODAY_EDITOR,
                 arguments = editorArgs,
-                enterTransition = { pushEnter },
-                exitTransition = { pushExit },
+                // 从课卡圆形扩散进来时不要滑入：新页面只被浮层按轮廓裁剪
+                enterTransition = { if (state.reveal.navigating) EnterTransition.None else pushEnter },
+                exitTransition = { if (state.reveal.navigating) ExitTransition.None else pushExit },
                 popEnterTransition = { popEnter },
-                popExitTransition = { popExit },
+                popExitTransition = { if (state.reveal.navigating) ExitTransition.None else popExit },
             ) {
-                CourseEditorScreen(onDone = { navController.popBackStack() })
+                // 与 SCHEDULE_EDITOR 同一条返回语言：反向圆形收回进被点的课卡。
+                // 今日页没有加号，也就没有 ×→+ 的复位信号要发。
+                val leave: () -> Unit = {
+                    val seed = state.seedOrigin
+                    val started =
+                        seed != null &&
+                            state.reveal.requestNavigationBack(seed, colors.bg) {
+                                navController.popBackStack()
+                            }
+                    if (!started) navController.popBackStack()
+                }
+                BackHandler(onBack = leave)
+                CourseEditorScreen(onDone = leave)
             }
         }
 
@@ -222,10 +266,10 @@ internal fun AppNavHost(
                         // 从编辑页回到课表：加号要把 × 转回 +（页面自己不知道这件事，
                         // 它是「谁离开了」这个宿主级事实，所以由这里计数下发）
                         fabResetTick = state.fabResetTick,
-                        onEditCourse = { id ->
-                            // 编辑已有课程：没有「被点的那个方块」，返回走默认转场
-                            state.seedOrigin = null
-                            navController.navigate(Routes.scheduleEditor(courseId = id))
+                        // 编辑已有课程：扩散从被点的课块长出来（seed 见 navigateEditor），
+                        // 返回走反向收回；不再是无连续性的默认横滑
+                        onEditCourse = { id, seed ->
+                            navigateEditor(Routes.scheduleEditor(courseId = id), seed)
                         },
                         onOpenImport = { navController.navigate(Routes.SCHEDULE_IMPORTER) },
                     )
