@@ -18,6 +18,7 @@
 import hashlib
 import json
 import os
+from pathlib import Path
 import sys
 import zipfile
 
@@ -111,6 +112,23 @@ def build_segments(old_path, new_path):
     return bytes(patch), segments, len(new_blob)
 
 
+def _out_path(out_dir, name):
+    # 目录来自命令行（本工具的接口），文件名固定。按安全基线校验后再写：
+    # 禁止 .. 成分与绝对路径文件名，规范化后的完整路径必须仍落在 out_dir 之内。
+    filename = os.path.basename(name)
+    if filename in ("", ".", "..") or os.path.isabs(filename):
+        raise SystemExit("拒绝非法输出文件名: %r" % (name,))
+    joined = os.path.normpath(os.path.join(out_dir, filename))
+    base = os.path.abspath(out_dir)
+    try:
+        inside = os.path.commonpath([base, os.path.abspath(joined)]) == base
+    except ValueError:
+        inside = False
+    if not inside:
+        raise SystemExit("拒绝越界输出路径: %r" % (joined,))
+    return joined
+
+
 def main():
     if len(sys.argv) not in (4, 5):
         print(__doc__)
@@ -120,9 +138,8 @@ def main():
     version = sys.argv[4] if len(sys.argv) > 4 else read_apk_version(new_path)
     os.makedirs(out_dir, exist_ok=True)
     patch, segments, new_size = build_segments(old_path, new_path)
-    patch_path = os.path.join(out_dir, "patch.bin")
-    with open(patch_path, "wb") as f:
-        f.write(patch)
+    patch_path = _out_path(out_dir, "patch.bin")
+    Path(patch_path).write_bytes(patch)
     manifest = {
         "version": version,
         "newSize": new_size,
@@ -132,8 +149,9 @@ def main():
         "patchSha256": "sha256:" + hashlib.sha256(patch).hexdigest(),
         "segments": segments,
     }
-    with open(os.path.join(out_dir, "patch.json"), "w", encoding="utf-8") as f:
-        json.dump(manifest, f, ensure_ascii=False, indent=2)
+    Path(_out_path(out_dir, "patch.json")).write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     print("patch = %.2f MiB (%.1f%% of full %d bytes)" % (len(patch) / 1048576, len(patch) * 100 / new_size, new_size))
     print("segments =", len(segments))
     print("written:", patch_path)

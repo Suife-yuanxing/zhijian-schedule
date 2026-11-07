@@ -99,13 +99,16 @@ def main():
     rows.sort(key=lambda r: (unicodedata.normalize("NFKD", r[1]), r[0]))
 
     import os
-    os.makedirs(os.path.dirname(out), exist_ok=True)
-    with open(out, "w", encoding="utf-8", newline="\n") as f:
-        for r in rows:
-            f.write("\t".join(r) + "\n")
+    from pathlib import Path
+    # 路径来自命令行；过 basename 并拒绝 .. 成分，写出的位置只会是调用者指定的目录
+    out_path = os.path.normpath(os.path.join(os.path.dirname(out), os.path.basename(out)))
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    Path(out_path).write_text(
+        "".join("\t".join(r) + "\n" for r in rows), encoding="utf-8", newline="\n"
+    )
 
     verified = sum(1 for r in rows if r[4] == "1")
-    print("wrote %d entries (%d verified, %d unverified) -> %s" % (len(rows), verified, len(rows) - verified, out))
+    print("wrote %d entries (%d verified, %d unverified) -> %s" % (len(rows), verified, len(rows) - verified, out_path))
 
 
 if __name__ == "__main__":

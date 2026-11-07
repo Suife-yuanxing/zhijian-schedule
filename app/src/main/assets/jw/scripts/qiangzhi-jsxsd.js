@@ -26,8 +26,12 @@ globalThis.__paperScheduleScript = {
   readCalendar: async function (warnings) {
     var m = /^(https?:\/\/[^/]+\/jsxsd\/)/.exec(location.href);
     if (!m) return null;
+    // 显式同源断言：m[1] 本就取自 location.href、必然同源；把约束写死在代码里，
+    // 静态分析可见，未来有人改锚点也不会悄悄变成跨源请求。
+    var target = new URL(m[1] + 'jxzl/jxzl_query');
+    if (target.origin !== location.origin) return null;
     try {
-      var res = await fetch(m[1] + 'jxzl/jxzl_query', { credentials: 'same-origin' });
+      var res = await fetch(target.href, { credentials: 'same-origin' });
       if (!res.ok) return null;
       var doc = new DOMParser().parseFromString(await res.text(), 'text/html');
       var table = doc.getElementById('kbtable') || doc.querySelector('table.kbtable');
