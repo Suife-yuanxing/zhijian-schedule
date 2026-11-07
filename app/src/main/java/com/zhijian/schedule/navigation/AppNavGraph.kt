@@ -188,24 +188,43 @@ internal fun AppNavHost(
                         scrollToTopTick = state.scrollToTopTick,
                         playEntrance = state.entrance.shouldPlay(Routes.SCHEDULE),
                         onEntranceShown = { state.entrance.markPlayed() },
-                        onAddCourse = { day, section ->
-                            state.fabOrigin = null
-                            navController.navigate(Routes.scheduleEditor(day = day, section = section))
-                        },
-                        // 加号：先定格整屏取成图底再导航，编辑页从加号那个圆里长出来，
-                        // 圆外仍是旧课表（转场交给根部 RevealHost，导航转场让位）
-                        onAddCourseFromFab = { bounds ->
-                            state.fabOrigin = bounds
-                            val started =
-                                state.reveal.requestNavigation(bounds, colors.bg) {
-                                    navController.navigate(Routes.scheduleEditor(day = null, section = null))
-                                }
-                            if (!started) {
-                                navController.navigate(Routes.scheduleEditor(day = null, section = null))
+                        // 三个「添加课程」入口（空课块 / 空状态卡片 / 加号）走同一条路：
+                        // 都从**被点的那个控件**长出来。圆外仍是旧课表，转场交给根部 RevealHost，
+                        // 导航自己的横滑转场让位（见 AppNavGraph 里 SCHEDULE_EDITOR 的分支）。
+                        //
+                        // 退化：origin 为 Rect.Zero（列框还没测出来，理论上只在首帧出现）时
+                        // 直接导航——扩散从一个 0×0 的圆起手等于整屏瞬切，那比没有动画更糟。
+                        onAddCourse = { day, section, seed ->
+                            // 退化：bounds 还没测出来（理论上只在首帧出现）时直接导航——
+                            // 从一个 0×0 的轮廓起手等于整屏瞬切，那比没有动画更糟。
+                            val usable = seed.takeIf { it.bounds.width > 0f && it.bounds.height > 0f }
+                            state.seedOrigin = usable
+                            val route = Routes.scheduleEditor(day = day, section = section)
+                            if (usable == null) {
+                                navController.navigate(route)
+                            } else {
+                                val started =
+                                    state.reveal.requestNavigation(usable, colors.bg) {
+                                        navController.navigate(route)
+                                    }
+                                if (!started) navController.navigate(route)
                             }
                         },
+                        onAddCourseFromFab = { seed ->
+                            state.seedOrigin = seed
+                            val route = Routes.scheduleEditor(day = null, section = null)
+                            val started =
+                                state.reveal.requestNavigation(seed, colors.bg) {
+                                    navController.navigate(route)
+                                }
+                            if (!started) navController.navigate(route)
+                        },
+                        // 从编辑页回到课表：加号要把 × 转回 +（页面自己不知道这件事，
+                        // 它是「谁离开了」这个宿主级事实，所以由这里计数下发）
+                        fabResetTick = state.fabResetTick,
                         onEditCourse = { id ->
-                            state.fabOrigin = null
+                            // 编辑已有课程：没有「被点的那个方块」，返回走默认转场
+                            state.seedOrigin = null
                             navController.navigate(Routes.scheduleEditor(courseId = id))
                         },
                         onOpenImport = { navController.navigate(Routes.SCHEDULE_IMPORTER) },
@@ -249,16 +268,22 @@ internal fun AppNavHost(
                 popEnterTransition = { popEnter },
                 popExitTransition = { if (state.reveal.navigating) ExitTransition.None else popExit },
             ) {
-                // 从加号进来时，返回改成反向圆形收回：先定格编辑页取图底，再 pop，
-                // 编辑页按圆一路收进加号，露出下面的课表；其他入口保持原本的返回转场
+                // 从加号 / 空课块进来时，返回改成反向圆形收回：先定格编辑页取图底，再 pop，
+                // 编辑页按圆一路收进被点的那个控件，露出下面的课表；其他入口保持原本的返回转场。
+                //
+                // 无论走哪条路，离开前都要给加号一个复位信号：它是 × 状态，回来时得转回 +。
                 val leave: () -> Unit = {
-                    val origin = state.fabOrigin
+                    val seed = state.seedOrigin
                     val started =
-                        origin != null &&
-                            state.reveal.requestNavigationBack(origin, colors.bg) {
+                        seed != null &&
+                            state.reveal.requestNavigationBack(seed, colors.bg) {
+                                state.requestFabReset()
                                 navController.popBackStack()
                             }
-                    if (!started) navController.popBackStack()
+                    if (!started) {
+                        state.requestFabReset()
+                        navController.popBackStack()
+                    }
                 }
                 BackHandler(onBack = leave)
                 CourseEditorScreen(onDone = leave)

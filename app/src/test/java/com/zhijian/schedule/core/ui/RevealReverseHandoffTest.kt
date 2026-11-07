@@ -19,6 +19,7 @@ import org.junit.Test
  */
 class RevealReverseHandoffTest {
     private val fab = Rect(left = 876f, top = 1896f, right = 1020f, bottom = 2040f)
+    private val seed = SeedShape(fab, 48f)
     private val bg = Color(0xFFFFFFFF)
 
     @Test
@@ -26,7 +27,7 @@ class RevealReverseHandoffTest {
         val s = RevealState()
         s.hostSize = IntSize(1080, 2376)
         var popped = 0
-        assertTrue(s.requestNavigationBack(fab, bg) { popped++ })
+        assertTrue(s.requestNavigationBack(seed, bg) { popped++ })
         // 取帧阶段：pop 还没跑，也没有 active
         assertEquals(0, popped)
         assertNull(s.active)
@@ -92,11 +93,13 @@ class RevealReverseHandoffTest {
     @Test
     fun `淡出段落在最后两成时间内`() {
         val duration = Motion.DUR_REVEAL_BACK
-        val fadeStart = 0.786f
+        // 新镜像曲线 (0,0,0.5,1) 在 71.0% 时间点就走完 90% 的半径行程，
+        // 剩下的 29% 时长（340 × 0.29 ≈ 99ms）才是淡出窗。
+        val fadeStart = 0.7101f
         val fadeMillis = duration * (1f - fadeStart)
         assertTrue("淡出 ${fadeMillis}ms 不该拖成一次独立的淡出", fadeMillis < 120f)
         assertTrue("淡出也不该短到看不见", fadeMillis > 40f)
-        // 镜像曲线在 78.6% 时间点走到 90% 的半径行程——与上面的淡出起点是同一个位置
+        // 镜像曲线在 71.0% 时间点走到 90% 的半径行程——与上面的淡出起点是同一个位置
         assertEquals(0.9f, Motion.EaseRevealDecelerate.transform(fadeStart), 0.01f)
     }
 }

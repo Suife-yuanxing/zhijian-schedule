@@ -142,6 +142,10 @@ object ThemePresets {
             radius = RadiusPreset(blockDp = 10f, cardDp = 14f, sheetDp = 22f),
             // 淡墨：亮色卡面更接近纸（L 0.945→0.965）、彩度砍到 55%；暗色再压一档（0.285→0.245）
             toneBias = CourseToneBias(lightL = 0.965f, lightChroma = 0.55f, darkL = 0.245f, darkChroma = 0.95f),
+            // 素墨的动效规范写死「不做缩放、弹性、旋转。墨不会跳」
+            // （docs/specs/2026-10-29-三套主题重构设计.md 3.6）。这条不是风格偏好：
+            // 它的整套语言是「字与留白」，多一次形变就像在宣纸上弹了一下。
+            motion = MotionProfile.Still,
         )
 
     /**

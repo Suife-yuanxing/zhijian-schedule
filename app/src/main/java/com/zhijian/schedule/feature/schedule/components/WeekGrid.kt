@@ -20,6 +20,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
@@ -27,6 +28,7 @@ import com.zhijian.schedule.core.data.db.CourseEntity
 import com.zhijian.schedule.core.theme.LocalCourseColors
 import com.zhijian.schedule.core.theme.LocalGridStyle
 import com.zhijian.schedule.core.ui.Motion
+import com.zhijian.schedule.core.ui.SeedShape
 import com.zhijian.schedule.core.ui.island.IslandCollapseState
 import com.zhijian.schedule.core.ui.island.IslandScrollToTop
 import com.zhijian.schedule.core.ui.island.islandScrollObserver
@@ -55,7 +57,11 @@ fun WeekGrid(
      */
     clock: State<LocalDateTime>,
     onCourseClick: (CourseEntity) -> Unit,
-    onEmptyTap: (day: Int, section: Int) -> Unit,
+    /**
+     * 点空课块。[seed] 是被点那一格的实测轮廓（矩形 + 课块圆角），供「页面从这一格里长出来」用；
+     * bounds 为 [Rect.Zero] 表示列框还没测出来，调用方应跳过扩散直接导航。
+     */
+    onEmptyTap: (day: Int, section: Int, seed: SeedShape) -> Unit,
     modifier: Modifier = Modifier,
     /** 弹起高亮中的课程（详情打开期间；面板一开始滑出即恢复，见 CourseDetailSheet） */
     selectedCourseId: Long? = null,
@@ -128,13 +134,16 @@ fun WeekGrid(
                     layout.bands.forEachIndexed { bandIndex, band ->
                         BandHeader(band, style, metrics)
                         BandBody(
-                            band = band,
-                            layout = layout,
-                            ui = ui,
-                            week = week,
-                            visibleDays = visibleDays,
-                            style = style,
-                            metrics = metrics,
+                            scene =
+                                BandScene(
+                                    band = band,
+                                    layout = layout,
+                                    ui = ui,
+                                    week = week,
+                                    visibleDays = visibleDays,
+                                    style = style,
+                                    metrics = metrics,
+                                ),
                             onEmptyTap = onEmptyTap,
                         )
                         if (bandIndex != layout.bands.lastIndex) {

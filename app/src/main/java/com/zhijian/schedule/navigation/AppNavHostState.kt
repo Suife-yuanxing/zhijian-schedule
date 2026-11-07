@@ -4,9 +4,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import com.zhijian.schedule.core.ui.RevealState
+import com.zhijian.schedule.core.ui.SeedShape
 import com.zhijian.schedule.core.ui.island.IslandCollapseState
 import com.zhijian.schedule.feature.profile.ProfileEntryTransitions
 
@@ -50,8 +50,32 @@ internal class AppNavHostState(
     var scrollToTopTick by mutableIntStateOf(0)
         private set
 
-    /** 从加号进课程编辑页时记下加号的位置：返回时页面要反向收回这里 */
-    var fabOrigin by mutableStateOf<Rect?>(null)
+    /**
+     * 进课程编辑页时记下**被点控件的实测轮廓**：返回时页面要反向收回这里。
+     *
+     * 从「加号的位置」扩展成「上一个入口的轮廓」——空课块、空状态卡片的添加按钮都走这条，
+     * 所以它**不能**假设自己一定在右下角：返回目标可能是课表正中间某一格，
+     * 加号方块与这块轮廓没有必然关系。角半径也一并记下来，反向收回的最后一帧
+     * 才能收成被点控件**自己的形状**，而不是一个外接圆。
+     */
+    var seedOrigin by mutableStateOf<SeedShape?>(null)
+
+    /**
+     * 加号「× → +」的复位信号：从编辑页回到课表时自增。
+     *
+     * 为什么需要它而不是让 ScheduleFab 自己看导航状态：加号活在课表页里，而课表页在
+     * 返回时会重新进入组合，`remember` 的形变进度会被重置成加号——看起来像是「复位了」，
+     * 但那是**新的加号**而不是**转回去的 ×**，中间还夹着反向扩散的最后几十毫秒，
+     * 用户会看到 × 突然变成 + 再被圆盖住。用宿主级计数下发，页面在组合期间接住同一个
+     * 进度值继续转，动作才是连续的。
+     */
+    var fabResetTick by mutableIntStateOf(0)
+        private set
+
+    /** 从编辑页返回课表：把加号从 × 转回 + */
+    fun requestFabReset() {
+        fabResetTick++
+    }
 
     fun requestScrollToTop() {
         scrollToTopTick++

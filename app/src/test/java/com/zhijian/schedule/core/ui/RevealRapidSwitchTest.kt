@@ -70,7 +70,7 @@ class RevealRapidSwitchTest {
         // 新一段：进度归零、圆心换成刚点的胶囊、runId 换班
         assertEquals(0f, s.progress.floatValue, 1e-6f)
         assertEquals("glass", s.active?.toId)
-        assertEquals(chip2.center, s.active!!.center)
+        assertEquals(chip2.center, (s.active!!.shape as RevealShape.Circle).center)
         assertTrue(s.active!!.runId > firstRun)
         assertFalse(s.frozen)
         assertNull(s.pending)
